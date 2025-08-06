@@ -1,0 +1,97 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.6.13</version>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
+  <groupId>com.green</groupId>
+  <artifactId>healing-planet-sys</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <name>healing-planet-sys</name>
+  <modules>
+    <module>pojo</module>
+    <module>common</module>
+    <module>service</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <lombok>1.18.30</lombok>
+    <mybatis-plus.version>3.4.2</mybatis-plus.version>
+    <spring-boot.version>2.6.13</spring-boot.version>
+    <java.version>1.8</java.version>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <emoji-java.version>5.1.1</emoji-java.version>
+    <jakarta.version>2.0.2</jakarta.version>
+    <aliyunoss.version>3.10.2</aliyunoss.version>
+    <fastjson.version>1.2.75</fastjson.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+        <version>${spring-boot.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>jakarta.validation</groupId>
+        <artifactId>jakarta.validation-api</artifactId>
+        <version>${jakarta.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>3.8.1</version>
+        <scope>test</scope>
+      </dependency>
+      <!--emoji-java-->
+      <dependency>
+        <groupId>com.vdurmont</groupId>
+        <artifactId>emoji-java</artifactId>
+        <version>${emoji-java.version}</version>
+      </dependency>
+      <!--lombok-->
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>${lombok}</version>
+      </dependency>
+      <!--mybatis-plus-->
+      <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-boot-starter</artifactId>
+        <version>${mybatis-plus.version}</version>
+      </dependency>
+<!--&lt;!&ndash;      fasterxml&ndash;&gt;-->
+<!--      <dependency>-->
+<!--        <groupId>com.fasterxml.jackson.core</groupId>-->
+<!--        <artifactId>jackson-annotations</artifactId>-->
+<!--        <version>2.13.4</version>-->
+<!--      </dependency>-->
+<!--      aliyunoss-->
+      <dependency>
+        <groupId>com.aliyun.oss</groupId>
+        <artifactId>aliyun-sdk-oss</artifactId>
+        <version>${aliyunoss.version}</version>
+      </dependency>
+      <!--fastjson-->
+      <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>fastjson</artifactId>
+        <version>${fastjson.version}</version>
+      </dependency>
+      <!-- webflux -->
+<!--      <dependency>-->
+<!--        <groupId>org.springframework.boot</groupId>-->
+<!--        <artifactId>spring-boot-starter-webflux</artifactId>-->
+<!--      </dependency>-->
+    </dependencies>
+  </dependencyManagement>
+
+</project>
