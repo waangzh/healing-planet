@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.green.mapper.RecommendationMapper">
+
+    <insert id="insretRecommendationPosts" parameterType="map">
+        insert into user_recommendations
+        (user_id, recommend_posts, create_time) values (#{userId},#{result},curdate())
+    </insert>
+
+    <insert id="insretRecommendationUsers" parameterType="map">
+        insert into user_recommendations
+        (user_id, recommend_users, create_time) values (#{userId},#{result},curdate())
+    </insert>
+
+
+
+    <select id="getPostsByList" resultType="com.green.vo.RecommendPostVO" parameterType="java.util.List">
+        select id,title from green_community.post where id in
+        <foreach collection="ids" item="itm" separator="," open="(" close=")">
+            #{itm}
+        </foreach>
+    </select>
+
+
+    <select id="getUsersByList" resultType="com.green.entity.User">
+        select * from green_community.user where id in
+        <foreach collection="ids" item="itm" separator="," open="(" close=")">
+            #{itm}
+        </foreach>
+    </select>
+
+</mapper>

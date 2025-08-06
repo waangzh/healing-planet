@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.green.mapper.TopicMapper">
+    <resultMap id="topicVO" type="com.green.vo.PostVO">
+        <id column="id" property="id"/>
+        <result column="title" property="title"/>
+        <result column="user_id" property="userId"/>
+        <result column="comments" property="comments"/>
+        <result column="view" property="view"/>
+        <result column="collects" property="collects"/>
+        <result column="top" property="top"/>
+        <result column="essence" property="essence"/>
+        <result column="create_time" property="createTime"/>
+        <result column="modify_time" property="modifyTime"/>
+        <result column="username" property="username"/>
+        <result column="alias" property="alias"/>
+        <result column="avatar" property="avatar"/>
+    </resultMap>
+
+    <select id="selectListAndPage" resultMap="topicVO">
+        select
+        t.id, t.title, t.user_id, t.comments,
+        t.view, t.collects, t.top, t.essence, t.likes,
+        t.create_time, t.modify_time, t.cover_img,
+        u.username, u.alias, u.avatar
+        <if test="tab == 'hot'">
+            /* 综合热度公式计算 */
+            ,(log(ifnull(t.likes,1)+1)*0.5 + t.comments*0.3 + t.collects*0.2) as hot_score
+        </if>
+        from post t left join user u on t.user_id = u.id
+        <where>
+            <if test="tab == 'hot'">
+                date(t.create_time) &lt;= date_add(curdate(), interval 1 day)
+                and date(t.create_time) &gt;= date_sub(curdate(), interval 10 day)
+            </if>
+        </where>
+        <if test="tab != 'hot'">
+            ORDER BY t.create_time DESC
+        </if>
+        <if test="tab == 'hot'">
+            ORDER BY hot_score DESC, t.create_time DESC  <!-- 按计算分值排序 -->
+        </if>
+    </select>
+
+    <select id="selectRecommend" resultType="com.green.entity.Post">
+        select *
+        from post t
+        where t.id != #{id}
+        order by rand(), t.view
+        limit 10
+    </select>
+
+    <select id="searchByKey" resultMap="topicVO">
+        SELECT t.id,
+        t.title,
+        t.user_id,
+        t.comments,
+        t.view,
+        t.collects,
+        t.top,
+        t.essence,
+        t.create_time,
+        t.modify_time,
+        u.username,
+        u.alias,
+        u.avatar
+        FROM post t
+        LEFT JOIN user u
+        ON t.user_id = u.id
+        <where>
+            <if test="keyword!=null">
+                and t.title like CONCAT('%','${keyword}')
+                or t.title like CONCAT('${keyword}','%')
+                or t.title like CONCAT('%','${keyword}','%')
+                or t.title = #{keyword}
+            </if>
+        </where>
+        order by t.view desc, t.create_time desc
+    </select>
+    <select id="selectByTagId" resultType="com.green.vo.PostVO">
+        select
+        t.id, t.title, t.user_id, t.comments,
+        t.view, t.collects, t.top, t.essence, t.likes,
+        t.create_time, t.modify_time, t.cover_img,
+        u.username, u.alias, u.avatar
+        from post t left join user u on t.user_id = u.id
+        <where>
+            <if test="ids != null and ids.size() > 0">
+                t.id in
+                <foreach item="item" index="index" collection="ids"
+                         open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+        </where>
+            ORDER BY t.modify_time DESC, t.create_time DESC
+    </select>
+    <select id="selectByCollectId" resultType="com.green.vo.CollectVO">
+        select
+        t.id as topic_id, t.title as topic
+        from post t left join collect c on t.id = c.topic_id
+        <where>
+            <if test="ids != null and ids.size() > 0">
+                t.id in
+                <foreach item="item" index="index" collection="ids"
+                         open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY t.modify_time DESC, t.create_time DESC
+    </select>
+</mapper>
