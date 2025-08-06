@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.green.mapper.CommentMapper">
+    <resultMap id="topicVO" type="com.green.vo.CommentVO">
+        <id column="id" property="id"/>
+        <result column="content" property="content"/>
+        <result column="user_id" property="userId"/>
+        <result column="topic_id" property="topicId"/>
+        <result column="username" property="username"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <select id="getCommentsByTopicID" resultMap="topicVO">
+        select comment.*, user.username
+        from comment
+        join user on user.id = comment.user_id
+        where topic_id = #{topicid}
+        order by create_time desc
+    </select>
+    <select id="selectRootComments" resultType="com.green.vo.CommentVO"
+            parameterType="java.lang.String">
+        select c.*, u.username as author_name,u.avatar as user_avatar
+        from comment c
+        left join user u on c.user_id = u.id
+        where c.topic_id = #{topicId} and c.level = 1
+        order by c.create_time desc
+    </select>
+    <select id="selectByRootId" resultType="com.green.vo.CommentVO"
+            parameterType="java.lang.String">
+        select c.*, u.username as author_name,u.avatar as user_avatar,
+               ru.username as reply_to_username
+        from comment c
+        left join user u on c.user_id = u.id # 创建用户
+        left join user ru on c.reply_to_user_id = ru.id # 被回复的用户
+        where c.root_id = #{rootId} and c.level = 2 # 二级评论
+        order by c.create_time
+    </select>
+</mapper>
