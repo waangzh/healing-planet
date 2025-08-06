@@ -3,7 +3,6 @@ package com.green.service.serviceImpl;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.common.exception.ApiAsserts;
-import com.green.entity.*;
 import com.green.enumeration.NotifyType;
 import com.green.enumeration.ObjectType;
 import com.green.mapper.CommentMapper;

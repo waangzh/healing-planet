@@ -64,7 +64,7 @@ public class PlantsController {
                 // 2. Redis中没有则查数据库
                 plantsVO = plantsService.getPlantsById(id);
 
-                // 3. 尝试写入Redis（这里可能失败）
+                // 3. 写入Redis
                 try {
                     redisTemplate.opsForValue().set(
                             key,
@@ -73,7 +73,7 @@ public class PlantsController {
                             TimeUnit.MINUTES
                     );
                 } catch (DataAccessException e) {
-                    log.warn("Redis写入失败，但不影响主流程: {}", e.getMessage());
+                    log.warn("Redis写入失败: {}", e.getMessage());
                 }
             }
         } catch (RedisConnectionFailureException e) {

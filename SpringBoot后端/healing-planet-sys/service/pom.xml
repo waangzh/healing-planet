@@ -24,6 +24,11 @@
             <artifactId>pojo</artifactId>
             <version>1.0.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.green</groupId>
+            <artifactId>common</artifactId>
+            <version>1.0.0</version>
+        </dependency>
         <!--fastjson-->
         <dependency>
             <groupId>com.alibaba</groupId>
