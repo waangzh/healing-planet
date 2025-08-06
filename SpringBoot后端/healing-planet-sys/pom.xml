@@ -30,6 +30,8 @@
     <jakarta.version>2.0.2</jakarta.version>
     <aliyunoss.version>3.10.2</aliyunoss.version>
     <fastjson.version>1.2.75</fastjson.version>
+    <hutool.version>5.5.7</hutool.version>
+    <common-lang.version>2.4</common-lang.version>
   </properties>
 
   <dependencyManagement>
@@ -50,6 +52,7 @@
         <version>3.8.1</version>
         <scope>test</scope>
       </dependency>
+
       <!--emoji-java-->
       <dependency>
         <groupId>com.vdurmont</groupId>
@@ -85,6 +88,17 @@
         <groupId>com.alibaba</groupId>
         <artifactId>fastjson</artifactId>
         <version>${fastjson.version}</version>
+      </dependency>
+      <!--HuTool-->
+      <dependency>
+        <groupId>cn.hutool</groupId>
+        <artifactId>hutool-all</artifactId>
+        <version>${hutool.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-lang</groupId>
+        <artifactId>commons-lang</artifactId>
+        <version>${common-lang.version}</version>
       </dependency>
       <!-- webflux -->
 <!--      <dependency>-->
