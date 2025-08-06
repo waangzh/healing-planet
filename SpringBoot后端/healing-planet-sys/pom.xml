@@ -17,6 +17,7 @@
     <module>pojo</module>
     <module>common</module>
     <module>service</module>
+    <module>websocket-server</module>
   </modules>
 
   <properties>

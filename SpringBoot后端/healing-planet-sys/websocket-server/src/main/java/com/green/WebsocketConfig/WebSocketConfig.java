@@ -1,4 +1,4 @@
-package com.green.config;
+package com.green.WebsocketConfig;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
