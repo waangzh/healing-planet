@@ -114,8 +114,8 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>com.green.service.ServiceApplication</mainClass>
-                    <skip>true</skip>
+                    <mainClass>com.green.HealingPlanetApplication</mainClass>
+<!--                    <skip>true</skip>-->
                 </configuration>
                 <executions>
                     <execution>
