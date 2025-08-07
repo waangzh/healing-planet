@@ -31,7 +31,7 @@ public class CaptchaUtils {
     /**
      * 本地图片地址
      **/
-    private final static String IMG_PATH = "/www/capImg/%s.jpg";
+    private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
 
     /**
      * 入参校验设置默认值
@@ -61,7 +61,7 @@ public class CaptchaUtils {
         }
         //设置图片来源默认值
         if (captcha.getPlace() == null) {
-            captcha.setPlace(0);
+            captcha.setPlace(1);
         }
     }
 
@@ -102,7 +102,8 @@ public class CaptchaUtils {
         } catch (Exception e) {
             //System.out.println("获取拼图资源失败");
             //异常处理
-            ApiAsserts.fail("获取拼图资源失败");
+            String error = e.getMessage();
+            ApiAsserts.fail("获取拼图资源失败:"+error);
             return null;
         }
     }
