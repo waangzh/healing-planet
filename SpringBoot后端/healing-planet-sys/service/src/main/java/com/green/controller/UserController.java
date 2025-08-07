@@ -4,15 +4,19 @@ package com.green.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.green.common.api.Result;
+import com.green.common.exception.ApiAsserts;
+import com.green.common.exception.ApiException;
 import com.green.dto.LoginDTO;
 import com.green.dto.RegisterDTO;
 import com.green.dto.UserDTO;
 import com.green.entity.Post;
 import com.green.entity.User;
+import com.green.service.CaptchaService;
 import com.green.vo.UserVO;
 import com.green.service.IPostService;
 import com.green.service.IUmsUserService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.StringUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.util.Assert;
@@ -35,6 +39,8 @@ public class UserController extends BaseController {
     private IUmsUserService iUserService;
     @Resource
     private IPostService iPostService;
+    @Resource
+    private CaptchaService captchaService;
 
     /**
      * 用户注册
@@ -61,6 +67,14 @@ public class UserController extends BaseController {
     @PostMapping("/login")
     public Result<Map<String, String>> login(@Valid @RequestBody LoginDTO dto) {
         log.info("用户登录:{}",dto.getUsername());
+        // 只有开启了验证码功能才需要验证
+        boolean needAuthCode = true;
+        if (needAuthCode) {
+            String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
+            if (StringUtils.isNotBlank(msg)) {
+                ApiAsserts.fail(msg);
+            }
+        }
         String token = iUserService.executeLogin(dto);
         if (ObjectUtils.isEmpty(token)) {
             return Result.failed("账号密码错误");

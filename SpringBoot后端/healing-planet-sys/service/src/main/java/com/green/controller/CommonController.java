@@ -1,8 +1,11 @@
 package com.green.controller;
 
+import com.baomidou.mybatisplus.extension.api.R;
 import com.green.common.api.Result;
 import com.green.constant.MessageConstant;
 import com.green.dto.AiChatDTO;
+import com.green.entity.Captcha;
+import com.green.service.CaptchaService;
 import com.green.utils.AliOssUtil;
 import com.green.utils.BaiDuUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +35,9 @@ public class CommonController {
     private AliOssUtil aliOssUtil;
     @Autowired
     private BaiDuUtil baiDuUtil;
+    @Autowired
+    private CaptchaService captchaService;
+
     // 用于存储每个会话的对话历史
     private final ConcurrentHashMap<String, JSONArray> conversationHistory = new ConcurrentHashMap<>();
 
@@ -175,5 +181,16 @@ public class CommonController {
         });
 
         return emitter;
+    }
+
+    /**
+     * 生成验证码拼图
+     * @param captcha
+     * @return
+     */
+    @PostMapping("/getCaptcha")
+    public Result<?> getCaptcha(@RequestBody Captcha captcha) {
+        log.info("生成验证码拼图:{}",captcha);
+        return Result.success(captchaService.getCaptcha(captcha));
     }
 }
