@@ -31,7 +31,7 @@ public class CaptchaUtils {
     /**
      * 本地图片地址
      **/
-    private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
+    private final static String IMG_PATH = "D:/Code/智慧绿植/smart_green_plant/img/%s.jpg";
 
     /**
      * 入参校验设置默认值
@@ -85,8 +85,8 @@ public class CaptchaUtils {
         log.info("获取验证码资源图");
         try {
             //随机图片
-            //int nonce = getNonceByRange(0, 1000);
-            int nonce = 3;
+            int nonce = getNonceByRange(0, 10);
+            //int nonce = 3;
             //获取网络资源图片
             if (0 == place) {
                 String imgUrl = String.format(IMG_URL, nonce);

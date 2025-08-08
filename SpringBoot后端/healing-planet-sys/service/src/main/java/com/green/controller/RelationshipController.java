@@ -7,6 +7,7 @@ import com.green.entity.Follow;
 import com.green.entity.User;
 import com.green.service.IFollowService;
 import com.green.service.IUmsUserService;
+import com.green.vo.FollowVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.*;
@@ -97,14 +98,14 @@ public class RelationshipController extends BaseController {
      * @return
      */
     @GetMapping("/fans")
-    public Result<List<Follow>> getFollowList(@RequestParam("username") String username){
+    public Result<List<FollowVO>> getFollowList(@RequestParam("username") String username){
         log.info("获取我的粉丝:{}",username);
         User user = iUserService.getOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (ObjectUtils.isEmpty(user)) {
             ApiAsserts.fail("用户不存在");
         }
-        List<Follow> list = iFollowService.list(new LambdaQueryWrapper<Follow>().eq(Follow::getParentId, user.getId()));
-        return Result.success(list);
+        List<FollowVO> voList = iFollowService.selectList(user);
+        return Result.success(voList);
     }
 
     /**
