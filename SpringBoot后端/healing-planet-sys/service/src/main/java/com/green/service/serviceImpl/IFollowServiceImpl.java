@@ -10,15 +10,21 @@ import com.green.enumeration.NotifyType;
 import com.green.enumeration.ObjectType;
 import com.green.mapper.FollowMapper;
 import com.green.entity.User;
+import com.green.mapper.UserMapper;
 import com.green.service.IFollowService;
 import com.green.service.INotificationService;
+import com.green.vo.FollowVO;
 import com.green.websocket.NotifyWebSocketServer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 
 @Service
@@ -26,6 +32,10 @@ public class IFollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implem
 
     @Autowired
     private INotificationService notificationService;
+    @Qualifier("userMapper")
+    @Autowired
+    private UserMapper userMapper;
+
     /**
      * 关注用户
      * @param user
@@ -68,5 +78,27 @@ public class IFollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implem
                 .createdAt(LocalDateTime.now())
                 .build();
         notificationService.save(notification);
+    }
+
+    /**
+     * 查询用户粉丝列表
+     * @param username
+     * @return
+     */
+    @Override
+    public List<FollowVO> selectList(User user) {
+        List<Follow> list = this.list(new LambdaQueryWrapper<Follow>().eq(Follow::getParentId, user.getId()));
+        List<FollowVO> voList = new ArrayList<>();
+        for(Follow follow : list) {
+            FollowVO vo = new FollowVO();
+            User t = userMapper.selectById(follow.getFollowerId());
+            vo.setId(t.getId());
+            vo.setMessage(t.getMessage());
+            vo.setAvatar(t.getAvatar());
+            vo.setUsername(t.getUsername());
+            voList.add(vo);
+        }
+
+        return voList;
     }
 }
