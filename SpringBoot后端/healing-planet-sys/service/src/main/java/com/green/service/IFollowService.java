@@ -22,4 +22,11 @@ public interface IFollowService extends IService<Follow> {
      * @return
      */
     List<FollowVO> selectList(User user);
+
+    /**
+     * 获取我的关注列表
+     * @param user
+     * @return
+     */
+    List<FollowVO> selectMyFollowList(User user);
 }

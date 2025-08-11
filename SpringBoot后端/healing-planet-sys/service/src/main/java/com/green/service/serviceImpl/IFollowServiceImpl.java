@@ -101,4 +101,26 @@ public class IFollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implem
 
         return voList;
     }
+
+    /**
+     * 获取我的关注列表
+     * @param user
+     * @return
+     */
+    @Override
+    public List<FollowVO> selectMyFollowList(User user) {
+        List<Follow> list = this.list(new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, user.getId()));
+        List<FollowVO> voList = new ArrayList<>();
+        for(Follow follow : list) {
+            FollowVO vo = new FollowVO();
+            User t = userMapper.selectById(follow.getParentId());
+            vo.setId(t.getId());
+            vo.setMessage(t.getMessage());
+            vo.setAvatar(t.getAvatar());
+            vo.setUsername(t.getUsername());
+            voList.add(vo);
+        }
+
+        return voList;
+    }
 }

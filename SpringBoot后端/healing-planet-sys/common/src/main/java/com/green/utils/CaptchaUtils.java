@@ -31,7 +31,8 @@ public class CaptchaUtils {
     /**
      * 本地图片地址
      **/
-    private final static String IMG_PATH = "D:/Code/智慧绿植/smart_green_plant/img/%s.jpg";
+    //private final static String IMG_PATH = "D:/Code/智慧绿植/smart_green_plant/img/%s.jpg";
+    private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
 
     /**
      * 入参校验设置默认值
@@ -83,27 +84,29 @@ public class CaptchaUtils {
      */
     public static BufferedImage getBufferedImage(Integer place) {
         log.info("获取验证码资源图");
+        String imgUrl="";
+
         try {
             //随机图片
-            int nonce = getNonceByRange(0, 10);
+            int nonce = getNonceByRange(1, 10);
             //int nonce = 3;
             //获取网络资源图片
             if (0 == place) {
-                String imgUrl = String.format(IMG_URL, nonce);
+                imgUrl = String.format(IMG_URL, nonce);
                 URL url = new URL(imgUrl);
                 return ImageIO.read(url.openStream());
             }
             //获取本地图片
             else {
-                String imgPath = String.format(IMG_PATH, nonce);
-                File file = new File(imgPath);
+                imgUrl = String.format(IMG_PATH, nonce);
+                File file = new File(imgUrl);
                 return ImageIO.read(file);
             }
         } catch (Exception e) {
             //System.out.println("获取拼图资源失败");
             //异常处理
             String error = e.getMessage();
-            ApiAsserts.fail("获取拼图资源失败:"+error);
+            ApiAsserts.fail("获取拼图资源失败:"+error+imgUrl);
             return null;
         }
     }
