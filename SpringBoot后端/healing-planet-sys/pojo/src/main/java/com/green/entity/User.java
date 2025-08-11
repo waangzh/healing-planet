@@ -79,7 +79,7 @@ public class User implements Serializable {
     private Boolean status = true;
 
     /**
-     * 用户角色
+     * 用户角色 1：管理员，0：普通用户
      */
     @TableField("role_id")
     private Integer roleId;
@@ -101,4 +101,5 @@ public class User implements Serializable {
      */
     @TableField(value = "message")
     private String message;
+
 }

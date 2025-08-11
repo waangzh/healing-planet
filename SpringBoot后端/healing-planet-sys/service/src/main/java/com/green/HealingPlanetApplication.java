@@ -1,6 +1,6 @@
 package com.green;
 
-import com.green.jwt.JwtAuthenticationFilter;
+import com.green.security.jwt.JwtAuthenticationFilter;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -9,6 +9,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.core.userdetails.UserDetailsService;
 
 @MapperScan("com.green.mapper")
 @SpringBootApplication
@@ -19,10 +20,12 @@ public class HealingPlanetApplication extends SpringBootServletInitializer {
         return builder.sources(HealingPlanetApplication.class);
     }
     @Bean
-    public FilterRegistrationBean jwtFilter() {
-        final FilterRegistrationBean registrationBean = new FilterRegistrationBean();
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter();
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilter(UserDetailsService userDetailsService) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registrationBean = new FilterRegistrationBean<>();
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(userDetailsService);
         registrationBean.setFilter(filter);
+        // 还可以设置拦截路径等
+        registrationBean.addUrlPatterns("/*"); // 或你需要保护的路径
         return registrationBean;
     }
 

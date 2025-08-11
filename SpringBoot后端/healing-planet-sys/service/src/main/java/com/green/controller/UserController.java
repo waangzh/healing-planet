@@ -5,13 +5,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.green.common.api.Result;
 import com.green.common.exception.ApiAsserts;
-import com.green.common.exception.ApiException;
 import com.green.dto.LoginDTO;
 import com.green.dto.RegisterDTO;
 import com.green.dto.UserDTO;
 import com.green.entity.Post;
 import com.green.entity.User;
 import com.green.service.CaptchaService;
+import com.green.vo.LoginVO;
 import com.green.vo.UserVO;
 import com.green.service.IPostService;
 import com.green.service.IUmsUserService;
@@ -28,7 +28,7 @@ import javax.validation.Valid;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.green.jwt.JwtUtil.USER_NAME;
+import static com.green.security.jwt.JwtUtil.USER_NAME;
 
 
 @RestController
@@ -65,23 +65,23 @@ public class UserController extends BaseController {
      * @return
      */
     @PostMapping("/login")
-    public Result<Map<String, String>> login(@Valid @RequestBody LoginDTO dto) {
+    public Result<?> login(@Valid @RequestBody LoginDTO dto) {
         log.info("用户登录:{}",dto.getUsername());
+
         // 开启验证码功能
-        boolean needAuthCode = true;
+        boolean needAuthCode = false;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {
                 ApiAsserts.fail(msg);
             }
         }
-        String token = iUserService.executeLogin(dto);
-        if (ObjectUtils.isEmpty(token)) {
+        LoginVO vo = iUserService.executeLogin(dto);
+        if (ObjectUtils.isEmpty(vo.getToken())) {
             return Result.failed("账号密码错误");
         }
-        Map<String, String> map = new HashMap<>(16);
-        map.put("token", token);
-        return Result.success(map, "登录成功");
+
+        return Result.success(vo, "登录成功");
     }
 
     /**

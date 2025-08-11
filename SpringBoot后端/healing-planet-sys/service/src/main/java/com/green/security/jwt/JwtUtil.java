@@ -1,7 +1,8 @@
-package com.green.jwt;
+package com.green.security.jwt;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,6 +10,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import java.util.*;
 
+@Slf4j
 public class JwtUtil {
     private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
     public static final long EXPIRATION_TIME = 3600_000_000L; // 1000 hour
@@ -22,6 +24,7 @@ public class JwtUtil {
         //you can put any data in the map
         map.put(USER_NAME, userId);
         String jwt = Jwts.builder()
+                .setSubject(userId)
                 .setClaims(map)
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
                 .signWith(SignatureAlgorithm.HS512, SECRET)
@@ -32,21 +35,20 @@ public class JwtUtil {
     public static HttpServletRequest validateTokenAndAddUserIdToHeader(HttpServletRequest request) {
         String token = request.getHeader(HEADER_STRING);
         if (token != null) {
-            // parse the token.
+            // 解析token.
             try {
                 Map<String, Object> body = Jwts.parser()
                         .setSigningKey(SECRET)
                         .parseClaimsJws(token.replace(TOKEN_PREFIX, ""))
                         .getBody();
-
-
+                log.info("JWT claims: {}",body);
                 return new CustomHttpServletRequest(request, body);
             } catch (Exception e) {
                 logger.info(e.getMessage());
                 throw new TokenValidationException(e.getMessage());
             }
         } else {
-            throw new TokenValidationException("Missing token");
+            throw new TokenValidationException("未登录");
         }
     }
 
@@ -65,6 +67,13 @@ public class JwtUtil {
                 return Collections.enumeration(Arrays.asList(claims.get(name)));
             }
             return super.getHeaders(name);
+        }
+        @Override
+        public String getHeader(String name) {
+            if (claims != null && claims.containsKey(name)) {
+                return claims.get(name);  // 注意这里返回String类型
+            }
+            return super.getHeader(name);
         }
 
     }

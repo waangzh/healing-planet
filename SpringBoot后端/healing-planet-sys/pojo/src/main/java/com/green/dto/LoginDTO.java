@@ -21,8 +21,14 @@ public class LoginDTO {
     @Size(min = 6, max = 20, message = "登录密码长度在6-20")
     private String password;
 
+    /**
+     * 后端提供的随机数，用于绑定验证
+     */
     private String nonceStr;
 
+    /**
+     * 移动拼图横坐标
+     */
     private String value;
 
     private Boolean rememberMe;

@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.green.jwt.JwtUtil.USER_NAME;
+import static com.green.security.jwt.JwtUtil.USER_NAME;
 
 @RestController
 @RequestMapping("/relationship")

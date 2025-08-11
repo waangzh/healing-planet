@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.util.List;
 
-import static com.green.jwt.JwtUtil.USER_NAME;
+import static com.green.security.jwt.JwtUtil.USER_NAME;
 
 /*
 推荐分为两个推荐，一个是推荐文章，一个是推荐用户（为了减轻大模型的负担，尽可能少一点数据）

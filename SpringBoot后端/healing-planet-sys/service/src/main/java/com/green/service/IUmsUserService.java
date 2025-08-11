@@ -7,6 +7,7 @@ import com.green.entity.User;
 import com.green.dto.LoginDTO;
 import com.green.dto.RegisterDTO;
 import com.green.dto.UserDTO;
+import com.green.vo.LoginVO;
 import com.green.vo.ProfileVO;
 import com.green.vo.UserVO;
 
@@ -33,7 +34,7 @@ public interface IUmsUserService extends IService<User> {
      * @param dto
      * @return 生成的JWT的token
      */
-    String executeLogin(LoginDTO dto);
+    LoginVO executeLogin(LoginDTO dto);
     /**
      * 获取用户信息
      *
@@ -55,4 +56,8 @@ public interface IUmsUserService extends IService<User> {
      * @param username
      */
     void update(String username, UserDTO userDTO);
+
+
+
+
 }
