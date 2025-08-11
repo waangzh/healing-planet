@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 
-import static com.green.jwt.JwtUtil.USER_NAME;
+import static com.green.security.jwt.JwtUtil.USER_NAME;
 
 
 @RestController

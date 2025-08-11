@@ -33,6 +33,7 @@
     <fastjson.version>1.2.75</fastjson.version>
     <hutool.version>5.5.7</hutool.version>
     <common-lang.version>2.4</common-lang.version>
+    <security.version>5.5.8</security.version>
   </properties>
 
   <dependencyManagement>
@@ -52,6 +53,12 @@
         <artifactId>junit</artifactId>
         <version>3.8.1</version>
         <scope>test</scope>
+      </dependency>
+      <!--        spring-security-->
+      <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-crypto</artifactId>
+        <version>${security.version}</version>
       </dependency>
 
       <!--emoji-java-->

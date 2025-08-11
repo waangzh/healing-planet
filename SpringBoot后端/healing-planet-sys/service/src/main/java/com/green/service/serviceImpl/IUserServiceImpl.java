@@ -1,11 +1,11 @@
-package com.green.service.service.serviceImpl;
+package com.green.service.serviceImpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.common.exception.ApiAsserts;
 import com.green.common.exception.ApiException;
 import com.green.enumeration.ResultCodeEnum;
-import com.green.jwt.JwtUtil;
+import com.green.security.jwt.JwtUtil;
 import com.green.mapper.FollowMapper;
 import com.green.mapper.RecommendationMapper;
 import com.green.mapper.TopicMapper;
@@ -18,16 +18,21 @@ import com.green.entity.Post;
 import com.green.entity.User;
 import com.green.entity.UserPurchaseTags;
 import com.green.service.IUmsUserService;
+import com.green.vo.LoginVO;
 import com.green.vo.ProfileVO;
 import com.green.vo.UserVO;
-import com.green.service.IUmsUserService;
-import com.green.utils.MD5Utils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.util.Date;
 import java.util.List;
@@ -45,6 +50,10 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
 
     @Autowired
     private RecommendationMapper recommendationMapper;
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
 
 
     /**
@@ -64,7 +73,8 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         User addUser = User.builder()
                 .username(dto.getName())
                 .alias(dto.getName())
-                .password(MD5Utils.getPwd(dto.getPass()))
+                //.password(MD5Utils.getPwd(dto.getPass()))
+                .password(new BCryptPasswordEncoder().encode(dto.getPass()))
                 .email(dto.getEmail())
                 .avatar("https://smart-plant.oss-cn-hangzhou.aliyuncs.com/bdda5ec8-22d6-4e45-b61a-4f3f91a1ab60.png")
                 .createTime(new Date())
@@ -90,7 +100,10 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
      */
     @Override
     public User getUserByUsername(String username) {
-        return baseMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        User user = baseMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if(user == null)
+            throw new ApiException("用户不存在");
+        return user;
     }
 
     /**
@@ -99,24 +112,27 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
      * @return
      */
     @Override
-    public String executeLogin(LoginDTO dto) {
-        String token = null;
-        //try {
-            User user = getUserByUsername(dto.getUsername());
-            if(user == null){
-                throw new ApiException(ResultCodeEnum.USER_NOT_EXIST_ERROR.msg);
-            }
-            String encodePwd = MD5Utils.getPwd(dto.getPassword());
-            if(!encodePwd.equals(user.getPassword()))
-            {
-                throw new ApiException(ResultCodeEnum.USER_ACCOUNT_ERROR.msg);
-            }
-            token = JwtUtil.generateToken(String.valueOf(user.getUsername()));
-        //} catch (Exception e) {
-        //    log.warn("用户不存在=======>{}", dto.getUsername());
-        //    //throw new ApiException(ResultCodeEnum.USER_NOT_EXIST_ERROR.msg);
-        //}
-        return token;
+    public LoginVO executeLogin(LoginDTO dto) {
+        try {
+            UsernamePasswordAuthenticationToken authToken =
+                    new UsernamePasswordAuthenticationToken(dto.getUsername(), dto.getPassword());
+
+            Authentication authentication = authenticationManager.authenticate(authToken);
+
+            org.springframework.security.core.userdetails.User principal =
+                    (org.springframework.security.core.userdetails.User) authentication.getPrincipal();
+
+            LoginVO vo = new LoginVO();
+            vo.setToken(JwtUtil.generateToken(principal.getUsername()));
+            return vo;
+
+        } catch (UsernameNotFoundException e) {
+            throw new ApiException("用户不存在");
+        } catch (BadCredentialsException e) {
+            throw new ApiException("用户名或密码错误");
+        } catch (Exception e) {
+            throw new ApiException("登录失败，请稍后重试");
+        }
     }
 
     /**
@@ -185,4 +201,6 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         user.setMessage(userDTO.getMessage());
         this.updateById(user);
     }
+
+
 }

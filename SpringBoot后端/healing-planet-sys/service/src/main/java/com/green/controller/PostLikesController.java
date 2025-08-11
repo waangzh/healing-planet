@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 
-import static com.green.jwt.JwtUtil.USER_NAME;
+import static com.green.security.jwt.JwtUtil.USER_NAME;
 
 
 @RestController
