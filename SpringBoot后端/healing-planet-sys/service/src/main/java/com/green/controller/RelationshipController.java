@@ -115,13 +115,13 @@ public class RelationshipController extends BaseController {
      * @return
      */
     @GetMapping("/followers")
-    public Result<List<Follow>> getMyFollowList(@RequestParam("username") String username){
+    public Result<List<FollowVO>> getMyFollowList(@RequestParam("username") String username){
         log.info("获取我的关注:{}",username);
         User user = iUserService.getUserByUsername(username);
         if (ObjectUtils.isEmpty(user)) {
             ApiAsserts.fail("用户不存在");
         }
-        List<Follow> list = iFollowService.list(new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, user.getId()));
-        return Result.success(list);
+        List<FollowVO> voList = iFollowService.selectMyFollowList(user);
+        return Result.success(voList);
     }
 }
