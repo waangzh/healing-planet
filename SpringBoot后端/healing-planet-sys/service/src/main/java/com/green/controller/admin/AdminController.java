@@ -16,6 +16,7 @@ import com.green.vo.UserVO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,7 +45,7 @@ public class AdminController {
     public Result<?> adminLogin(@RequestBody LoginDTO dto){
         log.info("管理员登录:{}",dto);
         // 开启验证码功能
-        boolean needAuthCode = false;
+        boolean needAuthCode = true;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {
@@ -115,6 +116,19 @@ public class AdminController {
         Map<String, Object> map = new HashMap<>(16);
         map.put("user", user);
         return Result.success(map);
+    }
+    /**
+     * 获取用户信息
+     * @param userName
+     * @return
+     */
+    @GetMapping("/info")
+    @Cacheable(cacheNames = "userInfo",key = "#userName")
+    public Result<UserVO> getUser(@RequestParam String userName) {
+        log.info("获取用户信息:{}",userName);
+        User user = iUserService.getUserByUsername(userName);
+        UserVO vo = iUserService.getInfoDetail(user);
+        return Result.success(vo);
     }
 
 }
