@@ -10,10 +10,11 @@ import org.apache.ibatis.annotations.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Repository
-public interface TopicMapper extends BaseMapper<Post> {
+public interface PostMapper extends BaseMapper<Post> {
     /**
      * 分页查询首页话题列表
      *
@@ -54,4 +55,10 @@ public interface TopicMapper extends BaseMapper<Post> {
      * @return
      */
     Page<CollectVO> selectByCollectId(Page<CollectVO> page, List<String> ids);
+
+    /**
+     * 批量查询文章数，返回 userId -> postCount 映射
+     */
+    List<Map<String, Object>> selectPostCount(@Param("userIds") List<String> userIds);
+
 }
