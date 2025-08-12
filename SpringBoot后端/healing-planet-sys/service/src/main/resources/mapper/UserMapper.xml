@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.green.mapper.UserMapper">
+
+    <select id="selectUserBaseList" resultType="com.green.vo.UserVO">
+        SELECT
+        u.id,
+        u.username,
+        u.alias,
+        u.avatar,
+        u.email,
+        u.mobile,
+        u.bio,
+        u.score,
+        u.active,
+        u.status,
+        u.create_time,
+        u.modify_time,
+        u.message
+        FROM user u
+        <where>
+            <if test="query.username != null and query.username != ''">
+                AND u.username LIKE CONCAT('%', #{query.username}, '%')
+            </if>
+            <if test="query.alias != null and query.alias != ''">
+                AND u.alias LIKE CONCAT('%', #{query.alias}, '%')
+            </if>
+            <if test="query.status != null">
+                AND u.status = #{query.status}
+            </if>
+        </where>
+    </select>
+
+
+</mapper>

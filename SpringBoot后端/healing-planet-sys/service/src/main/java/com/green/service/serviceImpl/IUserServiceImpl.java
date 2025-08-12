@@ -1,22 +1,20 @@
 package com.green.service.serviceImpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.common.exception.ApiAsserts;
 import com.green.common.exception.ApiException;
+import com.green.entity.*;
 import com.green.enumeration.ResultCodeEnum;
 import com.green.security.jwt.JwtUtil;
 import com.green.mapper.FollowMapper;
 import com.green.mapper.RecommendationMapper;
-import com.green.mapper.TopicMapper;
+import com.green.mapper.PostMapper;
 import com.green.mapper.UserMapper;
 import com.green.dto.LoginDTO;
 import com.green.dto.RegisterDTO;
 import com.green.dto.UserDTO;
-import com.green.entity.Follow;
-import com.green.entity.Post;
-import com.green.entity.User;
-import com.green.entity.UserPurchaseTags;
 import com.green.service.IUmsUserService;
 import com.green.vo.LoginVO;
 import com.green.vo.ProfileVO;
@@ -34,8 +32,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Slf4j
@@ -44,9 +45,11 @@ import java.util.List;
 public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements IUmsUserService {
 
     @Autowired
-    private TopicMapper topicMapper;
+    private PostMapper postMapper;
     @Autowired
     private FollowMapper followMapper;
+    @Autowired
+    private UserMapper userMapper;
 
     @Autowired
     private RecommendationMapper recommendationMapper;
@@ -125,7 +128,6 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
             LoginVO vo = new LoginVO();
             vo.setToken(JwtUtil.generateToken(principal.getUsername()));
             return vo;
-
         } catch (UsernameNotFoundException e) {
             throw new ApiException("用户不存在");
         } catch (BadCredentialsException e) {
@@ -149,7 +151,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         }
         BeanUtils.copyProperties(user, profile);
         // 用户文章数
-        int count = topicMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getUserId, id));
+        int count = postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getUserId, id));
         profile.setTopicCount(count);
 
         // 粉丝数
@@ -171,7 +173,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user,userVO);
         // 发布的文章数量
-        userVO.setPostCount(topicMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getUserId, user.getId())));
+        userVO.setPostCount(postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getUserId, user.getId())));
         // 关注者数量
         userVO.setFollowerCount(followMapper.selectCount(new LambdaQueryWrapper<Follow>().eq(Follow::getParentId, user.getId())));
         // 关注数量
@@ -200,6 +202,89 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         user.setModifyTime(new Date());
         user.setMessage(userDTO.getMessage());
         this.updateById(user);
+    }
+
+    /**
+     * 分页查询所有用户
+     * @param userQuery
+     * @return
+     */
+    @Override
+    public Page<UserVO> getList(UserQuery userQuery) {
+        // 查询所有符合基础条件的用户列表
+        List<UserVO> userList = userMapper.selectUserBaseList(userQuery);
+
+        // 没有符合基础条件的用户，返回空列表
+        if (userList.isEmpty()) {
+            Page<UserVO> page = new Page<>(userQuery.getPageNo(), userQuery.getPageSize(), 0);
+            page.setRecords(Collections.emptyList());
+            return page;
+        }
+
+
+        // 获取用户ID列表
+        List<String> userIds = userList.stream()
+                .map(UserVO::getId)
+                .collect(Collectors.toList());
+
+        // 查询文章数
+        Map<String, Integer> postCountMap = postMapper.selectPostCount(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        m -> (String) m.get("userId"),
+                        m -> ((Number) m.get("cnt")).intValue()
+                ));
+
+        // 查询粉丝数
+        Map<String, Integer> followerCountMap = followMapper.selectFollowerCount(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        m -> (String) m.get("userId"),
+                        m -> ((Number) m.get("cnt")).intValue()
+                ));
+
+        // 查询关注数
+        Map<String, Integer> followingCountMap = followMapper.selectFollowingCount(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        m -> (String) m.get("userId"),
+                        m -> ((Number) m.get("cnt")).intValue()
+                ));
+
+        // 组装统计字段
+        userList.forEach(user -> {
+            user.setPostCount(postCountMap.getOrDefault(user.getId(), 0));
+            user.setFollowerCount(followerCountMap.getOrDefault(user.getId(), 0));
+            user.setFollowingCount(followingCountMap.getOrDefault(user.getId(), 0));
+        });
+
+        // 根据 UserQuery 的过滤条件，在Java层过滤结果
+        List<UserVO> filteredList = userList.stream()
+                .filter(user -> userQuery.getPostCount() == null || user.getPostCount() >= userQuery.getPostCount())
+                .filter(user -> userQuery.getFollowerCount() == null || user.getFollowerCount() >= userQuery.getFollowerCount())
+                .filter(user -> userQuery.getFollowingCount() == null || user.getFollowingCount() >= userQuery.getFollowingCount())
+                .collect(Collectors.toList());
+
+        // 分页
+        int pageNo = userQuery.getPageNo() <= 0 ? 1 : userQuery.getPageNo();
+        int pageSize = userQuery.getPageSize() <= 0 ? 10 : userQuery.getPageSize();
+        int total = filteredList.size();
+
+        int fromIndex = (pageNo - 1) * pageSize;
+        if (fromIndex >= total) {
+            Page<UserVO> page = new Page<>(userQuery.getPageNo(), userQuery.getPageSize(), total);
+            page.setRecords(Collections.emptyList());
+            return page;
+        }
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<UserVO> pageList = filteredList.subList(fromIndex, toIndex);
+
+        // 构造分页对象返回
+        Page<UserVO> page = new Page<>(pageNo, pageSize);
+        page.setTotal(total);
+        page.setRecords(pageList);
+
+        return page;
     }
 
 

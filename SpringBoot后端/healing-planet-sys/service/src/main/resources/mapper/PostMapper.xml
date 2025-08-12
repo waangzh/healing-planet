@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
-<mapper namespace="com.green.mapper.TopicMapper">
+<mapper namespace="com.green.mapper.PostMapper">
     <resultMap id="topicVO" type="com.green.vo.PostVO">
         <id column="id" property="id"/>
         <result column="title" property="title"/>
@@ -109,5 +109,14 @@
             </if>
         </where>
         ORDER BY t.modify_time DESC, t.create_time DESC
+    </select>
+    <select id="selectPostCount" resultType="java.util.Map">
+        SELECT user_id AS userId, COUNT(*) AS cnt
+        FROM post
+        WHERE user_id IN
+        <foreach collection="userIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY user_id
     </select>
 </mapper>
