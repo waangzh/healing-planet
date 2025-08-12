@@ -8,7 +8,7 @@ import com.green.common.exception.ApiException;
 import com.green.dto.CreateTopicDTO;
 import com.green.dto.PostDTO;
 import com.green.mapper.TagMapper;
-import com.green.mapper.TopicMapper;
+import com.green.mapper.PostMapper;
 import com.green.mapper.UserMapper;
 import com.green.mapper.UserPostViewMapper;
 import com.green.entity.Post;
@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 
 
 @Service
-public class IPostServiceImpl extends ServiceImpl<TopicMapper, Post> implements IPostService {
+public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements IPostService {
     @Resource
     private TagMapper tagMapper;
     @Resource

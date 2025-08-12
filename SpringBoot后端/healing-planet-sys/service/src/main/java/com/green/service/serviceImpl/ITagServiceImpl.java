@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.entity.Tag;
 import com.green.mapper.TagMapper;
-import com.green.mapper.TopicMapper;
+import com.green.mapper.PostMapper;
 import com.green.service.ITagService;
 import com.green.vo.PostVO;
 import com.green.vo.TagVO;
@@ -31,7 +31,7 @@ public class ITagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITag
 
 
     @Autowired
-    private TopicMapper topicMapper;
+    private PostMapper topicMapper;
 
 
     @Override

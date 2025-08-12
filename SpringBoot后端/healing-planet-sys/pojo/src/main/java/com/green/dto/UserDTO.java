@@ -11,6 +11,12 @@ import java.util.Date;
 @NoArgsConstructor
 @Data
 public class UserDTO {
+
+    /**
+     * 用户名
+     */
+    private String username;
+
     /**
      * 用户昵称
      */

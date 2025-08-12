@@ -8,7 +8,7 @@ import com.green.enumeration.NotifyType;
 import com.green.enumeration.ObjectType;
 import com.green.mapper.CollectMapper;
 import com.green.mapper.NotificationMapper;
-import com.green.mapper.TopicMapper;
+import com.green.mapper.PostMapper;
 import com.green.dto.CollectDTO;
 import com.green.entity.Collect;
 import com.green.entity.Notification;
@@ -36,9 +36,9 @@ public class ICollectServiceImpl extends ServiceImpl<CollectMapper, Collect> imp
     private CollectMapper collectMapper;
     @Autowired
     private IPostService postService;
-    @Qualifier("topicMapper")
+    @Qualifier("postMapper")
     @Autowired
-    private TopicMapper topicMapper;
+    private PostMapper topicMapper;
     @Autowired
     private NotificationMapper notificationMapper;
 

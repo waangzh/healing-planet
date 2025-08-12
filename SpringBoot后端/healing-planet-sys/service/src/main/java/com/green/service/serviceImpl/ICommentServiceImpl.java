@@ -7,7 +7,7 @@ import com.green.enumeration.NotifyType;
 import com.green.enumeration.ObjectType;
 import com.green.mapper.CommentMapper;
 import com.green.mapper.NotificationMapper;
-import com.green.mapper.TopicMapper;
+import com.green.mapper.PostMapper;
 import com.green.mapper.UserMapper;
 import com.green.dto.CommentDTO;
 import com.green.entity.Comment;
@@ -33,13 +33,13 @@ import java.util.List;
 @Service
 public class ICommentServiceImpl extends ServiceImpl<CommentMapper, Comment> implements ICommentService {
     @Autowired
-    private TopicMapper topicMapper;
+    private PostMapper topicMapper;
     @Autowired
     private UserMapper userMapper;
     @Autowired
     private NotificationMapper notificationMapper;
 
-    public ICommentServiceImpl(@Qualifier("topicMapper") TopicMapper topicMapper) {
+    public ICommentServiceImpl(@Qualifier("postMapper") PostMapper topicMapper) {
         this.topicMapper = topicMapper;
     }
 
