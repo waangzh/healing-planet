@@ -10,6 +10,11 @@ import lombok.NoArgsConstructor;
 public class PlantDTO {
 
     /**
+     * 植物id
+     */
+    private String id;
+
+    /**
      * 植物学名
      */
     private String scientificName;
