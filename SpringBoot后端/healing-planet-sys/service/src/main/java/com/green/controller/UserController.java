@@ -69,7 +69,7 @@ public class UserController extends BaseController {
         log.info("用户登录:{}",dto.getUsername());
 
         // 开启验证码功能
-        boolean needAuthCode = false;
+        boolean needAuthCode = true;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {

@@ -1,6 +1,7 @@
 package com.green.service.serviceImpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.common.exception.ApiException;
@@ -9,15 +10,18 @@ import com.green.entity.PlantCareGuides;
 import com.green.entity.Plants;
 import com.green.mapper.PlantCareGuidesMapper;
 import com.green.mapper.PlantsMapper;
+import com.green.service.IPlantCareGuidesService;
 import com.green.service.IPlantsService;
 import com.green.utils.BaiDuUtil;
 import com.green.vo.PlantsVO;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class IPlantsServiceImpl extends ServiceImpl<PlantsMapper, Plants> implements IPlantsService {
@@ -28,6 +32,8 @@ public class IPlantsServiceImpl extends ServiceImpl<PlantsMapper, Plants> implem
     private PlantCareGuidesMapper plantCareGuidesMapper;
     @Autowired
     private BaiDuUtil baiDuUtil;
+    @Autowired
+    private IPlantCareGuidesService plantCareGuidesService;
 
     /**
      * 分页查询植物信息库
@@ -110,5 +116,32 @@ public class IPlantsServiceImpl extends ServiceImpl<PlantsMapper, Plants> implem
             e.printStackTrace();
             return "生成养护建议时出错: " + e.getMessage();
         }
+    }
+
+    /**
+     * 更新植物信息
+     * @param plantDTO
+     */
+    @Override
+    public void updatePlants(PlantDTO plantDTO) {
+        Plants plants = new Plants();
+        BeanUtils.copyProperties(plantDTO,plants);
+        this.updateById(plants);
+        PlantCareGuides plantCareGuides = new PlantCareGuides();
+        BeanUtils.copyProperties(plantDTO,plantCareGuides);
+        plantCareGuides.setPlantId(plantDTO.getId());
+        plantCareGuidesService.update(plantCareGuides,new LambdaQueryWrapper<PlantCareGuides>()
+                .eq(PlantCareGuides::getPlantId,plantCareGuides.getPlantId()));
+    }
+
+    /**
+     * 批量删除植物
+     * @param ids
+     */
+    @Override
+    public void delete(List<String> ids) {
+        this.removeByIds(ids);
+        plantCareGuidesService.remove(new LambdaQueryWrapper<PlantCareGuides>()
+                .in(PlantCareGuides::getPlantId,ids));
     }
 }

@@ -1,12 +1,12 @@
-package com.green.controller;
+package com.green.controller.admin;
 
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.green.common.api.Result;
 import com.green.common.exception.ApiException;
 import com.green.dto.PlantDTO;
-import com.green.vo.PlantsVO;
 import com.green.service.IPlantsService;
+import com.green.vo.PlantsVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -14,21 +14,31 @@ import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-
-/**
- * 植物信息库
- */
 @RestController
-@RequestMapping("/plants")
+@RequestMapping("/admin/plants")
 @Slf4j
-public class PlantsController {
+public class AdminPlantsController {
 
     @Autowired
     private IPlantsService plantsService;
     @Autowired
     private RedisTemplate redisTemplate;
+
+
+    /**
+     * 新增植物
+     * @param plantDTO
+     * @return
+     */
+    @PostMapping("/add")
+    public Result<?> addPlant(@RequestBody PlantDTO plantDTO){
+        log.info("添加植物:{}",plantDTO);
+        plantsService.add(plantDTO);
+        return Result.success();
+    }
 
     /**
      * 分页查询植物信息库
@@ -92,16 +102,28 @@ public class PlantsController {
 
 
     /**
-     * AI识别植物
-     * @param imgUrl
+     * 更新植物信息
+     * @param plantDTO
      * @return
      */
-    @PostMapping("/identify")
-    public Result<?> identifyPlant(@RequestParam String imgUrl){
-        log.info("识别植物:{}",imgUrl);
-        String res = plantsService.identify(imgUrl);
+    @PutMapping("/update")
+    public Result<?> updateById(@RequestBody PlantDTO plantDTO){
+        log.info("更新植物信息:{}",plantDTO);
 
-        return Result.success(res);
+        plantsService.updatePlants(plantDTO);
+        return Result.success();
     }
 
+
+    /**
+     * 批量删除植物
+     * @param ids
+     * @return
+     */
+    @DeleteMapping("/delete")
+    public Result<?> deleteByIds(@RequestParam List<String> ids){
+        log.info("批量删除植物:{}",ids);
+        plantsService.delete(ids);
+        return Result.success();
+    }
 }

@@ -82,4 +82,16 @@ public class BillboardController extends BaseController {
         return Result.success();
     }
 
+
+    /**
+     * 根据id查询公告
+     * @param id
+     * @return
+     */
+    @GetMapping
+    public Result<?> getById(@RequestParam Integer id){
+        log.info("根据id查询公告:{}",id);
+        return Result.success(iBillboardService.getById(id));
+    }
+
 }
