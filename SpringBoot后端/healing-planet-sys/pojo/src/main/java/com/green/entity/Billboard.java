@@ -36,8 +36,8 @@ public class Billboard implements Serializable {
     /**
      * 公告时间
      */
-    @TableField(value = "create_time", fill = FieldFill.INSERT)
-    private Date createTime;
+    @TableField(value = "modify_time", fill = FieldFill.INSERT)
+    private Date modifyTime;
 
     /**
      * 1：展示中，0：过期
