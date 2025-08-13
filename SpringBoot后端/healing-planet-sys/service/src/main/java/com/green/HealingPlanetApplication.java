@@ -24,8 +24,7 @@ public class HealingPlanetApplication extends SpringBootServletInitializer {
         FilterRegistrationBean<JwtAuthenticationFilter> registrationBean = new FilterRegistrationBean<>();
         JwtAuthenticationFilter filter = new JwtAuthenticationFilter(userDetailsService);
         registrationBean.setFilter(filter);
-        // 还可以设置拦截路径等
-        registrationBean.addUrlPatterns("/*"); // 或你需要保护的路径
+        registrationBean.addUrlPatterns("/*");
         return registrationBean;
     }
 

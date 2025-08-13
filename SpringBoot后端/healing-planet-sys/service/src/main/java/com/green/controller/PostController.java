@@ -19,10 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static com.green.security.jwt.JwtUtil.USER_NAME;
 
@@ -134,7 +131,9 @@ public class PostController extends BaseController {
         Post byId = iPostService.getById(id);
         Assert.notNull(byId, "来晚一步，话题已不存在");
         Assert.isTrue(byId.getUserId().equals(umsUser.getId()), "你为什么可以删除别人的话题？？？");
-        iPostService.removeById(id);
+        List<String> ids = new ArrayList<>();
+        ids.add(id);
+        iPostService.delete(ids);
         // 清除缓存
         cleanCache("post_*");
         return Result.success(null,"删除成功");

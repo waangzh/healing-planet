@@ -119,4 +119,32 @@
         </foreach>
         GROUP BY user_id
     </select>
+    <select id="selectPostListWithUserAndTags" resultType="com.green.vo.PostVO" parameterType="com.baomidou.mybatisplus.core.conditions.Wrapper">
+        select
+            p.id,
+            p.title,
+            p.user_id as userId,
+            u.username,
+            u.avatar,
+            u.alias,
+            p.comments,
+            p.top,
+            p.essence,
+            p.collects,
+            p.view,
+            p.likes,
+            p.cover_img as coverImg,
+            p.create_time as createTime,
+            p.modify_time as modifyTime,
+            group_concat(distinct t.id, ':', t.name) as tagsStr
+        from post p
+            left join user u on p.user_id = u.id
+            left join post_tag pt on p.id = pt.post_id
+            left join tag t on pt.tag_id = t.id
+            ${ew.CustomSqlSegment}
+            group by p.id
+    </select>
+
+
+
 </mapper>

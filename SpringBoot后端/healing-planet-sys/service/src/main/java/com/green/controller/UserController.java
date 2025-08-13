@@ -49,7 +49,7 @@ public class UserController extends BaseController {
      */
     @PostMapping( "/register")
     public Result<Map<String, Object>> register(@Valid @RequestBody RegisterDTO dto) {
-        log.info("用户注册:{}",dto.getName());
+        log.info("用户注册:{}",dto.getUsername());
         User user = iUserService.executeRegister(dto);
         if (ObjectUtils.isEmpty(user)) {
             return Result.failed("账号注册失败");

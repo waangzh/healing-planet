@@ -1,12 +1,16 @@
 package com.green.mapper;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.green.entity.Post;
+import com.green.entity.PostQuery;
 import com.green.vo.CollectVO;
 import com.green.vo.PostVO;
 
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -61,4 +65,15 @@ public interface PostMapper extends BaseMapper<Post> {
      */
     List<Map<String, Object>> selectPostCount(@Param("userIds") List<String> userIds);
 
+    @Select("select topic_id from post_tag where tag_id in #{tagIds}")
+    List<String> selectPostIdsByTagId(List<String> tagIds);
+
+
+    /**
+     * 自定义多表关联分页查询文章（带作者、标签）
+     * @param page 分页对象
+     * @param wrapper 过滤条件，只会用到wrapper里面拼接的Post字段条件
+     * @return 分页后的PostVO列表
+     */
+    Page<PostVO> selectPostListWithUserAndTags(Page<PostVO> page, @Param("ew") Wrapper<Post> wrapper);
 }

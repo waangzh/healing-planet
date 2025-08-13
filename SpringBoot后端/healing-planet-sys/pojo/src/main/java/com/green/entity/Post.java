@@ -106,4 +106,10 @@ public class Post implements Serializable {
      */
     @TableField(value = "modify_time", fill = FieldFill.UPDATE)
     private Date modifyTime;
+
+
+    /**
+     * 文章状态 1-已发布 0-审核中 -1-未审核 -2-未通过
+     */
+    private Integer status;
 }

@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -78,6 +79,16 @@ public class ITagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITag
         }
 
         return tagVOList;
+    }
+
+    /**
+     * 根据标签id获取文章id
+     * @param tagId
+     * @return
+     */
+    @Override
+    public List<String> getPostIdsByTagId(List<String> tagIds) {
+        return topicMapper.selectPostIdsByTagId(tagIds);
     }
 
 }

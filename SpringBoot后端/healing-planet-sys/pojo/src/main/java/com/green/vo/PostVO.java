@@ -20,10 +20,20 @@ public class PostVO implements Serializable {
      * 文章ID
      */
     private String id;
+
+    /**
+     * 标题
+     */
+    private String title;
+
     /**
      * 用户ID
      */
     private String userId;
+    /**
+     * 账号
+     */
+    private String username;
     /**
      * 头像
      */
@@ -32,14 +42,8 @@ public class PostVO implements Serializable {
      * 用户昵称
      */
     private String alias;
-    /**
-     * 账号
-     */
-    private String username;
-    /**
-     * 标题
-     */
-    private String title;
+
+
     /**
      * 评论统计
      */

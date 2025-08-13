@@ -7,9 +7,6 @@ import com.green.entity.TopicTag;
 import com.green.mapper.TagMapper;
 import com.green.mapper.TopicTagMapper;
 import com.green.entity.Tag;
-import com.green.entity.TopicTag;
-import com.green.service.ITopicTagService;
-import com.green.mapper.TagMapper;
 import com.green.service.ITopicTagService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -32,18 +29,18 @@ public class ITopicTagServiceImpl extends ServiceImpl<TopicTagMapper, TopicTag> 
     @Override
     public List<TopicTag> selectByTopicId(String topicId) {
         QueryWrapper<TopicTag> wrapper = new QueryWrapper<>();
-        wrapper.lambda().eq(TopicTag::getTopicId, topicId);
+        wrapper.lambda().eq(TopicTag::getPostId, topicId);
         return this.baseMapper.selectList(wrapper);
     }
     @Override
     public void createTopicTag(String id, List<Tag> tags) {
         // 先删除topicId对应的所有记录
-        this.baseMapper.delete(new LambdaQueryWrapper<TopicTag>().eq(TopicTag::getTopicId, id));
+        this.baseMapper.delete(new LambdaQueryWrapper<TopicTag>().eq(TopicTag::getPostId, id));
 
         // 循环保存对应关联
         tags.forEach(tag -> {
             TopicTag topicTag = new TopicTag();
-            topicTag.setTopicId(id);
+            topicTag.setPostId(id);
             topicTag.setTagId(tag.getId());
             tag.setCount(tag.getCount() + 1);
             tagMapper.updateById(tag);

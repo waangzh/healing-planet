@@ -1,9 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <mapper namespace="com.green.mapper.TopicTagMapper">
+    <delete id="deleteByPostIds" parameterType="java.util.List">
+        delete from post_tag
+        where post_id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
     <select id="getTopicIdsByTagId" resultType="java.lang.String">
         SELECT t.topic_id
         from post_tag t
         where t.tag_id = #{id}
+    </select>
+    <select id="getTagIdByPostId" resultType="java.lang.String"
+            parameterType="java.util.List">
+        select tag_id from post_tag
+        where post_id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </select>
 </mapper>

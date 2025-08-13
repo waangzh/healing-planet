@@ -34,4 +34,10 @@ public interface ITagService extends IService<Tag> {
      */
     List<TagVO> listAll(Integer category);
 
+    /**
+     * 根据标签获取文章id
+     * @param tagId
+     * @return
+     */
+    List<String> getPostIdsByTagId(List<String> tagId);
 }
