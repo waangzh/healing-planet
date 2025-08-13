@@ -28,6 +28,6 @@ public class TopicTag implements Serializable {
     @TableField("tag_id")
     private String tagId;
 
-    @TableField("topic_id")
-    private String topicId;
+    @TableField("post_id")
+    private String postId;
 }

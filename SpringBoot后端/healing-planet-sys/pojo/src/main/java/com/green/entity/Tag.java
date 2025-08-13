@@ -32,7 +32,7 @@ public class Tag implements Serializable {
      */
     @TableField("count")
     @Builder.Default
-    private Integer count = 1;
+    private Integer count = 0;
 
     /**
      * 标签归属(1-post/0-plant)

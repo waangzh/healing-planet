@@ -7,14 +7,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.green.common.exception.ApiException;
 import com.green.dto.CreateTopicDTO;
 import com.green.dto.PostDTO;
-import com.green.mapper.TagMapper;
-import com.green.mapper.PostMapper;
-import com.green.mapper.UserMapper;
-import com.green.mapper.UserPostViewMapper;
-import com.green.entity.Post;
-import com.green.entity.Tag;
-import com.green.entity.TopicTag;
-import com.green.entity.User;
+import com.green.entity.*;
+import com.green.mapper.*;
 import com.green.service.IPostService;
 import com.green.vo.PostVO;
 import com.green.vo.ProfileVO;
@@ -23,6 +17,7 @@ import com.green.service.ITopicTagService;
 import com.green.service.IUmsUserService;
 import com.vdurmont.emoji.EmojiParser;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +47,12 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
     private ITopicTagService topicTagService;
     @Autowired
     private UserPostViewMapper userPostViewMapper;
+    @Qualifier("postMapper")
+    @Autowired
+    private PostMapper postMapper;
+    @Qualifier("topicTagMapper")
+    @Autowired
+    private TopicTagMapper topicTagMapper;
 
     /**
      * 查询话题
@@ -146,7 +147,7 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
         map.put("topic", topic);
         // 标签
         QueryWrapper<TopicTag> wrapper = new QueryWrapper<>();
-        wrapper.lambda().eq(TopicTag::getTopicId, topic.getId());
+        wrapper.lambda().eq(TopicTag::getPostId, topic.getId());
         Set<String> set = new HashSet<>();
         List<TopicTag> list = topicTagService.list(wrapper);
         if(list!=null && list.size()>0){
@@ -213,11 +214,76 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
             tagMapper.updateById(tag);
             TopicTag topicTag = TopicTag.builder()
                     .tagId(tagId)
-                    .topicId(postDTO.getId())
+                    .postId(postDTO.getId())
                     .build();
             topicTagService.save(topicTag);
         }
 
+    }
+
+    /**
+     * 分页查询文章
+     * @param postQuery
+     * @return
+     */
+    @Override
+    public Page<PostVO> getPosts(PostQuery query) {
+        // 创建分页对象
+        Page<PostVO> page = new Page<>(query.getPageNo(), query.getPageSize());
+
+        QueryWrapper<Post> wrapper = new QueryWrapper<Post>();
+
+        // 作者
+        if (query.getAuthorId() != null && !query.getAuthorId().isEmpty()) {
+            wrapper.eq("p.user_id", query.getAuthorId());
+        }
+
+        // 标签
+        if (query.getTagIds() != null && !query.getTagIds().isEmpty()) {
+            List<String> postIds = tagService.getPostIdsByTagId(query.getTagIds());
+            if (postIds.isEmpty()) {
+                return new Page<>(page.getCurrent(), page.getSize(), 0);
+            }
+            wrapper.in("p.id", postIds);
+        }
+        // 时间范围
+        if (query.getStartTime() != null) {
+            wrapper.ge("p.create_time", query.getStartTime());
+        }
+        if (query.getEndTime() != null) {
+            wrapper.le("p.create_time", query.getEndTime());
+        }
+
+        // 状态
+        if (query.getStatus() != null) {
+            wrapper.eq("p.status", query.getStatus());
+        }
+
+        //wrapper.orderByDesc(Post::getCreateTime);
+
+        // Mapper 层关联查询（一次查出 PostVO）
+        Page<PostVO> ipage = this.baseMapper.selectPostListWithUserAndTags(page, wrapper);
+
+        // 设置标签
+        setTopicTags(ipage);
+        return ipage;
+    }
+
+    /**
+     * 删除文章
+     * @param ids
+     */
+    @Override
+    @Transactional
+    public void delete(List<String> ids) {
+        // post 包含的标签id
+        List<String> tagIds = topicTagMapper.getTagIdByPostId(ids);
+        // 删除对应的标签
+        topicTagMapper.deleteByPostIds(ids);
+        // 标签对应的文章数减1
+        tagMapper.updateCount(tagIds);
+        // 删除文章
+        this.removeByIds(ids);
     }
 
 

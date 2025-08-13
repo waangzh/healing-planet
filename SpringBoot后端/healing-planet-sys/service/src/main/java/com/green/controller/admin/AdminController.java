@@ -108,7 +108,7 @@ public class AdminController {
      */
     @PostMapping("/add")
     public Result<?> add(@RequestBody RegisterDTO dto){
-        log.info("新增用户:{}",dto.getName());
+        log.info("新增用户:{}",dto.getUsername());
         User user = iUserService.executeRegister(dto);
         if (ObjectUtils.isEmpty(user)) {
             return Result.failed("添加失败");

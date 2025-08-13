@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.green.dto.CreateTopicDTO;
 import com.green.dto.PostDTO;
 import com.green.entity.Post;
+import com.green.entity.PostQuery;
 import com.green.entity.User;
 import com.green.vo.PostVO;
 
@@ -60,4 +61,17 @@ public interface IPostService extends IService<Post> {
      * @param postDTO
      */
     void update(PostDTO postDTO);
+
+    /**
+     * 分页查询文章
+     * @param postQuery
+     * @return
+     */
+    Page<PostVO> getPosts(PostQuery postQuery);
+
+    /**
+     * 删除文章
+     * @param ids
+     */
+    void delete(List<String> ids);
 }

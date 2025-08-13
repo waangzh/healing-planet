@@ -68,16 +68,16 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
     public User executeRegister(RegisterDTO dto) {
         //查询是否有相同用户名的用户
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getUsername, dto.getName()).or().eq(User::getEmail, dto.getEmail());
+        wrapper.eq(User::getUsername, dto.getUsername()).or().eq(User::getEmail, dto.getEmail());
         User user = baseMapper.selectOne(wrapper);
         if (!ObjectUtils.isEmpty(user)) {
             ApiAsserts.fail("账号或邮箱已存在！");
         }
         User addUser = User.builder()
-                .username(dto.getName())
-                .alias(dto.getName())
+                .username(dto.getUsername())
+                .alias(dto.getUsername())
                 //.password(MD5Utils.getPwd(dto.getPass()))
-                .password(new BCryptPasswordEncoder().encode(dto.getPass()))
+                .password(new BCryptPasswordEncoder().encode(dto.getPassword()))
                 .email(dto.getEmail())
                 .avatar("https://smart-plant.oss-cn-hangzhou.aliyuncs.com/bdda5ec8-22d6-4e45-b61a-4f3f91a1ab60.png")
                 .createTime(new Date())
