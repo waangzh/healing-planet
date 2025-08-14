@@ -313,7 +313,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         List<PostSummaryDTO> allPostSummary = userPostViewMapper.getPosts();
 
         //log.info("获取用户浏览记录:{}", userPostLogsList);
-        //log.info("获取近15天文章信息:{}", allPostSummary);
+        log.info("获取近15天文章信息:{}", allPostSummary);
 
         //获取该用户是否购买设备
         List<Integer> existsBackEndUser = recommendationMapper.existsBackEndUser(communityUser.getId());

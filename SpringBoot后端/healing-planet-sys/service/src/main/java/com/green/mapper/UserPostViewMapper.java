@@ -51,6 +51,6 @@ public interface UserPostViewMapper {
             "       p.comments AS totalComments, " +
             "       p.collects AS totalCollects, " +
             "       p.view AS totalViews, " +
-            "       p.likes AS totalLikes , p.create_time as viewTime from green_community.post p where datediff(curdate() , create_time) < 60 limit 100")
+            "       p.likes AS totalLikes , p.create_time as viewTime from green_community.post p where datediff(curdate() , create_time) < 360 limit 100")
     List<PostSummaryDTO> getPosts();
 }

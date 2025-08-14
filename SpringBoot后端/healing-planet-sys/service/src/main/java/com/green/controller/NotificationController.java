@@ -75,10 +75,15 @@ public class NotificationController {
     }
 
 
-    @DeleteMapping("/{messageId}")
-    public Result<Object> deleteNotification(@PathVariable String messageId) {
-        log.info("删除消息:{}",messageId);
-        notificationService.removeById(messageId);
+    /**
+     * 删除消息
+     * @param ids
+     * @return
+     */
+    @DeleteMapping("/delete")
+    public Result<Object> deleteNotification(@RequestParam List<String> ids) {
+        log.info("删除消息:{}",ids);
+        notificationService.removeByIds(ids);
         return Result.success();
     }
 }

@@ -41,16 +41,8 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
 
     @Autowired
     private IUmsUserService iUmsUserService;
-
-
     @Autowired
     private ITopicTagService topicTagService;
-    @Autowired
-    private UserPostViewMapper userPostViewMapper;
-    @Qualifier("postMapper")
-    @Autowired
-    private PostMapper postMapper;
-    @Qualifier("topicTagMapper")
     @Autowired
     private TopicTagMapper topicTagMapper;
 
@@ -278,10 +270,13 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
     public void delete(List<String> ids) {
         // post 包含的标签id
         List<String> tagIds = topicTagMapper.getTagIdByPostId(ids);
-        // 删除对应的标签
-        topicTagMapper.deleteByPostIds(ids);
-        // 标签对应的文章数减1
-        tagMapper.updateCount(tagIds);
+        if(tagIds != null && !tagIds.isEmpty()){
+            // 删除对应的标签
+            topicTagMapper.deleteByPostIds(ids);
+            // 标签对应的文章数减1
+            tagMapper.updateCount(tagIds);
+        }
+
         // 删除文章
         this.removeByIds(ids);
     }

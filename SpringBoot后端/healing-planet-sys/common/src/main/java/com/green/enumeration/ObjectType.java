@@ -11,7 +11,7 @@ import lombok.Getter;
 @Getter
 public enum ObjectType {
     POST(1, "帖子"),
-    COMMENT(2, "评论"),
+    COMMENT(2, "帖子"),
     USER(3, "用户");
     private final Integer code;
     private final String value;
