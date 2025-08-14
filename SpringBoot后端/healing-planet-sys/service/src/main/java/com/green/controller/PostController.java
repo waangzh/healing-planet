@@ -13,6 +13,7 @@ import com.green.service.IUmsUserService;
 import com.vdurmont.emoji.EmojiParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.*;
@@ -62,6 +63,7 @@ public class PostController extends BaseController {
      * @return
      */
     @PostMapping("/create")
+    @Cacheable(cacheNames = "userInfo",key = "#userName")
     public Result<Post> create(@RequestHeader(value = USER_NAME) String userName
             , @RequestBody CreateTopicDTO createTopicDTO) {
         log.info("发布推文,作者:{},内容:{}",userName,createTopicDTO);
@@ -125,6 +127,7 @@ public class PostController extends BaseController {
      * @return
      */
     @DeleteMapping("/delete/{id}")
+    @Cacheable(cacheNames = "userInfo",key = "#userName")
     public Result<String> delete(@RequestHeader(value = USER_NAME) String userName, @PathVariable("id") String id) {
         log.info("删除文章：{}，清除文章列表缓存.",id);
         User umsUser = iUserService.getUserByUsername(userName);

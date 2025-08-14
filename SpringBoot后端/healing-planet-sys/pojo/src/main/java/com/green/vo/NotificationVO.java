@@ -14,7 +14,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class NotificationVO {
 
-
+    /**
+     * 消息id
+     */
     private String id;
 
     /**
