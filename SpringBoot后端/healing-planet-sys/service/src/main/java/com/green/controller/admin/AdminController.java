@@ -67,11 +67,11 @@ public class AdminController {
      * @param pageSize
      * @return
      */
-    @GetMapping("/list")
+    @PostMapping("/list")
     public Result<Page<UserVO>> list(@RequestBody UserQuery userQuery) {
         log.info("分页查询所有用户:{}",userQuery);
         Page<UserVO> list = iUserService.getList(userQuery);
-
+        log.info("查询结果:{}",list);
         return Result.success(list);
     }
 

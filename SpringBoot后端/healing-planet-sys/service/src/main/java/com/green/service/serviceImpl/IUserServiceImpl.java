@@ -82,6 +82,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
                 .avatar("https://smart-plant.oss-cn-hangzhou.aliyuncs.com/bdda5ec8-22d6-4e45-b61a-4f3f91a1ab60.png")
                 .createTime(new Date())
                 .status(true)
+                .roleId(0)
                 .build();
         baseMapper.insert(addUser);
 
@@ -211,6 +212,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
      */
     @Override
     public Page<UserVO> getList(UserQuery userQuery) {
+        log.info("getList查询用户:{}",userQuery);
         // 查询所有符合基础条件的用户列表
         List<UserVO> userList = userMapper.selectUserBaseList(userQuery);
 
@@ -257,6 +259,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
             user.setFollowerCount(followerCountMap.getOrDefault(user.getId(), 0));
             user.setFollowingCount(followingCountMap.getOrDefault(user.getId(), 0));
         });
+        log.info("封装:{}",userList);
 
         // 根据 UserQuery 的过滤条件，在Java层过滤结果
         List<UserVO> filteredList = userList.stream()
@@ -269,6 +272,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         int pageNo = userQuery.getPageNo() <= 0 ? 1 : userQuery.getPageNo();
         int pageSize = userQuery.getPageSize() <= 0 ? 10 : userQuery.getPageSize();
         int total = filteredList.size();
+        log.info("分页：{},{},{}",pageNo,pageSize,total);
 
         int fromIndex = (pageNo - 1) * pageSize;
         if (fromIndex >= total) {
@@ -278,9 +282,11 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
         }
         int toIndex = Math.min(fromIndex + pageSize, total);
         List<UserVO> pageList = filteredList.subList(fromIndex, toIndex);
+        log.info("pageList:{}",pageList);
 
         // 构造分页对象返回
         Page<UserVO> page = new Page<>(pageNo, pageSize);
+        log.info("total:{},pageList:{}",total,pageList);
         page.setTotal(total);
         page.setRecords(pageList);
 

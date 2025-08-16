@@ -89,6 +89,11 @@ public class UserVO implements Serializable {
     private Integer followingCount;
 
     /**
+     * 用户角色 1-管理员 0-普通用户
+     */
+    private Integer roleId;
+
+    /**
      * 是否购买设备
      */
     private Boolean isPurchased = false;

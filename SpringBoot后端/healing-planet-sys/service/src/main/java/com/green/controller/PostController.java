@@ -13,6 +13,7 @@ import com.green.service.IUmsUserService;
 import com.vdurmont.emoji.EmojiParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.util.Assert;
@@ -63,7 +64,7 @@ public class PostController extends BaseController {
      * @return
      */
     @PostMapping("/create")
-    @Cacheable(cacheNames = "userInfo",key = "#userName")
+    @CacheEvict(cacheNames = "userInfo",key = "#userName")
     public Result<Post> create(@RequestHeader(value = USER_NAME) String userName
             , @RequestBody CreateTopicDTO createTopicDTO) {
         log.info("发布推文,作者:{},内容:{}",userName,createTopicDTO);
@@ -126,10 +127,10 @@ public class PostController extends BaseController {
      * @param id
      * @return
      */
-    @DeleteMapping("/delete/{id}")
-    @Cacheable(cacheNames = "userInfo",key = "#userName")
-    public Result<String> delete(@RequestHeader(value = USER_NAME) String userName, @PathVariable("id") String id) {
-        log.info("删除文章：{}，清除文章列表缓存.",id);
+    @DeleteMapping("/delete")
+    @CacheEvict(cacheNames = "userInfo",key = "#userName")
+    public Result<String> delete(@RequestHeader(value = USER_NAME) String userName, @RequestParam String id) {
+        log.info("{}删除文章：{}，清除文章列表缓存.",userName,id);
         User umsUser = iUserService.getUserByUsername(userName);
         Post byId = iPostService.getById(id);
         Assert.notNull(byId, "来晚一步，话题已不存在");
@@ -138,6 +139,7 @@ public class PostController extends BaseController {
         ids.add(id);
         iPostService.delete(ids);
         // 清除缓存
+        log.info("清除文章缓存");
         cleanCache("post_*");
         return Result.success(null,"删除成功");
     }

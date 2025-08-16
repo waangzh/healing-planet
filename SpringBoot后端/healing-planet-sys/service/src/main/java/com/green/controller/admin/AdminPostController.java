@@ -33,7 +33,7 @@ public class AdminPostController {
      * @param pageSize
      * @return
      */
-    @GetMapping("/list")
+    @PostMapping("/list")
     public Result<Page<PostVO>> list(@RequestBody PostQuery postQuery) {
         log.info("获取文章列表:{}",postQuery);
         Page<PostVO> list = postService.getPosts(postQuery);
