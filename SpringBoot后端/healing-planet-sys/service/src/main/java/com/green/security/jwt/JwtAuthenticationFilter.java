@@ -78,12 +78,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 
     private boolean isProtectedUrl(HttpServletRequest request) {
+        String requestPath = request.getServletPath();
+        if ("/admin/login".equals(requestPath)) {
+            return false; // 排除admin/login接口
+        }
         List<String> protectedPaths = new ArrayList<>();
         protectedPaths.add("/ums/user/info");
         protectedPaths.add("/ums/user/update");
         protectedPaths.add("/post/create");
         protectedPaths.add("/post/update");
-        protectedPaths.add("/post/delete/*");
+        protectedPaths.add("/post/delete");
         protectedPaths.add("/comment/add_comment");
         protectedPaths.add("/relationship/subscribe/*");
         protectedPaths.add("/relationship/unsubscribe/*");
