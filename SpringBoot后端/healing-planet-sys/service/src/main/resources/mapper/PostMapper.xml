@@ -136,6 +136,7 @@
             p.cover_img as coverImg,
             p.create_time as createTime,
             p.modify_time as modifyTime,
+            p.status,
             group_concat(distinct t.id, ':', t.name) as tagsStr
         from post p
             left join user u on p.user_id = u.id
@@ -144,7 +145,14 @@
             ${ew.CustomSqlSegment}
             group by p.id
     </select>
-
+    <select id="selectPostIdsByTagId" resultType="java.lang.String"
+            parameterType="java.util.List">
+        select post_id
+        from post_tag where tag_id in
+        <foreach collection="tagIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
 
 
 </mapper>

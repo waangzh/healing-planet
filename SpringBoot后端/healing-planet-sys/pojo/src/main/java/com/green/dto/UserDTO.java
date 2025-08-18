@@ -52,4 +52,9 @@ public class UserDTO {
      * 个人主页留言
      */
     private String message;
+
+    /**
+     * 账号状态
+     */
+    private Boolean status;
 }

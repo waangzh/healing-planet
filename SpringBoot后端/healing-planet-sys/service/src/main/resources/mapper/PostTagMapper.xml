@@ -9,7 +9,7 @@
         </foreach>
     </delete>
     <select id="getTopicIdsByTagId" resultType="java.lang.String">
-        SELECT t.topic_id
+        SELECT t.post_id
         from post_tag t
         where t.tag_id = #{id}
     </select>

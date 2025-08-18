@@ -67,7 +67,10 @@ public class UserController extends BaseController {
     @PostMapping("/login")
     public Result<?> login(@Valid @RequestBody LoginDTO dto) {
         log.info("用户登录:{}",dto.getUsername());
-
+        User user = iUserService.getUserByUsername(dto.getUsername());
+        if(!user.getStatus()){
+            ApiAsserts.fail("账号已停用!");
+        }
         // 开启验证码功能
         boolean needAuthCode = false;
         if (needAuthCode) {
