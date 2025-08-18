@@ -229,6 +229,10 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
         if (query.getAuthorId() != null && !query.getAuthorId().isEmpty()) {
             wrapper.eq("p.user_id", query.getAuthorId());
         }
+        // 标题
+        if(query.getTitle() != null && !query.getTitle().isEmpty()){
+            wrapper.like("p.title", query.getTitle());
+        }
 
         // 标签
         if (query.getTagIds() != null && !query.getTagIds().isEmpty()) {

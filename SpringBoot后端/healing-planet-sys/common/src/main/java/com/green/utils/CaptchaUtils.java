@@ -23,30 +23,31 @@ import org.springframework.beans.factory.annotation.Value;
 @Slf4j
 public class CaptchaUtils {
 
-    public static String IMG_URL;
-    public static String IMG_PATH;
-
-    @Value("${file.img.url}")
-    public void setImgUrl(String imgUrl) {
-        IMG_URL = imgUrl;
-    }
-
-    @Value("${file.img.path}")
-    public void setImgPath(String imgPath) {
-        IMG_PATH = imgPath;
-    }
-
-    ///**
-    // * 网络图片地址
-    // **/
-    //private final static String IMG_URL = "";
+    //public static String IMG_URL;
+    //public static String IMG_PATH="C:/Users/lenovo/Pictures/%s.jpg";
     //
-    ///**
-    // * 本地图片地址
-    // **/
-    ////private final static String IMG_PATH = "D:/Code/智慧绿植/smart_green_plant/img/%s.jpg";
-    //private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
+    //@Value("${file.img.url}")
+    //public void setImgUrl(String imgUrl) {
+    //    IMG_URL = imgUrl;
+    //}
+    //
+    //@Value("${file.img.path}")
+    //public void setImgPath(String imgPath) {
+    //    log.info("图片路径:{}",imgPath);
+    //    IMG_PATH = imgPath;
+    //}
 
+    /**
+     * 网络图片地址
+     **/
+    private final static String IMG_URL = "";
+
+    /**
+     * 本地图片地址
+     **/
+    //private final static String IMG_PATH = "C:/Users/lenovo/Pictures/%s.jpg";
+    private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
+    //
     /**
      * 入参校验设置默认值
      * @param captcha

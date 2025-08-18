@@ -117,6 +117,7 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
      */
     @Override
     public LoginVO executeLogin(LoginDTO dto) {
+
         try {
             UsernamePasswordAuthenticationToken authToken =
                     new UsernamePasswordAuthenticationToken(dto.getUsername(), dto.getPassword());
@@ -195,8 +196,10 @@ public class IUserServiceImpl extends ServiceImpl<UserMapper, User> implements I
     @Override
     public void update(String username, UserDTO userDTO) {
         User user = this.getUserByUsername(username);
+        // 如果为空，mybatis plus 默认不更新
         user.setBio(userDTO.getBio());
         user.setAlias(userDTO.getAlias());
+        user.setStatus(userDTO.getStatus());
         user.setAvatar(userDTO.getAvatar());
         user.setEmail(userDTO.getEmail());
         user.setMobile(userDTO.getMobile());

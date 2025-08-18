@@ -45,7 +45,7 @@ public class AdminController {
     public Result<?> adminLogin(@RequestBody LoginDTO dto){
         log.info("管理员登录:{}",dto);
         // 开启验证码功能
-        boolean needAuthCode = true;
+        boolean needAuthCode = false;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {

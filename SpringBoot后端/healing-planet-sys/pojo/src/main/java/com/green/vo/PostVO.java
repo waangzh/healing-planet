@@ -86,5 +86,9 @@ public class PostVO implements Serializable {
      * 修改时间
      */
     private Date modifyTime;
+    /**
+     * 文章状态 1-已发布 0-审核中 -1-未审核 -2-未通过
+     */
+    private Integer status;
 
 }

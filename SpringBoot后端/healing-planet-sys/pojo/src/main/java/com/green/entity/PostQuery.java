@@ -17,6 +17,8 @@ public class PostQuery {
      */
     private String authorId;
 
+    private String title;
+
     /**
      * 查询起始时间
      */

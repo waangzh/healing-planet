@@ -51,6 +51,11 @@ public class NotificationVO {
     private String objectId;
 
     /**
+     * 关联对象名称
+     */
+    private String objectName;
+
+    /**
      * 是否已读
      */
     private Boolean isRead;
