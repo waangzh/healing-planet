@@ -45,7 +45,7 @@ public class AdminController {
     public Result<?> adminLogin(@RequestBody LoginDTO dto){
         log.info("管理员登录:{}",dto);
         // 开启验证码功能
-        boolean needAuthCode = true;
+        boolean needAuthCode = false;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {
@@ -67,11 +67,11 @@ public class AdminController {
      * @param pageSize
      * @return
      */
-    @GetMapping("/list")
+    @PostMapping("/list")
     public Result<Page<UserVO>> list(@RequestBody UserQuery userQuery) {
         log.info("分页查询所有用户:{}",userQuery);
         Page<UserVO> list = iUserService.getList(userQuery);
-
+        log.info("查询结果:{}",list);
         return Result.success(list);
     }
 

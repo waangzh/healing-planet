@@ -19,6 +19,11 @@ public class CommentVO {
 
     private String content;
 
+    /**
+     * 文章名
+     */
+    private String topic;
+
     private String topicId;
 
     /**

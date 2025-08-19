@@ -15,7 +15,7 @@ import java.util.Date;
 import java.util.List;
 
 @RestController
-@RequestMapping("/admin/billboard")
+@RequestMapping("/billboard")
 @Slf4j
 public class BillboardController extends BaseController {
 
@@ -27,11 +27,11 @@ public class BillboardController extends BaseController {
      * @return
      */
     @GetMapping("/show")
-    public Result<Billboard> getNotices(){
+    public Result<?> getNotices(){
         log.info("获取允许展示的公告");
         List<Billboard> list = iBillboardService.list(new
                 LambdaQueryWrapper<Billboard>().eq(Billboard::isShow,true));
-        return Result.success(list.get(list.size()- 1));
+        return Result.success(list);
     }
 
 
@@ -39,7 +39,7 @@ public class BillboardController extends BaseController {
      * 获取所有公告
      * @return
      */
-    @GetMapping("/all")
+    @GetMapping("/admin/all")
     public Result<?> getAll(){
         log.info("获取所有公告");
         List<Billboard> voList = iBillboardService.list();
@@ -52,7 +52,7 @@ public class BillboardController extends BaseController {
      * @param billboard
      * @return
      */
-    @PostMapping("/update")
+    @PutMapping("/admin/update")
     public Result<?> update(@RequestBody Billboard billboard){
         log.info("修改公告:{}", billboard);
         iBillboardService.updateById(billboard);
@@ -64,7 +64,7 @@ public class BillboardController extends BaseController {
      * @param ids
      * @return
      */
-    @DeleteMapping("/delete")
+    @DeleteMapping("/admin/delete")
     public Result<?> delete(@RequestParam List<Integer> ids){
         iBillboardService.removeByIds(ids);
         return Result.success();
@@ -75,7 +75,7 @@ public class BillboardController extends BaseController {
      * @param billboard
      * @return
      */
-    @PostMapping("/add")
+    @PostMapping("/admin/add")
     public Result<?> add(@RequestBody Billboard billboard){
         billboard.setModifyTime(new Date());
         iBillboardService.save(billboard);
@@ -88,7 +88,7 @@ public class BillboardController extends BaseController {
      * @param id
      * @return
      */
-    @GetMapping
+    @GetMapping("/admin")
     public Result<?> getById(@RequestParam Integer id){
         log.info("根据id查询公告:{}",id);
         return Result.success(iBillboardService.getById(id));

@@ -5,6 +5,7 @@
     <select id="selectUserBaseList" resultType="com.green.vo.UserVO">
         SELECT
         u.id,
+        u.role_id,
         u.username,
         u.alias,
         u.avatar,

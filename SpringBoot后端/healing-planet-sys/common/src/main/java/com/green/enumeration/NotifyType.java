@@ -6,9 +6,9 @@ import lombok.Getter;
 @AllArgsConstructor
 @Getter
 public enum NotifyType {
-    COMMENT(1, "评论了你的文章"),
-    LIKE(2, "点赞了你的内容"),
-    COLLECT(3, "收藏了你的文章"),
+    COMMENT(1, "评论了你的帖子"),
+    LIKE(2, "点赞了你的帖子"),
+    COLLECT(3, "收藏了你的帖子"),
     FOLLOW(4, "关注了你"),
     REPLY(5,"回复了你");
 

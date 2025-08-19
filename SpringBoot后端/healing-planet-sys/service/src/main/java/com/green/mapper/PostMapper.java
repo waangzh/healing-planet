@@ -65,7 +65,7 @@ public interface PostMapper extends BaseMapper<Post> {
      */
     List<Map<String, Object>> selectPostCount(@Param("userIds") List<String> userIds);
 
-    @Select("select topic_id from post_tag where tag_id in #{tagIds}")
+    //@Select("select topic_id from post_tag where tag_id in #{tagIds}")
     List<String> selectPostIdsByTagId(List<String> tagIds);
 
 

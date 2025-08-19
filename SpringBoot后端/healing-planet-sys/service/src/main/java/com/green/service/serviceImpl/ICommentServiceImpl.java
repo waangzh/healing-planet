@@ -114,6 +114,7 @@ public class ICommentServiceImpl extends ServiceImpl<CommentMapper, Comment> imp
 
         CommentVO vo = new CommentVO();
         BeanUtils.copyProperties(comment, vo);
+        vo.setTopic(topicMapper.selectById(vo.getTopicId()).getTitle());
         vo.setUserAvatar(user.getAvatar());//评论人头像
         vo.setAuthorName(dto.getUserName());// 评论作者
         // 被回复的用户
@@ -130,7 +131,7 @@ public class ICommentServiceImpl extends ServiceImpl<CommentMapper, Comment> imp
 
         // 推送评论消息
         JSONObject msg = new JSONObject()
-                .fluentPut("type", NotifyType.COMMENT.getValue())
+                .fluentPut("type", NotifyType.REPLY.getValue())
                 .fluentPut("fromUserId", vo.getUserId())
                 .fluentPut("fromUserAvatar",vo.getUserAvatar())
                 .fluentPut("fromUserName", vo.getAuthorName())
@@ -145,15 +146,41 @@ public class ICommentServiceImpl extends ServiceImpl<CommentMapper, Comment> imp
                 .isRead(0)
                 .createdAt(LocalDateTime.now())
                 .build();
-        if(vo.getReplyToUserId()!=null)
+        if(vo.getReplyToUserId()!=null && !vo.getReplyToUserId().equals(post.getUserId()))
         {
+            log.info("通知用户:{}",vo.getReplyToUserId());
             NotifyWebSocketServer.sendNotification(vo.getReplyToUserId(),msg.toJSONString());
-            notification.setReceiverId(vo.getReplyToUserId());
+            notification.setReceiverId(post.getUserId());
 
         }
-        NotifyWebSocketServer.sendNotification(post.getUserId(),msg.toJSONString());
+        JSONObject msg2 = new JSONObject()
+                .fluentPut("type", NotifyType.COMMENT.getValue())
+                .fluentPut("fromUserId", vo.getUserId())
+                .fluentPut("fromUserAvatar",vo.getUserAvatar())
+                .fluentPut("fromUserName", vo.getAuthorName())
+                .fluentPut("fromUserAvatar",vo.getUserAvatar())
+                .fluentPut("topicId", topicId)
+                .fluentPut("topic", post.getTitle());
+        if(!post.getUserId().equals(vo.getUserId()))
+        {
+            NotifyWebSocketServer.sendNotification(post.getUserId(),msg2.toJSONString());
+        }
         notification.setReceiverId(post.getUserId());
         // 插入消息表
+        if(vo.getReplyToUserId()!=null)
+        {
+            Notification notificationToReply = Notification.builder()
+                    .senderId(vo.getUserId())
+                    .objectType(ObjectType.REPLY.getCode())
+                    .type(NotifyType.REPLY.getCode())
+                    .objectId(topicId)
+                    .isRead(0)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            notificationToReply.setReceiverId(vo.getReplyToUserId());
+            notificationMapper.insert(notificationToReply);
+        }
+
         notificationMapper.insert(notification);
         return vo;
     }

@@ -14,7 +14,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class NotificationVO {
 
-
+    /**
+     * 消息id
+     */
     private String id;
 
     /**
@@ -47,6 +49,11 @@ public class NotificationVO {
      * 关联对象id
      */
     private String objectId;
+
+    /**
+     * 关联对象名称
+     */
+    private String objectName;
 
     /**
      * 是否已读
