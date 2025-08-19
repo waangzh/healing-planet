@@ -72,7 +72,7 @@ public class UserController extends BaseController {
             ApiAsserts.fail("账号已停用!");
         }
         // 开启验证码功能
-        boolean needAuthCode = false;
+        boolean needAuthCode = true;
         if (needAuthCode) {
             String msg = captchaService.checkImageCode(dto.getNonceStr(),dto.getValue());
             if (StringUtils.isNotBlank(msg)) {
@@ -93,7 +93,7 @@ public class UserController extends BaseController {
      * @return
      */
     @GetMapping("/info")
-    @Cacheable(cacheNames = "userInfo",key = "#userName")
+    //@Cacheable(cacheNames = "userInfo",key = "#userName")
     public Result<UserVO> getUser(@RequestParam String userName) {
         log.info("获取用户信息:{}",userName);
         User user = iUserService.getUserByUsername(userName);

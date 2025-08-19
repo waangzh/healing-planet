@@ -33,7 +33,7 @@ public interface UserPostViewMapper {
             "       MAX(upv.viewed_at) AS viewTime " +
             "FROM green_community.post p " +
             "JOIN user_post_views upv ON p.id COLLATE utf8mb4_unicode_ci = upv.post_id COLLATE utf8mb4_unicode_ci " +
-            "WHERE upv.user_id = #{id} " +
+            "WHERE upv.user_id COLLATE utf8mb4_unicode_ci = #{id} " +
             "  AND DATEDIFF(CURDATE(), upv.viewed_at) < 7 " +
             "GROUP BY p.id " +
             "ORDER BY userViewTotal DESC, viewTime DESC " +
@@ -51,6 +51,6 @@ public interface UserPostViewMapper {
             "       p.comments AS totalComments, " +
             "       p.collects AS totalCollects, " +
             "       p.view AS totalViews, " +
-            "       p.likes AS totalLikes , p.create_time as viewTime from green_community.post p where datediff(curdate() , create_time) < 360 limit 100")
+            "       p.likes AS totalLikes , p.create_time as viewTime from green_community.post p where datediff(curdate() , create_time) < 90 limit 100")
     List<PostSummaryDTO> getPosts();
 }
