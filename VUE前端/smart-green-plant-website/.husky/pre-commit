@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Git pre-commit hook disabled
+exit 0
