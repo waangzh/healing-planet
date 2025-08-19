@@ -45,8 +45,8 @@ public class CaptchaUtils {
     /**
      * 本地图片地址
      **/
-    //private final static String IMG_PATH = "C:/Users/lenovo/Pictures/%s.jpg";
-    private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
+    private final static String IMG_PATH = "C:/Users/lenovo/Pictures/%s.jpg";
+    //private final static String IMG_PATH = "/www/wwwroot/community/img/%s.jpg";
     //
     /**
      * 入参校验设置默认值
