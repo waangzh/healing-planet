@@ -1,0 +1,35 @@
+body {
+  margin: 0;
+  background-color: #fff;
+}
+
+/* fade-slide */
+.fade-slide-leave-active,
+.fade-slide-enter-active {
+  transition: all 0.3s;
+}
+
+.fade-slide-enter-from {
+  transform: translateX(-30px);
+  opacity: 0;
+}
+
+.fade-slide-leave-to {
+  transform: translateX(30px);
+  opacity: 0;
+}
+
+:root {
+  // 主色调 - 薄荷绿系
+  --el-color-primary: #40b884 !important; // 主色调
+  --el-color-primary-light-3: #63c79c !important;
+  --el-color-primary-light-5: #86d6b3 !important;
+  --el-color-primary-light-7: #a9e4cb !important;
+  --el-color-primary-light-8: #bbebd7 !important;
+  --el-color-primary-light-9: #cdf2e3 !important;
+  --el-color-primary-light-10: #e6f9ec !important;
+  --el-color-primary-dark-2: #339a6d !important;
+
+  // 背景色
+  --el-bg-color: #e8f6f1 !important; // 整体背景色
+}

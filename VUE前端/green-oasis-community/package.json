@@ -1,0 +1,41 @@
+{
+  "name": "green-oasis-community",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "serve": "vite preview --port 4173",
+    "lint": "eslint . --fix",
+    "format": "prettier --write src/",
+    "build:prod": "vite build --mode production",
+    "test:build": "npm run build && npm run preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@wangeditor/editor": "^5.1.23",
+    "@wangeditor/editor-for-vue": "^5.1.12",
+    "axios": "^1.8.4",
+    "element-plus": "^2.9.7",
+    "markdown-it": "^14.1.0",
+    "pinia": "^3.0.1",
+    "pinia-plugin-persistedstate": "^4.4.1",
+    "vue": "^3.5.13",
+    "vue-cropper": "^1.1.4",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/eslint-config-prettier": "^10.2.0",
+    "eslint": "^9.22.0",
+    "eslint-plugin-vue": "~10.0.0",
+    "globals": "^16.0.0",
+    "prettier": "3.5.3",
+    "sass-embedded": "^1.86.3",
+    "vite": "^6.2.4",
+    "vite-plugin-vue-devtools": "^7.7.2"
+  }
+}
