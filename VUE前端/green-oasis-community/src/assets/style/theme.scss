@@ -1,0 +1,89 @@
+// 亮色主题
+:root {
+  // 主色调
+  --el-color-primary: #40b884 !important;
+  --el-color-primary-light-3: #63c79c !important;
+  --el-color-primary-light-5: #86d6b3 !important;
+  --el-color-primary-light-7: #a9e4cb !important;
+  --el-color-primary-light-8: #bbebd7 !important;
+  --el-color-primary-light-9: #cdf2e3 !important;
+  --el-color-primary-light-10: #e6f9ec !important;
+  --el-color-primary-dark-2: #339a6d !important;
+  
+  // 背景色
+  --el-bg-color: #e8f6f1 !important;
+  --el-bg-color-page: #ffffff !important;
+  --el-bg-color-overlay: #F7F8FA !important;
+  
+  // 文字颜色
+  --el-text-color-primary: #303133 !important;
+  --el-text-color-regular: #606266 !important;
+  --el-text-color-secondary: #909399 !important;
+  
+  // 边框颜色
+  --el-border-color: #dcdfe6 !important;
+  --el-border-color-light: #f9f9f9 !important;
+  
+  // 其他
+  --el-mask-color: rgba(255, 255, 255, 0.9) !important;
+  --el-box-shadow: rgba(0, 0, 0, 0.1) !important;
+
+  --el-hover-color: #cdf2e3 !important;
+
+  // 评论区专用变量
+  --comment-bg: #ffffff !important;
+  --comment-hover-bg: #f7f8fa !important;
+  --comment-divider: #f0f0f0 !important;
+  --comment-text-primary: #1d2129 !important;
+  --comment-text-regular: #4e5969 !important;
+  --comment-text-secondary: #86909c !important;
+  --comment-action-hover: var(--el-color-primary-light-9) !important;
+  --comment-input-bg: #f7f8fa !important;
+  --comment-input-hover: #f0f1f3 !important;
+  --comment-reply-bg: #f7f8fa !important;
+  --comment-avatar-bg: #f4f5f5 !important;
+}
+
+// 暗色主题
+html[data-theme='dark'] {
+  // 主色调（暗色主题下稍微调亮一些）
+  --el-color-primary: #4dd196 !important;
+  --el-color-primary-light-3: #70dba9 !important;
+  --el-color-primary-light-5: #93e4bd !important;
+  --el-color-primary-light-7: #b6edd0 !important;
+  --el-color-primary-light-8: #c8f1dc !important;
+  --el-color-primary-light-9: #daf5e7 !important;
+  --el-color-primary-light-10: #ecfaf2 !important;
+  --el-color-primary-dark-2: #3eb07f !important;
+  
+  // 背景色
+  --el-bg-color: #141414 !important;
+  --el-bg-color-page: #0a0a0a !important;
+  --el-bg-color-overlay: #1d1d1d !important;
+  
+  // 文字颜色
+  --el-text-color-primary: #ffffff !important;
+  --el-text-color-regular: #e5eaf3 !important;
+  --el-text-color-secondary: #a3a6ad !important;
+  
+  // 边框颜色
+  --el-border-color: #363637 !important;
+  --el-border-color-light: #434343 !important;
+  
+  // 其他
+  --el-mask-color: rgba(0, 0, 0, 0.9) !important;
+  --el-box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3) !important;
+
+  // 评论区专用变量
+  --comment-bg: #1d1d1d !important;
+  --comment-hover-bg: #2c2c2c !important;
+  --comment-divider: #2d2d2d !important;
+  --comment-text-primary: #e5eaf3 !important;
+  --comment-text-regular: #a3a6ad !important;
+  --comment-text-secondary: #8b949e !important;
+  --comment-action-hover: var(--el-color-primary-light-9) !important;
+  --comment-input-bg: #2c2c2c !important;
+  --comment-input-hover: #363636 !important;
+  --comment-reply-bg: #2c2c2c !important;
+  --comment-avatar-bg: #363636 !important;
+}
