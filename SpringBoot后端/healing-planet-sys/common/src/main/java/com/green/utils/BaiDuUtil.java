@@ -174,7 +174,7 @@ public class BaiDuUtil {
         // 构造请求体
         org.json.JSONObject payload = new org.json.JSONObject();
         payload.put("messages", messages);
-        payload.put("model", "deepseek-vl2");
+        payload.put("model", "qwen3-vl-235b-a22b-thinking");
         //log.info("payload: {}", payload);
 
         // 设置请求头
