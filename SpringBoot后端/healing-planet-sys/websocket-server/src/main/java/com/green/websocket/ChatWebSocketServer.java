@@ -1,147 +1,127 @@
 package com.green.websocket;
 
-import cn.hutool.log.Log;
-import cn.hutool.log.LogFactory;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.stereotype.Component;
 
-import javax.websocket.*;
+import javax.websocket.OnClose;
+import javax.websocket.OnError;
+import javax.websocket.OnMessage;
+import javax.websocket.OnOpen;
+import javax.websocket.Session;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 @ServerEndpoint("/chat/{userId}")
 @Component
+@Slf4j
 public class ChatWebSocketServer {
 
-    static Log log=LogFactory.get(ChatWebSocketServer.class);
-    /**静态变量，用来记录当前在线连接数。应该把它设计成线程安全的。*/
-    private static int onlineCount = 0;
-    /**concurrent包的线程安全Set，用来存放每个客户端对应的MyWebSocket对象。*/
-    private static ConcurrentHashMap<String, ChatWebSocketServer> webSocketMap = new ConcurrentHashMap<>();
-    /**与某个客户端的连接会话，需要通过它来给客户端发送数据*/
-    private Session session;
-    /**接收userId*/
-    private String userId="";
+    private static final ConcurrentHashMap<String, ChatWebSocketServer> WEB_SOCKET_MAP = new ConcurrentHashMap<>();
 
-    /**
-     * 连接建立成功调用的方法
-     * */
+    private static volatile ChatMessageHandler chatMessageHandler;
+
+    private Session session;
+
+    private String userId;
+
     @OnOpen
-    public void onOpen(Session session,@PathParam("userId") String userId) {
+    public void onOpen(Session session, @PathParam("userId") String userId) {
         this.session = session;
-        this.userId=userId;
-        if (webSocketMap.containsKey(userId)) {
-            ChatWebSocketServer oldSession = webSocketMap.get(userId);
+        this.userId = userId;
+
+        ChatWebSocketServer old = WEB_SOCKET_MAP.put(userId, this);
+        if (old != null && old.session != null && old.session.isOpen()) {
             try {
-                oldSession.session.close();
+                old.session.close();
             } catch (IOException e) {
-                log.error("关闭旧连接失败", e);
+                log.warn("close old chat websocket failed, userId={}", userId, e);
             }
-            webSocketMap.remove(userId);
         }
 
-        webSocketMap.put(userId,this);//加入set中
-
-        addOnlineCount();//在线数加1
-
-
-        log.info("用户连接:"+userId+",当前在线人数为:" + getOnlineCount());
-
+        log.info("chat websocket connected, userId={}, onlineCount={}", userId, WEB_SOCKET_MAP.size());
         try {
-            sendMessage("连接成功");
+            sendMessage("{\"type\":\"system\",\"message\":\"connected\"}");
         } catch (IOException e) {
-            log.error("用户:"+userId+",网络异常!!!!!!");
+            log.error("send connect ack failed, userId={}", userId, e);
         }
     }
 
-    /**
-     * 连接关闭调用的方法
-     */
     @OnClose
     public void onClose() {
-        if(webSocketMap.containsKey(userId)){
-            webSocketMap.remove(userId);
-            //从set中删除
-            subOnlineCount();
-        }
-        log.info("用户退出:"+userId+",当前在线人数为:" + getOnlineCount());
+        WEB_SOCKET_MAP.remove(userId);
+        log.info("chat websocket closed, userId={}, onlineCount={}", userId, WEB_SOCKET_MAP.size());
     }
 
-    /**
-     * 收到客户端消息后调用的方法
-     *
-     * @param message 客户端发送过来的消息
-     * */
     @OnMessage
     public void onMessage(String message, Session session) {
-        log.info("用户消息:"+userId+",报文:"+message);
-        //可以群发消息
-        //消息保存到数据库、redis
-        if(StringUtils.isNotBlank(message)){
+        if (StringUtils.isBlank(message)) {
+            return;
+        }
+
+        try {
+            JSONObject payload = JSON.parseObject(message);
+            String toUserId = payload.getString("toUserId");
+            String content = payload.getString("content");
+
+            if (StringUtils.isBlank(toUserId) || StringUtils.isBlank(content)) {
+                sendMessage("{\"type\":\"error\",\"message\":\"toUserId and content are required\"}");
+                return;
+            }
+
+            if (chatMessageHandler != null) {
+                chatMessageHandler.handle(this.userId, toUserId, content);
+                return;
+            }
+
+            payload.put("type", "private_message");
+            payload.put("fromUserId", this.userId);
+            sendToUser(toUserId, payload.toJSONString());
+        } catch (Exception e) {
+            log.error("chat websocket message handle failed, userId={}, payload={}", userId, message, e);
             try {
-                //解析接收到的报文
-                JSONObject jsonObject = JSON.parseObject(message);
-                //追加发送人(防止串改)
-                jsonObject.put("fromUserId",this.userId);
-                String toUserId=jsonObject.getString("toUserId");
-                //传送给对应toUserId用户的websocket
-                if(StringUtils.isNotBlank(toUserId)&&webSocketMap.containsKey(toUserId)){
-                    webSocketMap.get(toUserId).sendMessage(jsonObject.toJSONString());
-                }else{
-                    log.error("请求的userId:"+toUserId+"不在该服务器上");
-                    //否则不在这个服务器上，发送到mysql或者redis
-                }
-            }catch (Exception e){
-                e.printStackTrace();
+                sendMessage("{\"type\":\"error\",\"message\":\"invalid payload\"}");
+            } catch (IOException ignored) {
             }
         }
     }
 
-    /**
-     *
-     * @param session
-     * @param error
-     */
     @OnError
     public void onError(Session session, Throwable error) {
-        log.error("用户错误:"+this.userId+",原因:"+error.getMessage());
-        error.printStackTrace();
+        log.error("chat websocket error, userId={}", this.userId, error);
     }
-    /**
-     * 实现服务器主动推送
-     */
+
     public void sendMessage(String message) throws IOException {
         this.session.getBasicRemote().sendText(message);
     }
 
+    public static void setChatMessageHandler(ChatMessageHandler handler) {
+        chatMessageHandler = handler;
+    }
 
-    /**
-     * 发送自定义消息
-     * */
-    public static void sendInfo(String message,@PathParam("userId") String userId) throws IOException {
-        log.info("发送消息到:"+userId+"，报文:"+message);
-        if(StringUtils.isNotBlank(userId)&&webSocketMap.containsKey(userId)){
-            webSocketMap.get(userId).sendMessage(message);
-        }else{
-            log.error("用户"+userId+",不在线！");
+    public static boolean sendToUser(String userId, String message) {
+        if (StringUtils.isBlank(userId)) {
+            return false;
+        }
+        ChatWebSocketServer target = WEB_SOCKET_MAP.get(userId);
+        if (target == null || target.session == null || !target.session.isOpen()) {
+            return false;
+        }
+        try {
+            target.session.getBasicRemote().sendText(message);
+            return true;
+        } catch (IOException e) {
+            log.error("chat websocket push failed, toUserId={}", userId, e);
+            return false;
         }
     }
 
-    public static synchronized int getOnlineCount() {
-        return onlineCount;
-    }
-
-    public static synchronized void addOnlineCount() {
-        ChatWebSocketServer.onlineCount++;
-    }
-
-    public static synchronized void subOnlineCount() {
-        ChatWebSocketServer.onlineCount--;
+    public static boolean isOnline(String userId) {
+        ChatWebSocketServer target = WEB_SOCKET_MAP.get(userId);
+        return target != null && target.session != null && target.session.isOpen();
     }
 }
-

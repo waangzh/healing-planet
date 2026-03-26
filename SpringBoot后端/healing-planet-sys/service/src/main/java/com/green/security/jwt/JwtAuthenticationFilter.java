@@ -105,6 +105,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         protectedPaths.add("/collect/*");
         protectedPaths.add("/common/chat/stream");
         protectedPaths.add("/common/upload");
+        protectedPaths.add("/chat/private/**");
         protectedPaths.add("/admin/**");
         for (String path : protectedPaths) {
             if (pathMatcher.match(path, request.getServletPath())) {
