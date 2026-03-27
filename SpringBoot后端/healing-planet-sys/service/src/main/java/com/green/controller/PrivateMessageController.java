@@ -49,4 +49,10 @@ public class PrivateMessageController {
     public Result<Integer> unreadCount(@RequestHeader(value = USER_NAME) String userName) {
         return Result.success(privateMessageService.getUnreadCount(userName));
     }
+
+    @DeleteMapping("/session")
+    public Result<Integer> deleteSession(@RequestHeader(value = USER_NAME) String userName,
+                                         @RequestParam("peerUserId") String peerUserId) {
+        return Result.success(privateMessageService.deleteConversation(userName, peerUserId));
+    }
 }

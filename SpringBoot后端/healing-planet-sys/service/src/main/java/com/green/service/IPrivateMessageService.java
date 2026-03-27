@@ -20,4 +20,6 @@ public interface IPrivateMessageService {
     Integer markRead(String userName, String peerUserId);
 
     Integer getUnreadCount(String userName);
+
+    Integer deleteConversation(String userName, String peerUserId);
 }

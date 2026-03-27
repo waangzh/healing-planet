@@ -119,6 +119,22 @@ public class PrivateMessageServiceImpl implements IPrivateMessageService {
                 .eq(PrivateMessage::getIsRead, 0));
     }
 
+    @Override
+    public Integer deleteConversation(String userName, String peerUserId) {
+        User self = userService.getUserByUsername(userName);
+        User peer = userMapper.selectById(peerUserId);
+        if (peer == null) {
+            throw new ApiException("聊天对象不存在");
+        }
+
+        LambdaQueryWrapper<PrivateMessage> wrapper = new LambdaQueryWrapper<PrivateMessage>()
+                .and(w -> w
+                        .eq(PrivateMessage::getFromUserId, self.getId()).eq(PrivateMessage::getToUserId, peerUserId)
+                        .or()
+                        .eq(PrivateMessage::getFromUserId, peerUserId).eq(PrivateMessage::getToUserId, self.getId()));
+        return privateMessageMapper.delete(wrapper);
+    }
+
     private PrivateMessageVO saveAndDispatch(String fromUserId, String toUserId, String content) {
         if (StringUtils.isBlank(fromUserId) || StringUtils.isBlank(toUserId)) {
             throw new ApiException("发送方或接收方不能为空");
