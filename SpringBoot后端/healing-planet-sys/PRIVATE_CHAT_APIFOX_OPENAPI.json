@@ -1,0 +1,406 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Healing Planet Private Chat API",
+    "version": "1.0.0",
+    "description": "可直接导入 Apifox 的私聊接口文档（HTTP 部分）。WebSocket 协议请参考 PRIVATE_CHAT_API.md。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Private Chat",
+      "description": "用户私聊接口"
+    }
+  ],
+  "paths": {
+    "/chat/private/send": {
+      "post": {
+        "tags": [
+          "Private Chat"
+        ],
+        "summary": "发送私聊消息",
+        "operationId": "sendPrivateMessage",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateMessageSendDTO"
+              },
+              "example": {
+                "toUserId": "1912345678901234568",
+                "content": "你好"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultPrivateMessageVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/private/sessions": {
+      "get": {
+        "tags": [
+          "Private Chat"
+        ],
+        "summary": "获取会话列表",
+        "operationId": "getPrivateSessions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultPrivateChatSessionList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/private/messages": {
+      "get": {
+        "tags": [
+          "Private Chat"
+        ],
+        "summary": "获取会话消息历史（分页）",
+        "operationId": "getPrivateMessages",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "peerUserId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "对端用户ID"
+          },
+          {
+            "name": "pageNo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "每页条数"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultPagePrivateMessageVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/private/read": {
+      "put": {
+        "tags": [
+          "Private Chat"
+        ],
+        "summary": "标记会话已读",
+        "operationId": "markPrivateMessagesRead",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "peerUserId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "对端用户ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultInteger"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/private/unread/count": {
+      "get": {
+        "tags": [
+          "Private Chat"
+        ],
+        "summary": "获取私聊总未读数",
+        "operationId": "getPrivateUnreadCount",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultInteger"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "PrivateMessageSendDTO": {
+        "type": "object",
+        "required": [
+          "toUserId",
+          "content"
+        ],
+        "properties": {
+          "toUserId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "PrivateMessageVO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fromUserId": {
+            "type": "string"
+          },
+          "fromUsername": {
+            "type": "string"
+          },
+          "fromAlias": {
+            "type": "string"
+          },
+          "fromAvatar": {
+            "type": "string"
+          },
+          "toUserId": {
+            "type": "string"
+          },
+          "toUsername": {
+            "type": "string"
+          },
+          "toAlias": {
+            "type": "string"
+          },
+          "toAvatar": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "PrivateChatSessionVO": {
+        "type": "object",
+        "properties": {
+          "peerUserId": {
+            "type": "string"
+          },
+          "peerUsername": {
+            "type": "string"
+          },
+          "peerAlias": {
+            "type": "string"
+          },
+          "peerAvatar": {
+            "type": "string"
+          },
+          "lastMessage": {
+            "type": "string"
+          },
+          "lastMessageTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unreadCount": {
+            "type": "integer"
+          }
+        }
+      },
+      "PagePrivateMessageVO": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivateMessageVO"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "current": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ResultPrivateMessageVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64",
+            "example": 200
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PrivateMessageVO"
+          }
+        }
+      },
+      "ResultPrivateChatSessionList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64",
+            "example": 200
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivateChatSessionVO"
+            }
+          }
+        }
+      },
+      "ResultPagePrivateMessageVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64",
+            "example": 200
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PagePrivateMessageVO"
+          }
+        }
+      },
+      "ResultInteger": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64",
+            "example": 200
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}
