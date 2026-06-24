@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.example.demos.web.mapper.DataSharedMapper" >
+
+
+
+    <select id="getEnvironmentData" resultType="com.example.demos.web.pojo.dto.EnvironmentDataDTO" parameterType="java.util.List">
+        SELECT
+        pi.device_id,
+        p.name AS plantName,
+        AVG(ed.temperature) AS "dailyEnvironmentDataVO.temperature",
+        AVG(ed.humidity) AS "dailyEnvironmentDataVO.humidity",
+        AVG(ed.light_intensity) AS "dailyEnvironmentDataVO.lightIntensity",
+        AVG(ed.soil_moisture) AS "dailyEnvironmentDataVO.soilMoisture",
+        AVG(ed.co2_concentration) AS "dailyEnvironmentDataVO.co2Concentration",
+        MAX(ed.recorded_time) AS "dailyEnvironmentDataVO.recordedTime"
+        FROM
+        smart_agriculture.plant_instance pi
+        LEFT JOIN
+        smart_agriculture.environment_data ed ON ed.plant_instance_id = pi.id and ed.recorded_time >= CURDATE() AND ed.recorded_time &lt; DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+        LEFT JOIN
+        smart_agriculture.plant p ON pi.plant_id = p.id
+        WHERE
+        pi.device_id IN
+        <foreach collection="deviceList" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        and p.name is not null
+
+        GROUP BY
+        p.name,DATE(ed.recorded_time)
+    </select>
+
+
+
+
+</mapper>
