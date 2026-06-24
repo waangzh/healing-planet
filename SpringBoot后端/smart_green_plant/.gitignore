@@ -1,0 +1,10 @@
+**/target/
+.idea
+*.iml
+*.class
+*Test.java
+**/test/
+pom.xml
+*.yml
+.gitignore
+smart.zip
