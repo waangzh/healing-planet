@@ -6,5 +6,6 @@
 **/test/
 pom.xml
 *.yml
+!*.example.yml
 .gitignore
 smart.zip
