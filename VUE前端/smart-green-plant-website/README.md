@@ -1,3 +1,31 @@
+# smart-green-plant-website
+
+智能养植网站 -- Smart plant monitoring and control dashboard.
+
+## Recommended IDE Setup
+
+[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+
+## Project Setup
+
+```sh
+npm install
+```
+
+### Compile and Hot-Reload for Development
+
+```sh
+npm run dev
+```
+
+### Compile and Minify for Production
+
+```sh
+npm run build
+```
+
+## Screenshots
+
 ## 登录页面
 ![输入图片说明](src/assets/readme/登录.png)
 ## 首页

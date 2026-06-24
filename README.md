@@ -1,14 +1,15 @@
 # 植愈星球 Healing Planet
 
-> 面向绿植爱好者的智能养植与绿植社区平台。项目围绕“智能花盆 + 植物养护 + 绿植社区 + AI 助手 + 后台管理”展开，提供植物信息查询、养护建议、社区内容互动、私信通知、植物识别、文件上传、后台管理等能力，并为后续智能硬件设备接入预留扩展空间。
+> 面向绿植爱好者的智能养植与绿植社区平台。项目围绕”智能花盆硬件 + 植物养护 + 绿植社区 + AI 助手 + IoT 控制 + 后台管理”展开，提供植物信息查询、养护建议、社区内容互动、私信通知、植物识别、设备管理、环境监测、自动灌溉/补光、AI 病害检测、文件上传、后台管理等能力。
 
 ## 项目简介
 
-植愈星球是一套前后端分离的绿植养护与社区系统。用户可以在社区中发布种植经验、浏览植物百科、关注其他用户、点赞收藏帖子、接收消息通知，也可以通过“小绿助手”进行植物养护问答，通过图片识别辅助判断植物种类并获取养护建议。
+植愈星球是一套前后端分离的绿植养护与社区系统，包含社区后端和智能硬件 IoT 后端两个 Spring Boot 服务。用户可以在社区中发布种植经验、浏览植物百科、关注其他用户、点赞收藏帖子、接收消息通知，通过”小绿助手”进行植物养护问答，通过图片识别辅助判断植物种类并获取养护建议；同时可以通过智能花盆实时监测土壤湿度、温度、光照等环境数据，结合阈值实现自动灌溉、补光、通风，并支持 AI 植物病害检测与邮件预警。
 
 项目当前仓库主要包含：
 
-* Spring Boot 后端服务：提供用户、帖子、评论、收藏、点赞、关注、通知、私信、植物库、AI 对话、文件上传、验证码、后台管理等接口。
+* 社区后端 (healing-planet-sys, 端口 8000)：提供用户、帖子、评论、收藏、点赞、关注、通知、私信、植物库、AI 对话、文件上传、验证码、后台管理等接口。
+* 智能花盆后端 (smart_green_plant, 端口 8070)：提供设备管理、环境监测、自动灌溉/补光/通风、AI 病害识别、和风天气、邮件预警、Excel 导出、MCP 协议接口。
 * 社区前台：面向普通用户的绿植社区 Web 端。
 * 社区管理后台：面向管理员的用户管理、内容管理、标签管理、植物管理、公告管理等页面。
 * 智能养植网站：面向智能花盆/设备管理场景的 Web 端，包括首页、设备控制、AI、历史数据、用户中心、植物管理等页面。
@@ -72,6 +73,19 @@
 * 全局异常处理
 * 跨域配置
 
+### 7. 智能花盆 IoT 控制 (smart_green_plant, 端口 8070)
+
+* 设备管理：设备添加、删除、更新、查询，设备在线/离线状态监控
+* 环境监测：土壤湿度、温度、环境湿度、CO2 浓度、光照强度实时采集，通过阿里云 IoT AMQP 协议订阅设备遥测数据
+* 阈值自动控制：自定义温度、湿度、CO2、光照、土壤湿度阈值范围，超标自动开关灌溉水泵、补光灯、风扇
+* 设备预警：环境数据异常时自动发送 QQ 邮件预警，同时推送系统内消息通知
+* AI 植物病害检测：上传植物图片，对接自训练模型识别 38 类常见病害，结合百度 AI 多模态接口生成养护建议
+* 和风天气集成：获取实时天气与 3 天天气预报，辅助养护决策
+* 历史数据查询与分析：历史环境数据分页查询、趋势分析（百度 AI 数据分析）、Excel 导出
+* MCP 协议支持：WebSocket 端点 `/mcp`，实现 JSON-RPC 2.0 协议，提供 `getPotData`、`getSwitchStates`、`setSwitchState` 三个工具，支持 AI Agent 远程控制花盆
+* 小智 MCP 桥接：连接小智 MCP 平台，实现远程 AI Agent 透明代理控制
+* 社区数据互通：通过 `/shared/data` 和 `/shared/deviceBind` 接口与社区后端联动，支持传感数据驱动的 AI 文章撰写与设备绑定
+
 ## 技术栈
 
 ### 后端
@@ -92,6 +106,14 @@
 | Lombok              | 简化实体类与样板代码   |
 | FastJSON / org.json | JSON 处理      |
 | Hutool              | 常用工具类        |
+| 阿里云 IoT SDK         | 设备属性查询、开关控制、状态获取 |
+| Apache Qpid JMS      | AMQP 协议客户端，IoT 遥测订阅 |
+| Spring WebFlux       | 响应式 HTTP 客户端（天气 API） |
+| Spring Mail          | QQ 邮箱 SMTP 预警通知 |
+| Apache POI           | Excel 数据导出 |
+| Java-WebSocket       | MCP 桥接客户端 |
+| MCP 协议              | AI Agent 工具协议（WebSocket 端点） |
+| 和风天气 API            | 实时天气与 3 天预报 |
 | Maven               | 多模块项目构建      |
 
 ### 前端
@@ -118,19 +140,42 @@
 ├── smart-green-plant-website    # 智能养植网站
 └── Sprout-Admin                 # 管理后台
         │
-        │ HTTP / SSE / WebSocket
-        ▼
-Spring Boot 后端 healing-planet-sys
-├── service            # 启动模块、Controller、Service、Mapper、配置
-├── websocket-server   # WebSocket 通信模块
-├── common             # 公共配置、工具类、异常处理、常量
-└── pojo               # Entity、DTO、VO、Query 对象
+        ├──── HTTP / SSE / WebSocket ────►
         │
-        ├── MySQL       # 用户、帖子、植物、评论、收藏、通知等业务数据
-        ├── Redis       # 缓存
-        ├── 阿里云 OSS   # 文件上传
-        ├── 百度 AI      # AI 对话、植物识别
-        └── RabbitMQ    # 消息队列配置预留
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ Spring Boot 后端                                         │
+│                                                          │
+│ healing-planet-sys (端口 8000)                           │
+│ ├── service            # 启动模块、Controller、Service   │
+│ ├── websocket-server   # WebSocket 私信通信              │
+│ ├── common             # 公共配置、工具类、异常处理       │
+│ └── pojo               # Entity、DTO、VO、Query 对象     │
+│         │                                                │
+│         ├── MySQL（green_community 库）                   │
+│         ├── Redis（缓存）                                 │
+│         ├── 阿里云 OSS（文件上传）                        │
+│         ├── 百度 AI（对话、植物识别）                     │
+│         └── RabbitMQ（消息队列配置预留）                  │
+│                                                          │
+│ ─────────── 数据互通 (REST API) ───────────               │
+│                                                          │
+│ smart_green_plant (端口 8070)                             │
+│ ├── controller    # 设备、环境数据、病害检测、天气等接口  │
+│ ├── service       # 业务逻辑、自动控制、预警监测          │
+│ ├── mapper        # MyBatis Mapper                       │
+│ ├── mcp           # MCP 协议端点 + 小智 MCP 桥接         │
+│ └── utils         # AMQP 客户端、百度 AI、邮件、OSS      │
+│         │                                                │
+│         ├── MySQL（smart_agriculture 库）                 │
+│         ├── Redis（缓存）                                 │
+│         ├── 阿里云 IoT 平台（AMQP 消息 + HTTP API）       │
+│         ├── 阿里云 OSS（检测图片上传）                    │
+│         ├── 百度 AI（多模态病害分析、养护建议）           │
+│         ├── 和风天气 API（天气预报）                      │
+│         ├── QQ 邮箱 SMTP（设备预警邮件）                  │
+│         └── 小智 MCP 平台（远程 AI Agent 桥接）          │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## 项目结构
@@ -139,68 +184,98 @@ Spring Boot 后端 healing-planet-sys
 healing-planet/
 ├── README.md
 ├── SpringBoot后端/
-│   └── healing-planet-sys/
+│   ├── healing-planet-sys/
+│   │   ├── pom.xml
+│   │   ├── pojo/
+│   │   │   ├── pom.xml
+│   │   │   └── src/main/java/com/green/
+│   │   │       ├── entity/        # 数据库实体类
+│   │   │       ├── dto/           # 请求参数对象
+│   │   │       └── vo/            # 前端返回视图对象
+│   │   ├── common/
+│   │   │   ├── pom.xml
+│   │   │   └── src/main/java/com/green/
+│   │   │       ├── common/        # 统一返回、异常处理
+│   │   │       ├── config/        # OSS、百度 AI、跨域等配置
+│   │   │       ├── constant/      # 常量
+│   │   │       └── utils/         # 工具类
+│   │   ├── websocket-server/
+│   │   │   ├── pom.xml
+│   │   │   └── src/main/java/com/green/
+│   │   │       ├── config/        # WebSocket 配置
+│   │   │       └── websocket/     # 私信 WebSocket 服务
+│   │   └── service/
+│   │       ├── pom.xml
+│   │       └── src/main/
+│   │           ├── java/com/green/
+│   │           │   ├── HealingPlanetApplication.java
+│   │           │   ├── controller/        # 用户端接口
+│   │           │   ├── controller/admin/  # 管理端接口
+│   │           │   ├── service/           # 业务接口
+│   │           │   ├── serviceImpl/       # 业务实现
+│   │           │   ├── mapper/            # MyBatis Mapper
+│   │           │   ├── config/            # 后端配置
+│   │           │   └── security/          # JWT 相关逻辑
+│   │           └── resources/
+│   │               └── application.yaml
+│   └── smart_green_plant/
 │       ├── pom.xml
-│       ├── pojo/
-│       │   ├── pom.xml
-│       │   └── src/main/java/com/green/
-│       │       ├── entity/        # 数据库实体类
-│       │       ├── dto/           # 请求参数对象
-│       │       └── vo/            # 前端返回视图对象
-│       ├── common/
-│       │   ├── pom.xml
-│       │   └── src/main/java/com/green/
-│       │       ├── common/        # 统一返回、异常处理
-│       │       ├── config/        # OSS、百度 AI、跨域等配置
-│       │       ├── constant/      # 常量
-│       │       └── utils/         # 工具类
-│       ├── websocket-server/
-│       │   ├── pom.xml
-│       │   └── src/main/java/com/green/
-│       │       ├── config/        # WebSocket 配置
-│       │       └── websocket/     # 私信 WebSocket 服务
-│       └── service/
-│           ├── pom.xml
-│           └── src/main/
-│               ├── java/com/green/
-│               │   ├── HealingPlanetApplication.java
-│               │   ├── controller/        # 用户端接口
-│               │   ├── controller/admin/  # 管理端接口
-│               │   ├── service/           # 业务接口
-│               │   ├── serviceImpl/       # 业务实现
-│               │   ├── mapper/            # MyBatis Mapper
-│               │   ├── config/            # 后端配置
-│               │   └── security/          # JWT 相关逻辑
-│               └── resources/
-│                   └── application.yaml
-└── VUE前端/
-    ├── green-oasis-community/
-    │   ├── package.json
-    │   └── src/
-    │       ├── api/           # 前台接口封装
-    │       ├── assets/        # 静态资源
-    │       ├── components/    # 通用组件
-    │       ├── router/        # 前台路由
-    │       ├── stores/        # Pinia 状态管理
-    │       └── views/         # 页面视图
-    ├── smart-green-plant-website/
-    │   ├── package.json
-    │   └── src/
-    │       ├── api/
-    │       ├── assets/
-    │       ├── components/
-    │       ├── router/
-    │       ├── stores/
-    │       └── views/
-    └── Sprout-Admin/
-        ├── package.json
-        └── src/
-            ├── api/           # 管理后台接口封装
-            ├── assets/
-            ├── layout/        # 后台布局
-            ├── router/        # 后台路由
-            ├── stores/        # 管理员状态
-            └── views/         # 管理后台页面
+│       └── src/main/
+│           ├── java/com/example/demos/
+│           │   ├── SmartAgricultureApplication.java
+│           │   └── web/
+│           │       ├── controller/           # 接口层（设备、环境数据、病害检测等）
+│           │       ├── controller/shared/    # 社区数据互通接口
+│           │       ├── service/             # 业务接口
+│           │       ├── service/impl/        # 业务实现
+│           │       ├── mapper/             # MyBatis Mapper
+│           │       ├── mcp/                # MCP 协议端点 + 小智 MCP 桥接
+│           │       ├── config/             # 各类配置
+│           │       ├── interceptor/        # JWT 拦截器
+│           │       ├── common/             # 统一返回、枚举、属性配置
+│           │       ├── pojo/entity/        # 数据库实体
+│           │       ├── pojo/dto/           # 请求参数对象
+│           │       ├── pojo/vo/            # 返回视图对象
+│           │       ├── utils/              # AMQP、百度 AI、邮件、OSS 等工具
+│           │       ├── constant/           # 常量
+│           │       ├── context/            # 线程上下文
+│           │       ├── exception/          # 自定义异常
+│           │       └── handler/            # 全局异常处理
+│           └── resources/
+│               ├── application.yml
+│               └── application.example.yml
+├── VUE前端/
+│   ├── green-oasis-community/
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── api/           # 前台接口封装
+│   │       ├── assets/        # 静态资源
+│   │       ├── components/    # 通用组件
+│   │       ├── router/        # 前台路由
+│   │       ├── stores/        # Pinia 状态管理
+│   │       └── views/         # 页面视图
+│   ├── smart-green-plant-website/
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── api/
+│   │       ├── assets/
+│   │       ├── components/
+│   │       ├── router/
+│   │       ├── stores/
+│   │       └── views/
+│   └── Sprout-Admin/
+│       ├── package.json
+│       └── src/
+│           ├── api/           # 管理后台接口封装
+│           ├── assets/
+│           ├── layout/        # 后台布局
+│           ├── router/        # 后台路由
+│           ├── stores/        # 管理员状态
+│           └── views/         # 管理后台页面
+└── 原型图/
+    ├── 小程序原型图.rp          # 微信小程序原型设计
+    ├── 控制平台.rp              # 设备控制平台原型设计
+    └── 绿植社区.rp              # 绿植社区原型设计
 ```
 
 ## 环境要求
@@ -209,11 +284,14 @@ healing-planet/
 
 * JDK 8
 * Maven 3.6+
-* MySQL 5.7+ / 8.x
+* MySQL 5.7+ / 8.x（需要创建 `green_community` 和 `smart_agriculture` 两个数据库）
 * Redis 6+
 * 可选：RabbitMQ
 * 可选：阿里云 OSS 账号
 * 可选：百度 AI 相关 Key
+* 可选：阿里云 IoT 平台账号（smart_green_plant 使用）
+* 可选：和风天气 API Key（smart_green_plant 使用）
+* 可选：QQ 邮箱 SMTP 授权码（smart_green_plant 预警邮件使用）
 
 ### 前端环境
 
@@ -236,10 +314,11 @@ cd healing-planet
 
 本项目后端默认使用 MySQL 与 Redis。启动前需要：
 
-1. 创建 MySQL 数据库，例如：
+1. 创建 MySQL 数据库：
 
 ```sql
 CREATE DATABASE green_community DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE DATABASE smart_agriculture DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 ```
 
 2. 启动 Redis：
@@ -250,9 +329,8 @@ redis-server
 
 3. 根据本地环境修改后端配置文件：
 
-```text
-SpringBoot后端/healing-planet-sys/service/src/main/resources/application.yaml
-```
+- 社区后端：`SpringBoot后端/healing-planet-sys/service/src/main/resources/application.yaml`
+- 智能花盆后端：`SpringBoot后端/smart_green_plant/src/main/resources/application.yml`（参考同目录下的 `application.example.yml` 模板）
 
 ### 3. 启动后端
 
@@ -274,13 +352,27 @@ mvn clean install
 mvn -pl service -am spring-boot:run
 ```
 
-后端默认运行在：
+社区后端默认运行在：
 
 ```text
 http://localhost:8000
 ```
 
-### 4. 启动社区前台
+### 4. 启动智能花盆后端 (smart_green_plant)
+
+```bash
+cd SpringBoot后端/smart_green_plant
+mvn clean install
+mvn spring-boot:run
+```
+
+智能花盆后端默认运行在：
+
+```text
+http://localhost:8070
+```
+
+### 5. 启动社区前台
 
 ```bash
 cd VUE前端/green-oasis-community
@@ -288,7 +380,7 @@ npm install
 npm run dev
 ```
 
-### 5. 启动智能养植网站
+### 6. 启动智能养植网站
 
 ```bash
 cd VUE前端/smart-green-plant-website
@@ -296,7 +388,7 @@ npm install
 npm run dev
 ```
 
-### 6. 启动管理后台
+### 7. 启动管理后台
 
 ```bash
 cd VUE前端/Sprout-Admin
@@ -308,6 +400,8 @@ npm run dev
 
 ### 后端打包
 
+社区后端：
+
 ```bash
 cd SpringBoot后端/healing-planet-sys
 mvn clean package -DskipTests
@@ -317,6 +411,19 @@ mvn clean package -DskipTests
 
 ```bash
 java -jar service/target/service-1.0.0.jar
+```
+
+智能花盆后端：
+
+```bash
+cd SpringBoot后端/smart_green_plant
+mvn clean package -DskipTests
+```
+
+打包后可运行：
+
+```bash
+java -jar target/smart_green_plant-0.0.1-SNAPSHOT.jar
 ```
 
 实际 jar 名称以 Maven 打包结果为准。
