@@ -1,0 +1,83 @@
+.page-container{
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100vh;
+  background-image: 
+            url('https://smart-plant.oss-cn-hangzhou.aliyuncs.com/d082bf22-14c3-476c-844e-b8dd378cd2d6.png');
+  background-size: cover;
+  background-position: top center;
+  background-repeat: no-repeat;
+}
+
+.login-container {
+  margin-top: 25%;
+  padding: 0 60rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.header{
+  width: 100%;
+  margin-bottom: 40rpx;
+  color: #ffffff;
+  font-size: 60rpx;
+  font-weight: bold;
+  line-height: 1.4;
+  text-align: center;
+  text-shadow: 0 4rpx 10rpx rgba(0,0,0,0.3);
+}
+
+.login-card {
+  width: 100%;
+  margin-top: 60rpx;
+  background-color: #ffffff;
+  border-radius: 24rpx;
+  padding: 40rpx 32rpx 50rpx;
+  box-shadow: 0 10rpx 40rpx rgba(0,0,0,0.08);
+  box-sizing: border-box;
+}
+
+.protocol-row {
+  margin-bottom: 40rpx;
+}
+
+.protocol-label {
+  display: flex;
+  align-items: flex-start;
+}
+
+.protocol-text {
+  font-size: 24rpx;
+  color: #666666;
+  line-height: 1.6;
+  margin-left: 16rpx;
+}
+
+.btn-quick {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 44rpx;
+  background-color: #07c160;
+  color: #ffffff;
+  font-size: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.btn-quick[disabled] {
+  background-color: #b2e8c8;
+}
+
+.btn-account {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 44rpx;
+  background-color: #ffffff;
+  color: #07c160;
+  font-size: 30rpx;
+  border: 2rpx solid #07c160;
+}

@@ -1,0 +1,31 @@
+<!--pages/ai/ai.wxml-->
+<view class="ai-page">
+	<view class="chat-header">
+		<image class="ai-avatar" src="/static/ai-avatar.png" />
+		<text class="ai-name">小绿助手</text>
+		<text class="status">{{isLoading ? '思考中...' : '在线'}}</text>
+	</view>
+	<scroll-view class="chat-body" scroll-y scroll-into-view="{{scrollToView}}" bindscroll="handleScroll" style="overflow: hidden;">
+		<view wx:if="{{messages.length === 0}}" class="empty-state">
+			<text>开始和AI助手对话吧</text>
+		</view>
+		<block wx:else>
+			<view wx:for="{{messages}}" wx:key="index" class="message-item {{item.from}}" id="msg-{{index}}">
+				<image class="avatar" src="{{item.from === 'user' ? userAvatar : '/static/ai-avatar.png'}}" />
+				<view class="message-content">
+					<text wx:if="{{item.from === 'user'}}" class="message-text">{{item.text}}</text>
+					<rich-text wx:else class="message-text markdown-content" nodes="{{item.html}}"></rich-text>
+				</view>
+			</view>
+		</block>
+	</scroll-view>
+
+	<view class="chat-footer">
+		<view class="input-area">
+			<input class="message-input" value="{{inputMessage}}" bindinput="handleInput" bindconfirm="sendMessage" placeholder="输入消息..." disabled="{{isLoading}}" confirm-type="send" />
+			<button class="send-button {{isLoading ? 'loading' : ''}}" bindtap="sendMessage" disabled="{{isLoading}}">
+				发送
+			</button>
+		</view>
+	</view>
+</view>

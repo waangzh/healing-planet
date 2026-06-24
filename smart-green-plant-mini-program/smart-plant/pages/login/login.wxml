@@ -1,0 +1,40 @@
+<view class="page-container">
+  <view class="login-container">
+    <view class="header">
+      植愈星球
+    </view>
+    <view class="login-card">
+      <view class="protocol-row">
+        <checkbox-group bindchange="onAgreementChange">
+          <label class="protocol-label">
+            <checkbox value="agree" checked="{{agreed}}" />
+            <text class="protocol-text">
+              我已阅读并同意《用户服务协议》和《隐私政策》
+            </text>
+          </label>
+        </checkbox-group>
+      </view>
+
+      <!-- 快速登录（微信） -->
+      <button
+        class="btn-quick"
+        type="primary"
+        open-type="getUserProfile"
+        lang="zh_CN"
+        bindgetuserprofile="onWxOneTapLogin"
+        disabled="{{!agreed}}"
+      >
+        快速登录
+      </button>
+
+      <!-- 账号密码登录 -->
+      <button
+        class="btn-account"
+        type="default"
+        bindtap="goAccountLogin"
+      >
+        输入账号密码登录
+      </button>
+    </view>
+  </view>
+</view>

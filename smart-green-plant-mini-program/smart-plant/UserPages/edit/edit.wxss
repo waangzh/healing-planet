@@ -1,0 +1,102 @@
+/* pages/edit/edit.wxss */
+.page-container {
+  padding: 20rpx;
+  box-sizing: border-box;
+  height: 100vh;
+  background-color: rgb(242,242,242);
+}
+.header{
+  display: flex;
+  flex-direction: row;
+  align-items:center;
+  width: 100%;
+  height: 100rpx;
+  justify-content:flex-start;
+  /* background-color: rgb(207, 219, 223); */
+  border-radius: 10px;
+}
+.header-img{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 50rpx;
+  margin-right: 10rpx; /* 添加间距 */
+  margin-left: 20rpx;
+}
+.header-text{
+  font-size: 44rpx;
+  line-height: 100rpx;
+  font-weight: 700;
+}
+
+.user-info-edit {
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 10%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.avatar-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  margin-bottom: 10rpx;
+}
+
+.button {
+  background-color: #007aff;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 5px;
+}
+
+.input-section {
+  margin-bottom: 20px;
+}
+
+.input-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.label {
+  width: 80px;
+  font-weight: bold;
+}
+
+.input-field {
+  flex: 1;
+  border: 1px solid #ccc;
+  padding: 8px;
+  border-radius: 5px;
+  font-size: 28rpx;
+  color: rgb(86, 91, 94);
+}
+
+.textarea-field {
+  height: 80px;
+}
+
+.radio-button {
+  margin-right: 5px;
+}
+
+.gender-radio-group {
+  display: flex;
+  flex-direction: row;
+}
+
+.save-button {
+  background-color: #4CAF50;
+  width: 100%;
+}

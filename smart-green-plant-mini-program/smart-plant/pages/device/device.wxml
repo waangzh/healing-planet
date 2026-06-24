@@ -1,0 +1,132 @@
+<scroll-view scroll-y="true" class="scroll-content">
+
+<view class="device-info">
+  <view class="device-selector">
+    <view class="selector-label">
+      <text class="label-text">监测花盆</text>
+    </view>
+    <picker bindchange="onPickerChange" value="{{selectedPlantIndex}}" range="{{plantIds}}">
+      <view class="picker-container">
+        <text class="picker-text">{{plantIds[selectedPlantIndex]}}号花盆</text>
+        <image src="/static/down.png" class="picker-arrow" mode="widthFix"/>
+      </view>
+    </picker>
+  </view>
+  
+  <view class="device-status">
+    <text class="status-label">设备状态</text>
+    <text class="status-value online">{{online}}</text>
+  </view>
+</view>
+
+<view class="environment-control-panel">
+  <view class="smart-control">
+    <view class="smart-control-left">
+      <text class="smart-title">智能调节</text>
+      <text class="smart-subtitle">自动根据阈值控制设备</text>
+    </view>
+    <switch class="smart-switch" bindchange="autoChange" checked="{{autoSwitch}}"/>
+  </view>
+
+  <view class="threshold-item">
+    <view class="threshold-header">
+      <image class="threshold-icon" src="/static/tem.png" mode="aspectFit"></image>
+      <text class="threshold-label">温度</text>
+    </view>
+    <view class="threshold-inputs">
+      <input class="threshold-input" type="digit" value="{{tempRange[0]}}" data-type="temp" data-index="0" bindinput="handleThresholdInput" />
+      <text class="separator">-</text>
+      <input class="threshold-input" type="digit" value="{{tempRange[1]}}" data-type="temp" data-index="1" bindinput="handleThresholdInput" />
+      <text class="unit">°C</text>
+    </view>
+  </view>
+
+  <view class="threshold-item">
+    <view class="threshold-header">
+      <image class="threshold-icon" src="/static/soil.png" mode="aspectFit"></image>
+      <text class="threshold-label">土壤湿度</text>
+    </view>
+    <view class="threshold-inputs">
+      <input class="threshold-input" type="number" value="{{soilRange[0]}}" data-type="soil" data-index="0" bindinput="handleThresholdInput" />
+      <text class="separator">-</text>
+      <input class="threshold-input" type="number" value="{{soilRange[1]}}" data-type="soil" data-index="1" bindinput="handleThresholdInput" />
+      <text class="unit">%</text>
+    </view>
+  </view>
+
+  <view class="threshold-item">
+    <view class="threshold-header">
+      <image class="threshold-icon" src="/static/lightlux.png" mode="aspectFit"></image>
+      <text class="threshold-label">光照强度</text>
+    </view>
+    <view class="threshold-inputs">
+      <input class="threshold-input" type="number" value="{{lightRange[0]}}" data-type="light" data-index="0" bindinput="handleThresholdInput" />
+      <text class="separator">-</text>
+      <input class="threshold-input" type="number" value="{{lightRange[1]}}" data-type="light" data-index="1" bindinput="handleThresholdInput" />
+      <text class="unit">Lux</text>
+    </view>
+  </view>
+
+  <view class="threshold-item">
+    <view class="threshold-header">
+      <image class="threshold-icon" src="/static/co2.png" mode="aspectFit"></image>
+      <text class="threshold-label">CO₂ 浓度</text>
+    </view>
+    <view class="threshold-inputs">
+      <input class="threshold-input" type="number" value="{{co2Range[0]}}" data-type="co2" data-index="0" bindinput="handleThresholdInput" />
+      <text class="separator">-</text>
+      <input class="threshold-input" type="number" value="{{co2Range[1]}}" data-type="co2" data-index="1" bindinput="handleThresholdInput" />
+      <text class="unit">ppm</text>
+    </view>
+  </view>
+
+  <view class="save-section">
+    <button class="save-button" bindtap="saveTargets">保存目标值</button>
+  </view>
+</view>
+<view class="device-controls-panel">
+  <view class="controls-header">
+    <text class="controls-title">设备控制</text>
+    <text class="controls-subtitle">手动开关优先</text>
+  </view>
+
+  <view class="control-card">
+    <view class="control-content">
+      <view class="control-icon fan-bg">
+        <image src="/static/fan.png" class="control-device-icon" mode="aspectFit"/>
+      </view>
+      <view class="control-info">
+        <text class="control-name">风扇</text>
+        <text class="control-desc">用于空气流通</text>
+      </view>
+      <switch class="control-switch" checked="{{fanSwitch}}" bindchange="handleFanChange"/>
+    </view>
+  </view>
+
+  <view class="control-card">
+    <view class="control-content">
+      <view class="control-icon pump-bg">
+        <image src="/static/pump.png" class="control-device-icon" mode="aspectFit"/>
+      </view>
+      <view class="control-info">
+        <text class="control-name">水泵</text>
+        <text class="control-desc">用于浇水灌溉</text>
+      </view>
+      <switch class="control-switch" checked="{{irriogationPumpStatus}}" bindchange="handlePumpChange"/>
+    </view>
+  </view>
+
+  <view class="control-card">
+    <view class="control-content">
+      <view class="control-icon light-bg">
+        <image src="/static/rgb.png" class="control-device-icon" mode="aspectFit"/>
+      </view>
+      <view class="control-info">
+        <text class="control-name">灯光</text>
+        <text class="control-desc">用于补充光照</text>
+      </view>
+      <switch class="control-switch" checked="{{lightStatus}}" bindchange="handleLightChange"/>
+    </view>
+  </view>
+</view>
+</scroll-view>

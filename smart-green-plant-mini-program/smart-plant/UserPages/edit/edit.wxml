@@ -1,0 +1,35 @@
+<view class="page-container">
+  <view class="header">
+    <view class="header-img">
+      <image src="/static/edit_info.png" mode="aspectFit"></image>
+    </view>
+    <view class="header-text">基本信息</view>
+  </view>
+  <!-- 用户信息 -->
+  <view class="user-info-edit">
+    <view class="avatar-section">
+      <image src="{{userInfo.avatar}}" mode="aspectFit" class="avatar-image"></image>
+      <!-- <image src="/static/user/user1.jpg" mode="aspectFit" class="avatar-image"></image> -->
+      <button bindtap="chooseAndUploadAvatar">更换头像</button>
+    </view>
+    <view class="input-section">
+      <view class="input-item">
+        <text class="label">昵 称</text>
+        <input bindinput="onNicknameInput" value="{{userInfo.nickName}}" class="input-field"/>
+      </view>
+      <view class="input-item">
+        <text class="label">邮 箱</text>
+        <input bindinput="onEmailAddressInput" value="{{userInfo.email}}" class="input-field"/>
+      </view>
+      <view class="input-item">
+        <text class="label">手机号</text>
+        <input bindinput="onPhoneInput" value="{{userInfo.phone}}" class="input-field"/>
+      </view>
+      <view class="input-item">
+        <text class="label">简 介</text>
+        <textarea bindinput="onIntroductionInput" value="{{introduction}}" class="input-field textarea-field"></textarea>
+      </view>
+    </view>
+    <button bindtap="saveUserInfo" class="save-button">保存</button>
+  </view>
+</view>

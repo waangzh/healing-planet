@@ -1,0 +1,69 @@
+<!--pages/user/user.wxml-->
+<view class="page-container">
+  <view class="header">
+    <image class="avatar" src="{{userInfo.avatar}}" mode="aspectFill"></image>
+    <text class="username">{{ userInfo.nickName }}</text>
+  </view>
+  
+  <view class="section">
+    <!-- 基本信息 -->
+    <view class="item">
+      <image src="/static/user_info.png" class="info_pic" mode="widthFix"/>
+      <view class="title" style="width: 145rpx; display: block; box-sizing: border-box">基本信息</view>
+      <view class="content" style="margin-left: 120rpx;">
+        <view class="item">
+          <view class="label">用户名：</view>
+          <view class="value">{{ userInfo.username }}</view>
+        </view>
+        <view class="item">
+          <view class="label">手机号：</view>
+          <view class="value">{{ userInfo.phone }}</view>
+        </view>
+        <view class="item">
+          <view class="label">邮箱：</view>
+          <view class="value">{{ userInfo.email }}</view>
+        </view>
+      </view>
+    </view>
+    <!-- 安全设置 -->
+    <view class="item">
+      <image src="/static/security.png" class="info_pic" mode="widthFix"/>
+      <view class="title">安全设置</view>
+      <view class="content">
+        <view class="item_detail" style="border: none;">
+          <navigator url="/UserPages/password/password" hover-class=" " class="label">修改密码</navigator>
+        </view>
+      </view>
+    </view>
+    <!-- 账户设置 -->
+    <view class="item">
+      <image src="/static/account.png" mode="aspectFit" style="margin-left: 2rpx;" class="info_pic"/>
+      <view class="title">账户设置</view>
+      <view class="content">
+        <view class="item_detail" style="border: none;">
+          <navigator url="/UserPages/edit/edit" hover-class=" " class="label">编辑资料</navigator>
+        </view>
+      </view>
+    </view>
+     <!-- 联系客服 -->
+     <view class="item">
+      <image src="/static/kefu.png" mode="aspectFit" style="margin-left: 2rpx;" class="info_pic"/>
+      <view class="title">联系客服</view>
+      <view class="content">
+        <view class="item_detail" style="border: none;background-color: #FEFEFE">
+         <image src="/static/left.png" style="width: 50rpx; margin-left: 70rpx;" mode="widthFix"/>
+        </view>
+      </view>
+    </view>
+     <!-- 关于我们 -->
+     <view class="item">
+      <image src="/static/about.png" mode="widthFix" style="margin-left: 2rpx;" class="info_pic"/>
+      <view class="title">关于我们</view>
+      <view class="content">
+        <view class="item_detail" style="border: none;background-color: #FEFEFE">
+         <image src="/static/left.png" style="width: 50rpx; margin-left: 69.5rpx;" mode="widthFix"/>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

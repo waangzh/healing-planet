@@ -1,0 +1,84 @@
+/* pages/user/user.wxss */
+.page-container {
+  box-sizing: border-box;
+  min-height: 100vh;
+  height: 100%;
+  background-color: #F2F2F2;
+  padding: 10rpx;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding:30rpx;
+  padding-bottom: 0;
+  height: 300rpx;
+}
+
+.avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  margin-right: 30rpx;
+}
+
+.username {
+  font-size: 36rpx;
+  font-weight: bold;
+}
+
+.section {
+  border: 1rpx solid rgb(221, 214, 214);
+  border-radius: 10rpx;
+  padding: 20rpx;
+  margin:20rpx;
+  margin-top: 0;
+  background-color: #FEFEFE;
+}
+
+.item {
+  display: flex;
+  /* justify-content:; */
+  align-items: center;
+  margin-bottom: 20rpx;
+  border-bottom: 1rpx solid rgb(233, 226, 226);
+  padding-bottom: 20rpx;
+}
+.item_detail{
+  margin-left: 120rpx;
+  background-color: rgb(59, 241, 129);
+  padding: 16rpx;
+  border-radius: 20rpx;
+}
+.info_pic{
+  width: 50rpx;
+  height: 50rpx;
+}
+.title {
+  font-size: 32rpx;
+  font-weight: bold;
+  margin-bottom: 10rpx;
+  margin-left: 10rpx;
+  margin-top: 10rpx;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  margin-left: 190rpx;
+}
+
+.label {
+  font-size: 28rpx;
+}
+
+.value {
+  font-size: 28rpx;
+  color: #666;
+}
+
+.nav {
+  text-decoration: none;
+  color: #308530;
+  font-size: 28rpx;
+}

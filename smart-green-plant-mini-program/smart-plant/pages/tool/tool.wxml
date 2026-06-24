@@ -1,0 +1,14 @@
+<view class="tool-container" >
+  <view class="card" bindtap="goToAIDialog">
+    <image class="card-image" src="https://smart-plant.oss-cn-hangzhou.aliyuncs.com/90b09563-76ef-41bf-ace0-4db78d80acf1.png" mode="aspectFill" />
+    <view class="card-title">小绿助手</view>
+    <view class="card-desc">智能问答、种植帮手</view>
+  </view>
+
+  <view class="card" bindtap="goToPlantIdentify">
+    <image class="card-image" src="https://smart-plant.oss-cn-hangzhou.aliyuncs.com/c07e4de9-14d0-4850-8adf-3390dea35fc8.png" mode="aspectFill" />
+    <view class="card-title">智能诊断</view>
+    <view class="card-desc">拍照智能诊断植物健康状况</view>
+  </view>
+  
+</view>

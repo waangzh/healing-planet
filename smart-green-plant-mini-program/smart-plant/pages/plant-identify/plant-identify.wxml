@@ -1,0 +1,35 @@
+<view class="container">
+	<!-- 标题 -->
+	<view class="title">🌿 植物识别</view>
+	<!-- 上传按钮 -->
+	<button class="upload-btn" bindtap="chooseImage" loading="{{loading}}" disabled="{{loading}}" hover-class="btn-hover">
+		{{ loading ? "识别中..." : "📷 上传/拍照识别" }}
+	</button>
+	<!-- 图片预览 -->
+	<view wx:if="{{imagePath && !markdown}}" class="preview-container">
+		<image class="preview" src="{{imagePath}}" mode="aspectFit" />
+		<view class="preview-tip">识别图片预览</view>
+	</view>
+	<!-- 识别结果弹窗 -->
+	<view wx:if="{{markdown}}" class="result-popup">
+		<view class="popup-header">
+			<view class="popup-title">植物识别结果</view>
+			<view class="popup-close" bindtap="closeResult">×</view>
+		</view>
+		<view class="popup-content">
+			<!-- 图片预览 -->
+			<view class="popup-image-container">
+				<image class="popup-image" src="{{imagePath}}" mode="aspectFit" />
+			</view>
+			<!-- 结果内容 -->
+			<scroll-view class="scroll-result" scroll-y="true">
+				<rich-text class=" result-content" nodes="{{htmlNodes}}"></rich-text>
+			</scroll-view>
+		</view>
+	</view>
+	<!-- 加载状态 -->
+	<view wx:if="{{loading}}" class="loading">
+		<view class="loading-spinner"></view>
+		<text>正在分析植物特征...</text>
+	</view>
+</view>

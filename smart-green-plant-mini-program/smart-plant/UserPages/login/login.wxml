@@ -1,0 +1,33 @@
+<view class="page-container">
+  <view class="login-card">
+    <view class="header">
+      <view class="title">账号密码登录</view>
+      <view class="subtitle">使用已有账号安全登录智能花盆</view>
+    </view>
+
+    <view class="input-group">
+      <image src="/static/user.png" mode="aspectFit" class="login-icon" />
+      <input
+        class="text-input"
+        placeholder="请输入用户名"
+        bindinput="inputUserName"
+        type="text"
+        name="userName"
+      />
+    </view>
+
+    <view class="input-group">
+      <image src="/static/password.png" mode="aspectFit" class="login-icon" />
+      <input
+        class="text-input"
+        placeholder="请输入登录密码"
+        bindinput="inputPassword"
+        type="text"
+        password="true"
+        name="password"
+      />
+    </view>
+
+    <button class="btn-login" bindtap="login" type="primary">登录</button>
+  </view>
+</view>
