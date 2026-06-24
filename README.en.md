@@ -62,6 +62,10 @@ IoT-focused backend for smart plant pots:
 
 The API base URL is configured via `utils/config.js` (copy from `utils/config.example.js` and fill in your server address). The `project.config.json` and `utils/config.js` are gitignored to avoid committing credentials.
 
+## System Architecture
+
+![System Architecture](docs/arc.png)
+
 ## Tech Stack Highlights
 
 | Category | Technologies |

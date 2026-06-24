@@ -155,49 +155,7 @@
 
 ## 系统架构
 
-```text
-用户浏览器
-├── green-oasis-community        # 绿洲社区前台
-├── smart-green-plant-website    # 智能养植网站
-└── Sprout-Admin                 # 管理后台
-        │
-        ├──── HTTP / SSE / WebSocket ────►
-        │
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│ Spring Boot 后端                                         │
-│                                                          │
-│ healing-planet-sys (端口 8000)                           │
-│ ├── service            # 启动模块、Controller、Service   │
-│ ├── websocket-server   # WebSocket 私信通信              │
-│ ├── common             # 公共配置、工具类、异常处理       │
-│ └── pojo               # Entity、DTO、VO、Query 对象     │
-│         │                                                │
-│         ├── MySQL（green_community 库）                   │
-│         ├── Redis（缓存）                                 │
-│         ├── 阿里云 OSS（文件上传）                        │
-│         ├── 百度 AI（对话、植物识别）                     │
-│         └── RabbitMQ（消息队列配置预留）                  │
-│                                                          │
-│ ─────────── 数据互通 (REST API) ───────────               │
-│                                                          │
-│ smart_green_plant (端口 8070)                             │
-│ ├── controller    # 设备、环境数据、病害检测、天气等接口  │
-│ ├── service       # 业务逻辑、自动控制、预警监测          │
-│ ├── mapper        # MyBatis Mapper                       │
-│ ├── mcp           # MCP 协议端点 + 小智 MCP 桥接         │
-│ └── utils         # AMQP 客户端、百度 AI、邮件、OSS      │
-│         │                                                │
-│         ├── MySQL（smart_agriculture 库）                 │
-│         ├── Redis（缓存）                                 │
-│         ├── 阿里云 IoT 平台（AMQP 消息 + HTTP API）       │
-│         ├── 阿里云 OSS（检测图片上传）                    │
-│         ├── 百度 AI（多模态病害分析、养护建议）           │
-│         ├── 和风天气 API（天气预报）                      │
-│         ├── QQ 邮箱 SMTP（设备预警邮件）                  │
-│         └── 小智 MCP 平台（远程 AI Agent 桥接）          │
-└─────────────────────────────────────────────────────────┘
-```
+![系统架构图](docs/arc.png)
 
 ## 项目结构
 
