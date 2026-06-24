@@ -13,6 +13,7 @@
 * 社区前台：面向普通用户的绿植社区 Web 端。
 * 社区管理后台：面向管理员的用户管理、内容管理、标签管理、植物管理、公告管理等页面。
 * 智能养植网站：面向智能花盆/设备管理场景的 Web 端，包括首页、设备控制、AI、历史数据、用户中心、植物管理等页面。
+* 微信小程序：智能绿植小程序，提供环境监测仪表盘、设备控制、AI 助手、植物识别、用户中心等功能，支持微信一键登录与账号密码登录。
 
 ## 核心功能
 
@@ -86,6 +87,16 @@
 * 小智 MCP 桥接：连接小智 MCP 平台，实现远程 AI Agent 透明代理控制
 * 社区数据互通：通过 `/shared/data` 和 `/shared/deviceBind` 接口与社区后端联动，支持传感数据驱动的 AI 文章撰写与设备绑定
 
+### 8. 微信小程序
+
+* 登录：协议勾选确认、微信一键登录（wx.login）、账号密码登录
+* 首页仪表盘：实时环境监测（温度、空气湿度、土壤湿度、CO2 浓度、光照强度），ECharts 七天趋势折线图（温度/湿度、光照、CO2、土壤四种数据视图切换），和风天气实时天气与三天预报
+* 设备控制：ESP8266 设备在线/离线状态监控，风扇/水泵/补光灯手动开关控制，温度/湿度/CO2/光照阈值范围设置与保存，阈值自动控制开关
+* AI 助手：植物养护场景对话，自定义 Markdown 解析渲染回复，本地消息缓存
+* 植物识别：拍照或相册上传，对接后端植物识别接口，Markdown 渲染识别结果与养护建议
+* 用户中心：用户信息展示，头像/昵称/邮箱/手机号编辑，密码修改
+* 配置管理：通过 `utils/config.js` 配置 API 基础地址（`config.example.js` 模板可供参考复制）
+
 ## 技术栈
 
 ### 后端
@@ -131,6 +142,16 @@
 | WangEditor            | 富文本编辑       |
 | Markdown-it / marked  | Markdown 渲染 |
 | Sass / SCSS           | 样式开发        |
+
+### 小程序
+
+| 技术                     | 说明          |
+| ---------------------- | ----------- |
+| 微信小程序原生框架      | 小程序基础框架，glass-easel 组件框架 |
+| ECharts (ec-canvas)    | 环境数据七天趋势折线图渲染 |
+| 自定义 Markdown 解析    | AI 回复 Markdown 转 HTML 渲染 |
+| wx.request / wx.uploadFile | HTTP 网络请求与图片上传，token 鉴权 |
+| 原生 TabBar + 分包      | 首页/设备/工具/我的 四个 Tab，UserPages 分包加载 |
 
 ## 系统架构
 
@@ -272,6 +293,32 @@ healing-planet/
 │           ├── router/        # 后台路由
 │           ├── stores/        # 管理员状态
 │           └── views/         # 管理后台页面
+├── smart-green-plant-mini-program/  # 微信小程序
+│   ├── README.md
+│   ├── images/                      # 小程序截图
+│   ├── project.config.example.json  # 项目配置模板
+│   ├── .gitignore                   # 忽略 config.js 等敏感文件
+│   └── smart-plant/
+│       ├── app.js                   # 小程序入口与全局数据
+│       ├── app.json                 # 页面路由、TabBar、分包、窗口配置
+│       ├── pages/
+│       │   ├── index/               # 首页仪表盘（ECharts + 天气）
+│       │   ├── device/              # 设备控制（开关 + 阈值设置）
+│       │   ├── ai/                  # AI 助手对话
+│       │   ├── tool/                # 工具箱导航
+│       │   ├── plant-identify/      # 植物识别（上传 + 结果展示）
+│       │   ├── login/               # 登录页（微信一键登录）
+│       │   └── user/                # 用户中心
+│       ├── UserPages/               # 分包
+│       │   ├── edit/                # 个人信息编辑
+│       │   ├── login/               # 账号密码登录
+│       │   └── password/            # 密码修改
+│       ├── ec-canvas/               # ECharts 微信小程序组件
+│       ├── utils/
+│       │   ├── config.example.js   # API 地址配置模板
+│       │   ├── markdown.js         # Markdown 转 HTML
+│       │   └── util.js             # 时间格式化
+│       └── static/                  # 图标、天气 SVG 等静态资源
 └── 原型图/
     ├── 小程序原型图.rp          # 微信小程序原型设计
     ├── 控制平台.rp              # 设备控制平台原型设计

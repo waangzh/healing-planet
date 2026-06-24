@@ -7,7 +7,8 @@
 Healing Planet is a full-stack system consisting of:
 
 - **2 Spring Boot backends** — community services (port 8000) + IoT device control (port 8070)
-- **3 Vue 3 frontends** — community portal, plant dashboard, admin panel
+- **3 Vue 3 web frontends** — community portal, plant dashboard, admin panel
+- **1 WeChat Mini Program** — environmental monitoring, device control, AI assistant, plant identification
 - **MCP protocol support** — AI agent integration for smart plant pot control
 
 ## Backend Services
@@ -16,14 +17,15 @@ Healing Planet is a full-stack system consisting of:
 
 Community-focused backend providing:
 
-- User registration, login, profile management
-- Post publishing, comments, likes, bookmarks, follows
-- Private messaging via WebSocket (`/chat/{userId}`)
+- User registration, login (with captcha), profile management
+- Post publishing, editing, deletion; comments, likes, bookmarks, follows
+- Tag-based search, browse history
+- Private messaging via WebSocket (`/chat/{userId}`) with read/unread status
 - Plant encyclopedia with Redis caching
-- "Xiao Lv" AI chat assistant (Baidu AI + SSE streaming)
+- "Xiao Lv" AI chat assistant (Baidu AI + SSE streaming + Markdown rendering)
 - File upload (Alibaba Cloud OSS)
-- Admin panel (user/content/tag/plant/billboard management)
-- JWT authentication, captcha, global exception handling
+- Admin panel (user/content/tag/plant/billboard management; extensible)
+- JWT authentication, global exception handling, CORS
 
 ### smart_green_plant (Port 8070)
 
@@ -47,6 +49,18 @@ IoT-focused backend for smart plant pots:
 | green-oasis-community | Community portal for plant lovers | Vue 3 + Vite + Element Plus + Pinia |
 | smart-green-plant-website | Smart plant device dashboard | Vue 3 + Vite + Element Plus + Pinia + ECharts |
 | Sprout-Admin | Admin management panel | Vue 3 + Vite + Element Plus + Pinia |
+| smart-green-plant-mini-program | WeChat Mini Program for plant monitoring & control | WeChat native + ECharts (ec-canvas) + custom Markdown parser |
+
+## Mini Program
+
+| Tab | Features |
+|---|---|
+| Dashboard | Real-time environmental data (temperature, humidity, soil moisture, CO2, light), 7-day ECharts trend charts, HeFeng weather (current + 3-day forecast) |
+| Device Control | ESP8266 status monitoring, manual fan/pump/light switches, configurable threshold ranges (temperature, soil moisture, CO2, light) with auto-control toggle |
+| Tools | AI chat assistant with Markdown rendering + local message cache; plant identification via photo upload |
+| User Center | WeChat one-tap login, account/password login, profile editing (avatar, nickname, email, phone), password change |
+
+The API base URL is configured via `utils/config.js` (copy from `utils/config.example.js` and fill in your server address). The `project.config.json` and `utils/config.js` are gitignored to avoid committing credentials.
 
 ## Tech Stack Highlights
 
@@ -61,6 +75,7 @@ IoT-focused backend for smart plant pots:
 | AI | Baidu AI (ERNIE Bot, multimodal), custom disease detection model |
 | IoT | Alibaba Cloud IoT SDK, Apache Qpid JMS (AMQP), MCP protocol |
 | Storage | Alibaba Cloud OSS |
+| Mini Program | WeChat Native Framework (glass-easel), ECharts (ec-canvas), custom Markdown parser |
 | Build | Maven (multi-module for healing-planet-sys) |
 
 ## Quick Start
@@ -109,6 +124,20 @@ cd VUE前端/smart-green-plant-website && npm install && npm run dev
 # Admin panel
 cd VUE前端/Sprout-Admin && npm install && npm run dev
 ```
+
+### Setup Mini Program
+
+```bash
+cd smart-green-plant-mini-program
+# Copy and edit project config
+cp project.config.example.json project.config.json
+# Fill in your WeChat appid
+
+# Copy and edit API config
+cp smart-plant/utils/config.example.js smart-plant/utils/config.js
+# Fill in your backend URLs
+```
+Then open with WeChat DevTools: **File -> Open Project -> select `smart-green-plant-mini-program/`**.
 
 For detailed configuration (API keys, OSS credentials, IoT setup), see the [Chinese README](README.md).
 
