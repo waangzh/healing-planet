@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Configuration ###
+*.yaml
+!*.example.yaml
+*.yml
+!*.example.yml
