@@ -1,0 +1,57 @@
+server:
+  port: ${AI_SERVER_PORT:8010}
+  shutdown: graceful
+
+spring:
+  application:
+    name: healing-planet-ai
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${COMMUNITY_DB_URL:jdbc:mysql://localhost:3306/green_community?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${COMMUNITY_DB_USERNAME:root}
+    password: ${COMMUNITY_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+      read-only: true
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:change-me}
+      base-url: ${LLM_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${LLM_MODEL:gpt-4.1-mini}
+          temperature: 0.1
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL:http://localhost:8081}
+        api-key: ${EMBEDDING_API_KEY:not-required}
+        options:
+          model: ${EMBEDDING_MODEL:BAAI/bge-m3}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  rag:
+    dense-top-k: ${RAG_DENSE_TOP_K:30}
+    sparse-top-k: ${RAG_SPARSE_TOP_K:30}
+    final-top-k: ${RAG_FINAL_TOP_K:6}
+    similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.25}
+    data-directory: ${RAG_DATA_DIRECTORY:data/rag}
+    internal-api-key: ${RAG_INTERNAL_API_KEY:}
+    qdrant:
+      host: ${QDRANT_HOST:localhost}
+      port: ${QDRANT_GRPC_PORT:6334}
+      tls: ${QDRANT_TLS:false}
+      api-key: ${QDRANT_API_KEY:}
+      plant-collection: ${QDRANT_PLANT_COLLECTION:plant_knowledge}
+      community-collection: ${QDRANT_COMMUNITY_COLLECTION:community_knowledge}
+      initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
+    reranker:
+      enabled: ${RERANKER_ENABLED:false}
+      base-url: ${RERANKER_BASE_URL:http://localhost:8082}
+      path: ${RERANKER_PATH:/rerank}
+      api-key: ${RERANKER_API_KEY:}
+      model: ${RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
