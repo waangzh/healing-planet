@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.example.demos.web.pojo.entity.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
-import org.omg.PortableInterceptor.INACTIVE;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;

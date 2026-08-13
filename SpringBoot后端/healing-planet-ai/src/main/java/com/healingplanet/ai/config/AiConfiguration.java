@@ -10,7 +10,11 @@ import org.springframework.ai.vectorstore.qdrant.QdrantVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
 
 @Configuration
 public class AiConfiguration {
@@ -53,6 +57,20 @@ public class AiConfiguration {
         RestClient.Builder builder = RestClient.builder().baseUrl(properties.getReranker().getBaseUrl());
         if (properties.getReranker().getApiKey() != null && !properties.getReranker().getApiKey().isBlank()) {
             builder.defaultHeader("Authorization", "Bearer " + properties.getReranker().getApiKey());
+        }
+        return builder.build();
+    }
+
+    @Bean("plantStateRestClient")
+    RestClient plantStateRestClient(RagProperties properties) {
+        var state = properties.getPlantState();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(state.getConnectTimeoutMillis())).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofMillis(state.getReadTimeoutMillis()));
+        RestClient.Builder builder = RestClient.builder().baseUrl(state.getBaseUrl()).requestFactory(requestFactory);
+        if (state.getApiKey() != null && !state.getApiKey().isBlank()) {
+            builder.defaultHeader("X-Internal-Api-Key", state.getApiKey());
         }
         return builder.build();
     }

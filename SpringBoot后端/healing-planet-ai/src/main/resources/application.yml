@@ -55,3 +55,8 @@ app:
       path: ${RERANKER_PATH:/rerank}
       api-key: ${RERANKER_API_KEY:}
       model: ${RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
+    plant-state:
+      base-url: ${PLANT_STATE_BASE_URL:http://localhost:8070}
+      api-key: ${PLANT_STATE_API_KEY:}
+      connect-timeout-millis: ${PLANT_STATE_CONNECT_TIMEOUT_MILLIS:1000}
+      read-timeout-millis: ${PLANT_STATE_READ_TIMEOUT_MILLIS:3000}

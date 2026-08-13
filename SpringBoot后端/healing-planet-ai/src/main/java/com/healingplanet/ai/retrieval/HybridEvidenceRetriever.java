@@ -41,12 +41,19 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     @Override
     public List<Evidence> retrieve(RagQuery query) {
         List<RetrievalCandidate> fused = new ArrayList<>();
-        if (query.intent() != QueryIntent.COMMUNITY_SEARCH) {
+        boolean includePlant = booleanContext(query, "includePlantKnowledge", query.intent() != QueryIntent.COMMUNITY_SEARCH);
+        boolean includeCommunity = booleanContext(query, "includeCommunity", true);
+        if (includePlant) {
             fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore));
         }
-        fused.addAll(retrieveSource(query.query(), KnowledgeSource.COMMUNITY, communityStore));
+        if (includeCommunity) fused.addAll(retrieveSource(query.query(), KnowledgeSource.COMMUNITY, communityStore));
         Map<String, Double> rerankScores = reranker.rerank(query.query(), fused);
         return ranker.rank(query, fused, rerankScores, properties.getFinalTopK());
+    }
+
+    private boolean booleanContext(RagQuery query, String key, boolean defaultValue) {
+        Object value = query.context().get(key);
+        return value instanceof Boolean bool ? bool : defaultValue;
     }
 
     private List<RetrievalCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store) {

@@ -56,6 +56,8 @@ iot:
         host: <your-iot-instance-id>.amqp.iothub.aliyuncs.com
         productKey: <your-product-key>
 plant:
+    internal-api:
+        key: <use-the-same-random-key-as-healing-planet-ai>
     jwt:
         # 设置jwt签名加密时使用的秘钥
         admin-secret-key: <your-admin-secret>

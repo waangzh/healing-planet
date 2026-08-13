@@ -15,6 +15,7 @@ public class RagProperties {
     private Path dataDirectory = Path.of("data", "rag");
     private final Qdrant qdrant = new Qdrant();
     private final Reranker reranker = new Reranker();
+    private final PlantState plantState = new PlantState();
 
     public int getDenseTopK() { return denseTopK; }
     public void setDenseTopK(int denseTopK) { this.denseTopK = denseTopK; }
@@ -30,6 +31,23 @@ public class RagProperties {
     public void setDataDirectory(Path dataDirectory) { this.dataDirectory = dataDirectory; }
     public Qdrant getQdrant() { return qdrant; }
     public Reranker getReranker() { return reranker; }
+    public PlantState getPlantState() { return plantState; }
+
+    public static class PlantState {
+        private String baseUrl = "http://localhost:8070";
+        private String apiKey = "";
+        private int connectTimeoutMillis = 1000;
+        private int readTimeoutMillis = 3000;
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public int getConnectTimeoutMillis() { return connectTimeoutMillis; }
+        public void setConnectTimeoutMillis(int connectTimeoutMillis) { this.connectTimeoutMillis = connectTimeoutMillis; }
+        public int getReadTimeoutMillis() { return readTimeoutMillis; }
+        public void setReadTimeoutMillis(int readTimeoutMillis) { this.readTimeoutMillis = readTimeoutMillis; }
+    }
 
     public static class Qdrant {
         private String host = "localhost";

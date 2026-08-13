@@ -28,6 +28,7 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
                 .addPathPatterns("/**")
                 .excludePathPatterns("/user/login")
                 .excludePathPatterns("/shared/**")
+                .excludePathPatterns("/internal/**")
                 .excludePathPatterns("/user/register")
                 .excludePathPatterns("/user/key")
                 .excludePathPatterns("/common/getCaptcha");

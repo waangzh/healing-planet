@@ -1,6 +1,6 @@
-# Healing Planet AI：Knowledge-Aware RAG
+# Healing Planet AI：State-Aware RAG
 
-独立的 JDK 17 / Spring Boot 3.5 / Spring AI 服务。第一阶段只使用 Healing Planet 的植物养护知识和已发布社区内容，不读取 IoT 状态，也不执行设备操作。
+独立的 JDK 17 / Spring Boot 3.5 / Spring AI 服务。在第一阶段知识检索之上，第二阶段按需读取 `smart_green_plant` 的实时与历史聚合状态；状态数据不进入 Qdrant，也不执行设备操作。
 
 ## 第一阶段能力
 
@@ -12,6 +12,16 @@
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用；
 - 全量索引、植物索引、社区索引、单帖子更新与删除；
 - 社区内容以 `UNTRUSTED_COMMUNITY_CONTENT` 注入，不能覆盖系统指令。
+
+## 第二阶段能力
+
+- 规则型 Query Router 区分普通养护、社区检索和个体化状态问题；调用方也可显式传 `intent`；
+- `GET /internal/plant-state/{plantInstanceId}` 聚合最新读数、近 24 小时/7 天统计与趋势、设备阈值；
+- AI 服务使用有限超时的内部 HTTP 客户端按需拉取，不把瞬时状态写入向量库；
+- `PlantStateAnalyzer` 将原始指标确定性转换为 `LIVE_STATE` 与 `SENSOR_HISTORY` Evidence；
+- 个体化问题同时路由到植物知识与状态数据，植物名称会增强知识检索；
+- 状态证据与可信知识、非可信社区内容分区注入，并携带采集时间与陈旧标记；
+- `userId + plantInstanceId` 必填，IoT 服务再次校验实例归属；状态不可用时只做知识降级并明确证据不足。
 
 ## 运行依赖
 
@@ -32,6 +42,15 @@
 ```bash
 mvn spring-boot:run
 ```
+
+第二阶段还需在两个服务配置同一个随机内部密钥：
+
+```text
+healing-planet-ai: PLANT_STATE_API_KEY
+smart_green_plant: PLANT_INTERNAL_API_KEY
+```
+
+生产环境应由已认证的业务后端或网关填写可信 `userId`，不要直接信任匿名客户端自报身份。
 
 首次启动会在 embedding 模型返回向量维度后创建 Qdrant collection。模型维度变更时应使用新 collection 名称或手动迁移，不能直接复用原 collection。
 
@@ -54,8 +73,11 @@ curl -X POST http://localhost:8010/internal/index/full \
 
 ```json
 {
-  "query": "绿萝为什么会黄叶？",
-  "canonicalPlantId": "可选的 plants.id"
+  "query": "我的绿萝今天需要浇水吗？",
+  "userId": 7,
+  "plantInstanceId": 102,
+  "canonicalPlantId": "可选的 plants.id",
+  "intent": "可选；PERSONAL_CARE / GENERAL_CARE / COMMUNITY_SEARCH"
 }
 ```
 
@@ -89,4 +111,4 @@ curl -X POST http://localhost:8010/internal/index/full \
 mvn test
 ```
 
-单元测试只覆盖第一阶段的关键纯逻辑：语义文档转换、RRF 融合和社区提示注入隔离。外部 MySQL、Qdrant、embedding、reranker 与 LLM 的连通性由部署环境健康检查负责。
+单元测试只覆盖关键纯逻辑：语义文档转换、RRF 融合、路由、状态分析和提示注入隔离。外部 MySQL、Qdrant、IoT、embedding、reranker 与 LLM 的连通性由部署环境健康检查负责。
