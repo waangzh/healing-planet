@@ -37,6 +37,9 @@ public class PlantStateAnalyzer {
         Map<String, Object> historyMetadata = new LinkedHashMap<>(common);
         historyMetadata.put("last24hSamples", samples(state.last24h()));
         historyMetadata.put("last7dSamples", samples(state.last7d()));
+        putMetrics(historyMetadata, "current", state.current());
+        putMetrics(historyMetadata, "last24hAverage", state.last24h() == null ? null : state.last24h().average());
+        putMetrics(historyMetadata, "last7dAverage", state.last7d() == null ? null : state.last7d().average());
         Evidence history = evidence("state:history:" + state.plantInstanceId(), EvidenceType.SENSOR_HISTORY,
                 "植物环境趋势", historyContent(state), historyMetadata, observedAt, 0.95);
         return List.of(live, history);
@@ -115,4 +118,12 @@ public class PlantStateAnalyzer {
     private String value(Double value) { return value == null ? "无数据" : String.format(Locale.ROOT, "%.2f", value); }
     private String blank(String value) { return value == null || value.isBlank() ? "未知" : value; }
     private void put(Map<String, Object> map, String key, Object value) { if (value != null) map.put(key, value); }
+    private void putMetrics(Map<String, Object> map, String prefix, PlantState.SensorMetrics metrics) {
+        if (metrics == null) return;
+        put(map, prefix + ".temperature", metrics.temperature());
+        put(map, prefix + ".humidity", metrics.humidity());
+        put(map, prefix + ".soilMoisture", metrics.soilMoisture());
+        put(map, prefix + ".lightIntensity", metrics.lightIntensity());
+        put(map, prefix + ".co2", metrics.co2());
+    }
 }

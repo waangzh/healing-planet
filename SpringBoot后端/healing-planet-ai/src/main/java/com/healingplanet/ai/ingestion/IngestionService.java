@@ -22,23 +22,33 @@ public class IngestionService {
     private final SparseIndexService sparseIndex;
     private final VectorStore plantVectorStore;
     private final VectorStore communityVectorStore;
+    private final VectorStore diseaseVectorStore;
+    private final DiseaseKnowledgeRepository diseaseRepository;
+    private final DiseaseKnowledgeConverter diseaseConverter;
 
     public IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
                             SparseIndexService sparseIndex,
                             @Qualifier("plantVectorStore") VectorStore plantVectorStore,
-                            @Qualifier("communityVectorStore") VectorStore communityVectorStore) {
+                            @Qualifier("communityVectorStore") VectorStore communityVectorStore,
+                            @Qualifier("diseaseVectorStore") VectorStore diseaseVectorStore,
+                            DiseaseKnowledgeRepository diseaseRepository,
+                            DiseaseKnowledgeConverter diseaseConverter) {
         this.repository = repository;
         this.converter = converter;
         this.sparseIndex = sparseIndex;
         this.plantVectorStore = plantVectorStore;
         this.communityVectorStore = communityVectorStore;
+        this.diseaseVectorStore = diseaseVectorStore;
+        this.diseaseRepository = diseaseRepository;
+        this.diseaseConverter = diseaseConverter;
     }
 
     public IndexReport fullIndex() {
         IndexReport plant = indexPlants();
         IndexReport community = indexCommunity();
-        return new IndexReport(plant.plantDocuments(), community.communityDocuments(),
-                plant.deletedDocuments() + community.deletedDocuments());
+        IndexReport disease = indexDiseases();
+        return new IndexReport(plant.plantDocuments(), community.communityDocuments(), disease.diseaseDocuments(),
+                plant.deletedDocuments() + community.deletedDocuments() + disease.deletedDocuments());
     }
 
     public IndexReport indexPlants() {
@@ -53,6 +63,29 @@ public class IngestionService {
                 .flatMap(row -> converter.fromPost(row).stream()).toList();
         int deleted = replace(KnowledgeSource.COMMUNITY, documents, communityVectorStore);
         return IndexReport.community(documents.size(), deleted);
+    }
+
+    public IndexReport indexDiseases() {
+        List<KnowledgeDocument> documents = diseaseRepository.findAll().stream()
+                .map(diseaseConverter::convert).toList();
+        int deleted = replace(KnowledgeSource.DISEASE, documents, diseaseVectorStore);
+        return IndexReport.disease(documents.size(), deleted);
+    }
+
+    public IndexReport indexDisease(String diseaseId) {
+        Set<String> oldIds = sparseIndex.idsBySourceId(KnowledgeSource.DISEASE, diseaseId);
+        DiseaseKnowledgeRepository.DiseaseRow row = diseaseRepository.findById(diseaseId);
+        if (row == null) {
+            deleteIds(KnowledgeSource.DISEASE, oldIds, diseaseVectorStore);
+            return IndexReport.disease(0, oldIds.size());
+        }
+        KnowledgeDocument document = diseaseConverter.convert(row);
+        Set<String> staleIds = new HashSet<>(oldIds);
+        staleIds.remove(document.id());
+        deleteIds(KnowledgeSource.DISEASE, staleIds, diseaseVectorStore);
+        diseaseVectorStore.add(toSpringDocuments(List.of(document)));
+        sparseIndex.upsert(document);
+        return IndexReport.disease(1, staleIds.size());
     }
 
     public IndexReport indexPost(String postId) {

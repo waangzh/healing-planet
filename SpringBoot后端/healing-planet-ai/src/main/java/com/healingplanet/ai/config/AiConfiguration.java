@@ -39,6 +39,11 @@ public class AiConfiguration {
         return vectorStore(client, embeddingModel, properties.getQdrant().getCommunityCollection(), properties);
     }
 
+    @Bean("diseaseVectorStore")
+    VectorStore diseaseVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getDiseaseCollection(), properties);
+    }
+
     private VectorStore vectorStore(QdrantClient client, EmbeddingModel embeddingModel,
                                     String collection, RagProperties properties) {
         return QdrantVectorStore.builder(client, embeddingModel)
@@ -73,5 +78,15 @@ public class AiConfiguration {
             builder.defaultHeader("X-Internal-Api-Key", state.getApiKey());
         }
         return builder.build();
+    }
+
+    @Bean("diseaseDetectorRestClient")
+    RestClient diseaseDetectorRestClient(RagProperties properties) {
+        var detector = properties.getDiseaseDetector();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(detector.getConnectTimeoutMillis())).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofMillis(detector.getReadTimeoutMillis()));
+        return RestClient.builder().baseUrl(detector.getBaseUrl()).requestFactory(requestFactory).build();
     }
 }

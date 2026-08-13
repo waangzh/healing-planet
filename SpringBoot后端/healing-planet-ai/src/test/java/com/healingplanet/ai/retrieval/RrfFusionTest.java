@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +31,6 @@ class RrfFusionTest {
 
     private KnowledgeDocument document(String id) {
         return new KnowledgeDocument(id, KnowledgeSource.PLANT, id, id, id, id, "绿萝", "CARE",
-                List.of(), 1, false, 0, 0, 0, 0, Instant.EPOCH);
+                List.of(), 1, false, 0, 0, 0, 0, Instant.EPOCH, Map.of());
     }
 }

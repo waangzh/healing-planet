@@ -48,6 +48,7 @@ app:
       api-key: ${QDRANT_API_KEY:}
       plant-collection: ${QDRANT_PLANT_COLLECTION:plant_knowledge}
       community-collection: ${QDRANT_COMMUNITY_COLLECTION:community_knowledge}
+      disease-collection: ${QDRANT_DISEASE_COLLECTION:disease_knowledge}
       initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
     reranker:
       enabled: ${RERANKER_ENABLED:false}
@@ -60,3 +61,9 @@ app:
       api-key: ${PLANT_STATE_API_KEY:}
       connect-timeout-millis: ${PLANT_STATE_CONNECT_TIMEOUT_MILLIS:1000}
       read-timeout-millis: ${PLANT_STATE_READ_TIMEOUT_MILLIS:3000}
+    disease-detector:
+      base-url: ${DISEASE_DETECTOR_BASE_URL:http://localhost:5000}
+      path: ${DISEASE_DETECTOR_PATH:/classify}
+      connect-timeout-millis: ${DISEASE_DETECTOR_CONNECT_TIMEOUT_MILLIS:2000}
+      read-timeout-millis: ${DISEASE_DETECTOR_READ_TIMEOUT_MILLIS:15000}
+      max-image-bytes: ${DISEASE_DETECTOR_MAX_IMAGE_BYTES:10485760}

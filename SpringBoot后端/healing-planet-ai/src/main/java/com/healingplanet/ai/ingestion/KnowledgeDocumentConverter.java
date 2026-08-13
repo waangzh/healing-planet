@@ -41,7 +41,7 @@ public class KnowledgeDocumentConverter {
                     id("post", post.id() + ":" + i), KnowledgeSource.COMMUNITY, post.id(), safe(post.title()), content,
                     "", inferPlantName(tags), "COMMUNITY_EXPERIENCE", tags,
                     post.essence() ? 0.75 : 0.5, post.essence(), post.likes(), post.collects(),
-                    post.comments(), post.views(), post.createdAt()
+                    post.comments(), post.views(), post.createdAt(), java.util.Map.of()
             ));
         }
         return result;
@@ -58,7 +58,7 @@ public class KnowledgeDocumentConverter {
         target.add(new KnowledgeDocument(
                 id("plant", plant.id() + ":" + type + ":" + target.size()), KnowledgeSource.PLANT,
                 plant.id(), title, content, plant.id(), safe(plant.commonName()), type, List.of(topic),
-                1.0, false, 0, 0, 0, 0, Instant.EPOCH
+                1.0, false, 0, 0, 0, 0, Instant.EPOCH, java.util.Map.of()
         ));
     }
 

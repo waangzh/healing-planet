@@ -163,6 +163,7 @@ public class SparseIndexService {
         put(document, "comments", Integer.toString(source.comments()));
         put(document, "views", Integer.toString(source.views()));
         put(document, "createdAt", source.createdAt() == null ? "" : source.createdAt().toString());
+        put(document, "attributes", json(source.attributes()));
         return document;
     }
 
@@ -175,11 +176,17 @@ public class SparseIndexService {
                     Double.parseDouble(d.get("trustScore")), Boolean.parseBoolean(d.get("essence")),
                     Integer.parseInt(d.get("likes")), Integer.parseInt(d.get("collects")),
                     Integer.parseInt(d.get("comments")), Integer.parseInt(d.get("views")),
-                    d.get("createdAt").isBlank() ? null : Instant.parse(d.get("createdAt"))
+                    d.get("createdAt").isBlank() ? null : Instant.parse(d.get("createdAt")),
+                    readAttributes(d.get("attributes"))
             );
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("稀疏索引元数据损坏", e);
         }
+    }
+
+    private Map<String, String> readAttributes(String value) throws JsonProcessingException {
+        if (value == null || value.isBlank()) return Map.of();
+        return objectMapper.readValue(value, new TypeReference<>() {});
     }
 
     private void put(Document document, String name, String value) {

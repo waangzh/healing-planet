@@ -16,6 +16,7 @@ public class RagProperties {
     private final Qdrant qdrant = new Qdrant();
     private final Reranker reranker = new Reranker();
     private final PlantState plantState = new PlantState();
+    private final DiseaseDetector diseaseDetector = new DiseaseDetector();
 
     public int getDenseTopK() { return denseTopK; }
     public void setDenseTopK(int denseTopK) { this.denseTopK = denseTopK; }
@@ -32,6 +33,26 @@ public class RagProperties {
     public Qdrant getQdrant() { return qdrant; }
     public Reranker getReranker() { return reranker; }
     public PlantState getPlantState() { return plantState; }
+    public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
+
+    public static class DiseaseDetector {
+        private String baseUrl = "http://localhost:5000";
+        private String path = "/classify";
+        private int connectTimeoutMillis = 2000;
+        private int readTimeoutMillis = 15000;
+        private long maxImageBytes = 10 * 1024 * 1024;
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getPath() { return path; }
+        public void setPath(String path) { this.path = path; }
+        public int getConnectTimeoutMillis() { return connectTimeoutMillis; }
+        public void setConnectTimeoutMillis(int connectTimeoutMillis) { this.connectTimeoutMillis = connectTimeoutMillis; }
+        public int getReadTimeoutMillis() { return readTimeoutMillis; }
+        public void setReadTimeoutMillis(int readTimeoutMillis) { this.readTimeoutMillis = readTimeoutMillis; }
+        public long getMaxImageBytes() { return maxImageBytes; }
+        public void setMaxImageBytes(long maxImageBytes) { this.maxImageBytes = maxImageBytes; }
+    }
 
     public static class PlantState {
         private String baseUrl = "http://localhost:8070";
@@ -56,6 +77,7 @@ public class RagProperties {
         private String apiKey = "";
         private String plantCollection = "plant_knowledge";
         private String communityCollection = "community_knowledge";
+        private String diseaseCollection = "disease_knowledge";
         private boolean initializeSchema = true;
 
         public String getHost() { return host; }
@@ -70,6 +92,8 @@ public class RagProperties {
         public void setPlantCollection(String plantCollection) { this.plantCollection = plantCollection; }
         public String getCommunityCollection() { return communityCollection; }
         public void setCommunityCollection(String communityCollection) { this.communityCollection = communityCollection; }
+        public String getDiseaseCollection() { return diseaseCollection; }
+        public void setDiseaseCollection(String diseaseCollection) { this.diseaseCollection = diseaseCollection; }
         public boolean isInitializeSchema() { return initializeSchema; }
         public void setInitializeSchema(boolean initializeSchema) { this.initializeSchema = initializeSchema; }
     }

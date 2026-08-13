@@ -42,6 +42,19 @@ public class IndexController {
         return ingestionService.indexCommunity();
     }
 
+    @PostMapping("/diseases")
+    public IndexReport diseases(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+        authorize(apiKey);
+        return ingestionService.indexDiseases();
+    }
+
+    @PostMapping("/disease/{diseaseId}")
+    public IndexReport disease(@PathVariable String diseaseId,
+                               @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+        authorize(apiKey);
+        return ingestionService.indexDisease(diseaseId);
+    }
+
     @PostMapping("/post/{postId}")
     public IndexReport post(@PathVariable String postId,
                             @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {

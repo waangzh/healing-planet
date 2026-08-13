@@ -28,6 +28,12 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(exception.getStatusCode(), exception.getReason());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ProblemDetail illegalArgument(IllegalArgumentException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     ProblemDetail unexpected(Exception exception) {

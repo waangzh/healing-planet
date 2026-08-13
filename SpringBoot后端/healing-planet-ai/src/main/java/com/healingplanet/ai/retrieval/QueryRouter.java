@@ -19,6 +19,9 @@ public class QueryRouter {
     );
 
     public RoutingDecision route(RagQuery query) {
+        if (query.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
+            return new RoutingDecision(false, false, true, QueryIntent.DISEASE_DIAGNOSIS);
+        }
         if (query.intent() == QueryIntent.COMMUNITY_SEARCH) {
             return new RoutingDecision(false, true, false, QueryIntent.COMMUNITY_SEARCH);
         }

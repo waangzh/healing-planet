@@ -24,7 +24,7 @@ class KnowledgeDocumentMapper {
                 number(m, "trustScore").doubleValue(), bool(m, "essence"),
                 number(m, "likes").intValue(), number(m, "collects").intValue(),
                 number(m, "comments").intValue(), number(m, "views").intValue(),
-                createdAt.isBlank() ? null : Instant.parse(createdAt)
+                createdAt.isBlank() ? null : Instant.parse(createdAt), attributes(m)
         );
     }
 
@@ -43,5 +43,15 @@ class KnowledgeDocumentMapper {
     private boolean bool(Map<String, Object> metadata, String key) {
         Object value = metadata.get(key);
         return value instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private Map<String, String> attributes(Map<String, Object> metadata) {
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        for (String key : List.of("aliases", "visualSymptoms", "triggerConditions",
+                "environmentConditions", "source", "sourceLevel")) {
+            Object value = metadata.get(key);
+            if (value != null && !value.toString().isBlank()) result.put(key, value.toString());
+        }
+        return Map.copyOf(result);
     }
 }
