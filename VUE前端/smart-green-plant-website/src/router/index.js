@@ -26,7 +26,7 @@ const router = createRouter({
         },
         {
           path: '/ai',
-          component: () => import('@/views/ai/AiPage.vue')
+          component: () => import('@/views/ai/RagWorkspace.vue')
         },
         {
           path: '/history',
