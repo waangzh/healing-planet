@@ -17,6 +17,7 @@ public class RagProperties {
     private final Reranker reranker = new Reranker();
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
+    private final Attachments attachments = new Attachments();
 
     public int getDenseTopK() { return denseTopK; }
     public void setDenseTopK(int denseTopK) { this.denseTopK = denseTopK; }
@@ -34,6 +35,17 @@ public class RagProperties {
     public Reranker getReranker() { return reranker; }
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
+    public Attachments getAttachments() { return attachments; }
+
+    public static class Attachments {
+        private long ttlSeconds = 15 * 60;
+        private int maxEntries = 32;
+
+        public long getTtlSeconds() { return ttlSeconds; }
+        public void setTtlSeconds(long ttlSeconds) { this.ttlSeconds = ttlSeconds; }
+        public int getMaxEntries() { return maxEntries; }
+        public void setMaxEntries(int maxEntries) { this.maxEntries = maxEntries; }
+    }
 
     public static class DiseaseDetector {
         private String baseUrl = "http://localhost:5000";

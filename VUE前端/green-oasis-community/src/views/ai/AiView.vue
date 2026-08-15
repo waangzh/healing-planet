@@ -5,7 +5,7 @@ import MarkdownIt from 'markdown-it'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Camera, ChatDotRound, CircleCheckFilled, Close, Connection, Delete,
-  Document, Link, PictureFilled, Promotion, Search, UploadFilled, WarningFilled
+  Document, Link, Paperclip, PictureFilled, Promotion, Search, WarningFilled
 } from '@element-plus/icons-vue'
 import { useAiMessageStore, useUserStore } from '@/stores'
 import { diagnosePlant, getRagContext, ragChatStream, searchEvidence } from '@/api/rag'
@@ -52,12 +52,30 @@ const currentEvidence = ref([])
 const activeEvidence = ref(null)
 const imageFile = ref(null)
 const imagePreview = ref('')
+const imageName = ref('')
 const fileInput = ref(null)
+const cameraInput = ref(null)
+const activeAttachmentId = ref('')
+const attachmentNotice = ref('')
 let currentController = null
 
 const currentMode = computed(() => MODES.find((item) => item.value === mode.value))
 const quickQuestions = computed(() => QUICK_QUESTIONS[mode.value])
 const selectedPlant = computed(() => ragContext.value.plants?.find((plant) => plant.id === selectedPlantId.value))
+const hasImageContext = computed(() => Boolean(imageFile.value || activeAttachmentId.value))
+const ROUTE_LABELS = {
+  DISEASE_DIAGNOSIS: '叶片诊断引擎',
+  OCR: '图片文字识别',
+  GENERAL_VISION: '通用视觉问答'
+}
+const observationItems = (observation) => ([
+  ['颜色变化', observation?.colorChanges],
+  ['病斑形状和分布', observation?.lesionShapeAndDistribution],
+  ['叶缘 / 叶脉', observation?.leafEdgeAndVein],
+  ['可见虫体', observation?.visiblePests],
+  ['照片质量', observation?.imageQuality],
+  ['不确定性', observation?.uncertainty]
+]).filter(([, value]) => value)
 const evidenceMeta = (type) => EVIDENCE_META[type] || { label: '补充来源', tone: 'neutral', icon: Document }
 const renderMarkdown = (text = '') => md.render(text)
 const sourceTitle = (evidence) => evidence.title || evidence.metadata?.plantName || evidence.sourceType || '未命名来源'
@@ -96,13 +114,18 @@ const loadMessages = () => {
     from: message.from,
     rawText: message.rawText || message.text || '',
     evidence: message.evidence || [],
-    mode: message.mode || 'chat'
+    mode: message.mode || 'chat',
+    route: message.route || '',
+    notice: message.notice || '',
+    visualObservation: message.visualObservation || null
   }))
   currentEvidence.value = [...messages.value].reverse().find((item) => item.evidence?.length)?.evidence || []
 }
 const persistMessage = (message) => messageStore.addMessage({
   id: message.id, from: message.from, rawText: message.rawText, text: message.rawText,
-  evidence: message.evidence || [], mode: message.mode
+  evidence: message.evidence || [], mode: message.mode,
+  route: message.route || '', notice: message.notice || '',
+  visualObservation: message.visualObservation || null
 })
 const scrollToBottom = () => nextTick(() => {
   if (chatBody.value) chatBody.value.scrollTop = chatBody.value.scrollHeight
@@ -116,27 +139,42 @@ const setMode = (nextMode) => {
   if (isLoading.value) return
   mode.value = nextMode
   activeEvidence.value = null
-  if (nextMode !== 'diagnose') clearImage()
 }
 const useQuickQuestion = (question) => {
   inputMessage.value = question
-  if (mode.value !== 'diagnose' || imageFile.value) sendMessage()
+  if (mode.value !== 'diagnose' || hasImageContext.value) sendMessage()
 }
 const chooseImage = () => fileInput.value?.click()
-const handleImageChange = (event) => {
-  const file = event.target.files?.[0]
+const takePhoto = () => cameraInput.value?.click()
+const setImage = (file) => {
   if (!file) return
   if (!file.type.startsWith('image/')) return ElMessage.warning('请选择 JPG、PNG 等图片文件')
   if (file.size > 10 * 1024 * 1024) return ElMessage.warning('图片大小不能超过 10 MB')
   imageFile.value = file
+  imageName.value = file.name || '现场拍摄图片'
+  activeAttachmentId.value = ''
+  attachmentNotice.value = '图片将在发送后临时保存 15 分钟，可用于后续追问。'
   const reader = new FileReader()
   reader.onload = () => { imagePreview.value = reader.result }
   reader.readAsDataURL(file)
 }
+const handleImageChange = (event) => setImage(event.target.files?.[0])
+const handlePaste = (event) => {
+  const file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith('image/'))
+  if (file) {
+    event.preventDefault()
+    setImage(file)
+    ElMessage.success('已从剪贴板添加图片')
+  }
+}
 const clearImage = () => {
   imageFile.value = null
   imagePreview.value = ''
+  imageName.value = ''
+  activeAttachmentId.value = ''
+  attachmentNotice.value = ''
   if (fileInput.value) fileInput.value.value = ''
+  if (cameraInput.value) cameraInput.value.value = ''
 }
 const stopGeneration = () => {
   currentController?.abort()
@@ -154,9 +192,9 @@ const pushConversation = (query) => {
   const now = Date.now()
   const userMessage = {
     id: `user-${now}`, from: 'user', rawText: query, evidence: [], mode: mode.value,
-    imageUrl: mode.value === 'diagnose' ? imagePreview.value : ''
+    imageUrl: mode.value !== 'search' && hasImageContext.value ? imagePreview.value : ''
   }
-  const aiMessage = { id: `ai-${now}`, from: 'ai', rawText: '', evidence: [], mode: mode.value }
+  const aiMessage = { id: `ai-${now}`, from: 'ai', rawText: '', evidence: [], mode: mode.value, route: '', notice: '', visualObservation: null }
   messages.value.push(userMessage, aiMessage)
   persistMessage({ ...userMessage, imageUrl: '' })
   return aiMessage
@@ -165,29 +203,49 @@ const pushConversation = (query) => {
 const sendMessage = async () => {
   if (isLoading.value) return stopGeneration()
   const query = inputMessage.value.trim()
-  if (!query) return
-  if (mode.value === 'diagnose' && !selectedPlant.value) return ElMessage.warning('病害会诊需要先关联并选择一盆植物')
-  if (mode.value === 'diagnose' && !imageFile.value) return ElMessage.warning('请先上传需要分析的植物图片')
+  const shouldAnalyzeImage = mode.value !== 'search' && hasImageContext.value
+  if (!query && !shouldAnalyzeImage) return
+  if (mode.value === 'diagnose' && !hasImageContext.value) return ElMessage.warning('请先上传需要分析的植物图片')
 
-  const aiMessage = pushConversation(query)
+  const effectiveQuery = query || '请分析这张植物图片'
+  const aiMessage = pushConversation(effectiveQuery)
   const diagnosisImage = imageFile.value
   inputMessage.value = ''
   isLoading.value = true
-  isStreaming.value = mode.value === 'chat'
+  isStreaming.value = mode.value === 'chat' && !shouldAnalyzeImage
   currentEvidence.value = []
   activeEvidence.value = null
   currentController = new AbortController()
   await scrollToBottom()
   try {
-    if (mode.value === 'chat') {
-      await ragChatStream(createPayload(query), {
+    if (shouldAnalyzeImage) {
+      const response = await diagnosePlant({
+        image: diagnosisImage,
+        attachmentId: activeAttachmentId.value || null,
+        requestedRoute: mode.value === 'diagnose' ? 'DISEASE_DIAGNOSIS' : 'AUTO',
+        signal: currentController.signal,
+        ...createPayload(effectiveQuery)
+      })
+      aiMessage.rawText = response.answer || '本次图片分析未生成文字结论。'
+      aiMessage.evidence = response.evidence || []
+      aiMessage.route = response.route || ''
+      aiMessage.notice = response.notice || ''
+      aiMessage.visualObservation = response.visualObservation || null
+      currentEvidence.value = aiMessage.evidence
+      activeAttachmentId.value = response.attachmentId || activeAttachmentId.value
+      attachmentNotice.value = response.notice || attachmentNotice.value
+      imageFile.value = null
+      if (fileInput.value) fileInput.value.value = ''
+      if (cameraInput.value) cameraInput.value.value = ''
+    } else if (mode.value === 'chat') {
+      await ragChatStream(createPayload(effectiveQuery), {
         signal: currentController.signal,
         onEvidence: (evidence) => { aiMessage.evidence = evidence; currentEvidence.value = evidence },
         onToken: (token) => { aiMessage.rawText += token; scrollToBottom() }
       })
     } else if (mode.value === 'search') {
       const evidence = await searchEvidence({
-        query,
+        query: effectiveQuery,
         canonicalPlantId: selectedPlant.value?.plantId ? String(selectedPlant.value.plantId) : null
       })
       aiMessage.evidence = evidence
@@ -196,12 +254,6 @@ const sendMessage = async () => {
       aiMessage.rawText = evidence.length
         ? `已找到 **${evidence.length} 条相关证据**，其中有 **${postCount} 篇社区原帖**。结果已综合语义相关性、来源可信度与社区质量排序。`
         : '暂未找到足够相关的内容，可以补充植物名称、症状或养护场景后再试。'
-    } else {
-      const response = await diagnosePlant({ image: diagnosisImage, ...createPayload(query) })
-      aiMessage.rawText = response.answer || '本次会诊未生成文字结论。'
-      aiMessage.evidence = response.evidence || []
-      currentEvidence.value = aiMessage.evidence
-      clearImage()
     }
     persistMessage(aiMessage)
   } catch (error) {
@@ -209,6 +261,7 @@ const sendMessage = async () => {
       if (!aiMessage.rawText) aiMessage.rawText = '已停止本次生成。'
     } else {
       aiMessage.rawText = `暂时无法连接 GreenCare RAG。${error.message || '请稍后重试。'}`
+      if (error.message?.includes('图片附件已过期')) clearImage()
       ElMessage.error(error.message || 'AI 服务请求失败')
     }
   } finally {
@@ -231,6 +284,7 @@ const clearMessages = async () => {
     messages.value = []
     currentEvidence.value = []
     activeEvidence.value = null
+    clearImage()
   } catch {
     // 用户取消
   }
@@ -298,6 +352,13 @@ onBeforeUnmount(() => { currentController?.abort(); clearImage() })
                   <div v-else-if="message.rawText" class="markdown-body" v-html="renderMarkdown(message.rawText)"></div>
                   <div v-else class="thinking"><i></i><i></i><i></i><span>正在整理证据</span></div>
                 </div>
+                <div v-if="message.route || message.notice" class="route-note">
+                  <strong v-if="message.route">{{ ROUTE_LABELS[message.route] || message.route }}</strong>
+                  <span v-if="message.notice">{{ message.notice }}</span>
+                </div>
+                <dl v-if="message.visualObservation && message.from === 'ai'" class="visual-observation">
+                  <div v-for="([label, value], index) in observationItems(message.visualObservation)" :key="`${message.id}-${index}`"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+                </dl>
                 <div v-if="message.evidence?.length" class="message-evidence">
                   <button v-for="(evidence, index) in message.evidence.slice(0, 4)" :key="evidence.id || index" type="button" @click="activeEvidence = evidence"><b>[E{{ index + 1 }}]</b>{{ sourceTitle(evidence) }}</button>
                   <span v-if="message.evidence.length > 4">+{{ message.evidence.length - 4 }}</span>
@@ -308,16 +369,21 @@ onBeforeUnmount(() => { currentController?.abort(); clearImage() })
         </div>
         <button v-show="showScrollButton" type="button" class="scroll-button" @click="scrollToBottom">↓</button>
         <footer class="composer-wrap">
-          <div v-if="mode === 'diagnose'" class="image-composer">
+          <div v-if="mode !== 'search'" class="image-composer">
             <input ref="fileInput" type="file" accept="image/*" hidden @change="handleImageChange">
-            <button v-if="!imagePreview" type="button" class="upload-tile" @click="chooseImage"><el-icon><UploadFilled /></el-icon><span><strong>上传植物或叶片图片</strong><small>JPG / PNG，最大 10 MB</small></span></button>
-            <div v-else class="image-preview"><img :src="imagePreview" alt="预览"><span>{{ imageFile?.name }}</span><button type="button" @click="clearImage"><el-icon><Close /></el-icon></button></div>
+            <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden @change="handleImageChange">
+            <div v-if="!imagePreview" class="attachment-actions">
+              <button type="button" @click="chooseImage"><el-icon><Paperclip /></el-icon><span>添加图片</span></button>
+              <button type="button" @click="takePhoto"><el-icon><Camera /></el-icon><span>拍照</span></button>
+              <small>也可直接粘贴图片 · 最大 10 MB</small>
+            </div>
+            <div v-else class="image-preview"><img :src="imagePreview" alt="预览"><div class="image-copy"><strong>{{ imageName }}</strong><small>{{ attachmentNotice }}</small></div><button type="button" @click="clearImage"><el-icon><Close /></el-icon></button></div>
           </div>
-          <div class="composer">
-            <el-input v-model="inputMessage" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="mode === 'search' ? '描述你想寻找的种植经历…' : mode === 'diagnose' ? '补充症状、持续时间等信息…' : '询问植物养护、社区经验或当前状态…'" resize="none" @keydown.enter.exact.prevent="sendMessage" />
+          <div class="composer" @paste="handlePaste">
+            <el-input v-model="inputMessage" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="mode === 'search' ? '描述你想寻找的种植经历…' : mode === 'diagnose' ? '可直接发送图片，或补充症状、持续时间…' : '输入问题，也可添加、拍摄或粘贴植物图片…'" resize="none" @keydown.enter.exact.prevent="sendMessage" />
             <button type="button" :class="['send-button', { stop: isLoading }]" @click="sendMessage"><el-icon><Close v-if="isLoading"/><Promotion v-else/></el-icon><span>{{ isLoading ? '停止' : mode === 'search' ? '检索' : '发送' }}</span></button>
           </div>
-          <p><span>Enter 发送 · Shift + Enter 换行</span><span>AI 建议仅作养护参考</span></p>
+          <p><span>Enter 发送 · Shift + Enter 换行</span><span>图片仅临时保存，不会写入知识库</span></p>
         </footer>
       </main>
 
@@ -356,6 +422,10 @@ onBeforeUnmount(() => { currentController?.abort(); clearImage() })
 .scroll-button{position:absolute;z-index:4;right:24px;bottom:132px;width:31px;height:31px;border:1px solid #cfe0d7;border-radius:50%;color:var(--deep);background:#fff;box-shadow:0 6px 15px rgba(39,92,68,.12);cursor:pointer}.composer-wrap{padding:11px 18px 9px;border-top:1px solid var(--line);background:rgba(255,255,252,.98)}.image-composer{margin-bottom:7px}.upload-tile{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px dashed #a8cdb9;border-radius:10px;color:#537267;background:#f7fbf7;cursor:pointer}.upload-tile .el-icon{font-size:19px;color:var(--green)}.upload-tile strong,.upload-tile small{display:block;text-align:left}.upload-tile strong{font-size:10px}.upload-tile small{margin-top:2px;color:#91a099;font-size:8px}.image-preview{display:grid;grid-template-columns:40px 1fr 25px;align-items:center;gap:8px;padding:5px 8px;border:1px solid #dce8e1;border-radius:9px;background:#f7faf7}.image-preview img{width:40px;height:36px;border-radius:6px;object-fit:cover}.image-preview span{overflow:hidden;color:#587168;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.image-preview button{border:0;color:#81938c;background:transparent;cursor:pointer}.composer{display:grid;grid-template-columns:1fr auto;align-items:end;gap:8px;padding:5px 5px 5px 13px;border:1px solid #ccdfd5;border-radius:12px;background:#fff;box-shadow:0 7px 21px rgba(39,92,68,.06)}.composer:focus-within{border-color:#80c3a1}.composer :deep(.el-textarea__inner){min-height:33px!important;padding:8px 0;border:0;box-shadow:none;color:#29483d;background:transparent;font-size:11px}.send-button{min-width:75px;height:37px;display:flex;align-items:center;justify-content:center;gap:5px;border:0;border-radius:9px;color:#fff;background:linear-gradient(135deg,#43b981,#2c9065);box-shadow:0 5px 12px rgba(45,153,103,.2);cursor:pointer}.send-button.stop{background:linear-gradient(135deg,#dc756d,#c85953)}.send-button span{font-size:10px}.composer-wrap>p{display:flex;justify-content:space-between;margin:5px 3px 0;color:#99a8a1;font-size:8px}
 .evidence-panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;padding:20px 16px 15px;overflow:hidden;border-left:1px solid var(--line);background:#fbfcf8}.evidence-panel>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.evidence-panel header h2{margin:3px 0 0;font-family:"STZhongsong","SimSun",serif;font-size:17px}.evidence-panel>header>b{min-width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--deep);background:#e8f4ed;font-size:10px}.evidence-list{flex:1;min-height:0;display:flex;flex-direction:column;gap:7px;overflow-y:auto;padding-right:3px}.evidence-card{width:100%;display:grid;grid-template-columns:29px 1fr;gap:8px;padding:10px;border:1px solid #e0e9e4;border-radius:11px;color:#47665a;background:#fff;text-align:left;cursor:pointer;transition:.2s}.evidence-card:hover{transform:translateY(-1px);border-color:#a8d4bd;box-shadow:0 7px 17px rgba(38,96,68,.07)}.evidence-icon{width:29px;height:29px;display:grid;place-items:center;border-radius:8px;color:#399568;background:#eaf6ef}.evidence-card.community .evidence-icon{color:#92733e;background:#f8f0df}.evidence-card.visual .evidence-icon{color:#557da5;background:#edf3f8}.evidence-card.warning .evidence-icon{color:#aa6741;background:#faeee5}.evidence-main{min-width:0;display:block}.evidence-top{display:flex;justify-content:space-between;gap:7px;margin-bottom:3px}.evidence-top em{color:#7b8e86;font-size:8px;font-style:normal}.evidence-top b{color:#3f9569;font-size:8px}.evidence-main strong{display:block;overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.evidence-main small{display:-webkit-box;margin-top:4px;overflow:hidden;color:#83948d;font-size:8px;line-height:1.5;-webkit-line-clamp:2;-webkit-box-orient:vertical}.evidence-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;text-align:center}.evidence-empty>div{width:58px;height:58px;display:grid;place-items:center;border:1px dashed #9fc8b3;border-radius:50%;color:#65a987;background:#f2f8f2;font-size:21px}.evidence-empty h3{margin:14px 0 5px;font-family:"STZhongsong","SimSun",serif;font-size:14px}.evidence-empty p{max-width:210px;margin:0;color:#8a9b94;font-size:8px;line-height:1.65}
 .evidence-detail{position:absolute;z-index:5;inset:0;padding:21px 17px;overflow-y:auto;background:rgba(251,252,248,.98);backdrop-filter:blur(10px);animation:detail-in .2s ease}.detail-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;font-family:"STZhongsong","SimSun",serif;font-size:17px;font-weight:700}.detail-heading button{width:27px;height:27px;display:grid;place-items:center;border:0;border-radius:8px;color:#71867d;background:#edf3ef;cursor:pointer}.detail-tags{display:flex;gap:5px;margin-bottom:11px}.detail-tags span{padding:4px 7px;border-radius:6px;color:#587168;background:#edf3ef;font-size:8px}.detail-tags .knowledge,.detail-tags .state{color:#2f845d;background:#e7f5ec}.detail-tags .community{color:#8f703b;background:#f8f0df}.detail-tags .visual{color:#567ca5;background:#edf3f8}.detail-tags .warning{color:#a96943;background:#faeee5}.evidence-detail h3{margin:0 0 11px;font-size:14px;line-height:1.5}.evidence-detail>p{margin:0;padding:12px;border-left:3px solid #75bd98;border-radius:0 9px 9px 0;color:#526f63;background:#f1f8f3;font-size:9px;line-height:1.75;white-space:pre-wrap}.post-link{width:100%;margin-top:12px;padding:9px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #add2be;border-radius:9px;color:var(--deep);background:#edf8f1;cursor:pointer}.evidence-detail dl{margin-top:18px}.evidence-detail dl div{padding:8px 0;border-bottom:1px solid #e5ece8}.evidence-detail dt{margin-bottom:3px;color:#94a29c;font-size:8px}.evidence-detail dd{margin:0;color:#557066;font-size:9px;word-break:break-all}
+
+.route-note{max-width:100%;margin-top:7px;display:flex;align-items:flex-start;gap:7px;color:#71877d;font-size:9px;line-height:1.5}.route-note strong{flex:0 0 auto;padding:3px 7px;border-radius:99px;color:#277b57;background:#e8f5ed}.route-note span{padding-top:3px}
+.visual-observation{width:100%;margin:8px 0 0;padding:9px 10px;border:1px solid #dfe8e3;border-radius:10px;background:#f8fbf9}.visual-observation div{display:grid;grid-template-columns:72px 1fr;gap:8px;padding:4px 0}.visual-observation dt{color:#7d9188;font-size:9px}.visual-observation dd{margin:0;color:#506b60;font-size:10px;line-height:1.5}
+.attachment-actions{display:flex;align-items:center;gap:7px}.attachment-actions button{height:31px;display:flex;align-items:center;gap:5px;padding:0 10px;border:1px solid #d3e3da;border-radius:9px;color:#4d7061;background:#f8fbf8;font-size:10px;cursor:pointer;transition:.2s}.attachment-actions button:hover{transform:translateY(-1px);border-color:#8dc7a8;color:var(--deep);background:#edf8f1}.attachment-actions small{margin-left:2px;color:#91a099;font-size:8px}.image-preview{border-color:#bcdaca;background:linear-gradient(90deg,#f0f8f2,#fbfcf8)}.image-copy{min-width:0}.image-copy strong,.image-copy small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.image-copy strong{color:#3d6454;font-size:10px}.image-copy small{margin-top:3px;color:#7d9288;font-size:8px}
 
 /* 提升 RAG 长文本阅读性与信息层级 */
 .assistant-brand h1 { font-size: 23px; font-weight: 800; }

@@ -129,6 +129,14 @@ curl -X POST http://localhost:8010/api/rag/diagnose \
 
 返回 `answer + evidence[]`。该接口是辅助分析，不将视觉候选表述为确诊，也不执行设备操作。
 
+该接口也用于通用图片问答。`requestedRoute` 可取 `AUTO`、`DISEASE_DIAGNOSIS`、`OCR`、`GENERAL_VISION`；
+普通问答使用 `AUTO`，手动选择叶片诊断时使用 `DISEASE_DIAGNOSIS`。`query`、`userId` 和
+`plantInstanceId` 均可省略：没有问题文字时使用默认图片分析提示，没有植物实例时跳过传感器证据并明确降级。
+
+首次上传会返回临时 `attachmentId`，在有效期内可只提交 `attachmentId + query` 继续追问同一图片。
+图片与结构化视觉观察仅保存在当前服务实例内存，默认 15 分钟、最多 32 个条目；服务重启或多实例切换后需重新上传。
+聊天模型必须支持 OpenAI 兼容的图片消息输入，Spring AI 会通过用户消息的 media 字段发送原图。
+
 ## 病害知识准备
 
 建表脚本位于 `src/main/resources/db/migration/V3__plant_disease_knowledge.sql`。本项目未引入 Flyway，需由现有数据库发布流程执行。脚本故意不预置未审核的病害处理知识；导入数据时 `source` 必须是可追溯资料，并用 `source_level=TRUSTED/REVIEWED` 标记审核级别。导入后调用病害索引接口。

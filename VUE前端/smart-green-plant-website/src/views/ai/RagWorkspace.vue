@@ -12,10 +12,10 @@ import {
   DataAnalysis,
   Delete,
   Document,
+  Paperclip,
   PictureFilled,
   Promotion,
   Search,
-  UploadFilled,
   WarningFilled
 } from '@element-plus/icons-vue'
 import { useAiMessageStore, useUserStore } from '@/stores'
@@ -64,15 +64,35 @@ const activeEvidence = ref(null)
 const currentEvidence = ref([])
 const imageFile = ref(null)
 const imagePreview = ref('')
+const imageName = ref('')
 const fileInput = ref(null)
+const cameraInput = ref(null)
+const activeAttachmentId = ref('')
+const attachmentNotice = ref('')
 let currentController = null
 
 const selectedPlant = computed(() => plants.value.find((plant) => plant.id === selectedPlantId.value))
 const currentMode = computed(() => MODES.find((item) => item.value === mode.value))
 const quickQuestions = computed(() => QUICK_QUESTIONS[mode.value])
 const userId = computed(() => userStore.user?.id)
+const hasImageContext = computed(() => Boolean(imageFile.value || activeAttachmentId.value))
 
-const evidenceMeta = (type) => EVIDENCE_META[type] || { label: '其他证据', tone: 'neutral', icon: Document }
+const ROUTE_LABELS = {
+  DISEASE_DIAGNOSIS: '叶片诊断引擎',
+  OCR: '图片文字识别',
+  GENERAL_VISION: '通用视觉问答'
+}
+
+const observationItems = (observation) => ([
+  ['颜色变化', observation?.colorChanges],
+  ['病斑形状和分布', observation?.lesionShapeAndDistribution],
+  ['叶缘 / 叶脉', observation?.leafEdgeAndVein],
+  ['可见虫体', observation?.visiblePests],
+  ['照片质量', observation?.imageQuality],
+  ['不确定性', observation?.uncertainty]
+]).filter(([, value]) => value)
+
+const evidenceMeta = (type) => EVIDENCE_META[type] || { label: '其他来源', tone: 'neutral', icon: Document }
 const scoreText = (evidence) => {
   const score = evidence.finalScore ?? evidence.rerankScore ?? evidence.retrievalScore
   return typeof score === 'number' ? `${Math.round(score * 100)}%` : '已采用'
@@ -111,7 +131,12 @@ const loadSavedMessages = () => {
       rawText: message.rawText || (message.from === 'user' ? message.text : ''),
       text: message.rawText || message.text || '',
       evidence: message.evidence || [],
-      mode: message.mode || 'chat'
+      mode: message.mode || 'chat',
+      imageUrl: message.imageUrl || '',
+      attachmentId: message.attachmentId || '',
+      route: message.route || '',
+      notice: message.notice || '',
+      visualObservation: message.visualObservation || null
     }))
   const lastEvidence = [...messages.value].reverse().find((message) => message.evidence?.length)?.evidence || []
   currentEvidence.value = lastEvidence
@@ -124,7 +149,12 @@ const persistMessage = (message) => {
     text: message.text,
     rawText: message.rawText,
     evidence: message.evidence || [],
-    mode: message.mode
+    mode: message.mode,
+    imageUrl: '',
+    attachmentId: '',
+    route: message.route || '',
+    notice: message.notice || '',
+    visualObservation: message.visualObservation || null
   })
 }
 
@@ -144,19 +174,18 @@ const selectEvidence = (evidence) => {
 
 const useQuickQuestion = (question) => {
   inputMessage.value = question
-  if (mode.value !== 'diagnose' || imageFile.value) sendMessage()
+  if (mode.value !== 'diagnose' || hasImageContext.value) sendMessage()
 }
 
 const setMode = (nextMode) => {
   if (isLoading.value) return
   mode.value = nextMode
   activeEvidence.value = null
-  if (nextMode !== 'diagnose') clearImage()
 }
 
 const chooseImage = () => fileInput.value?.click()
-const handleImageChange = (event) => {
-  const file = event.target.files?.[0]
+const takePhoto = () => cameraInput.value?.click()
+const setImage = (file) => {
   if (!file) return
   if (!file.type.startsWith('image/')) {
     ElMessage.warning('请选择 JPG、PNG 等图片文件')
@@ -167,17 +196,33 @@ const handleImageChange = (event) => {
     return
   }
   imageFile.value = file
+  imageName.value = file.name || '现场拍摄图片'
+  activeAttachmentId.value = ''
+  attachmentNotice.value = '图片将在发送后临时保存 15 分钟，可用于后续追问。'
   const reader = new FileReader()
   reader.onload = () => {
     imagePreview.value = reader.result
   }
   reader.readAsDataURL(file)
 }
+const handleImageChange = (event) => setImage(event.target.files?.[0])
+const handlePaste = (event) => {
+  const file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith('image/'))
+  if (file) {
+    event.preventDefault()
+    setImage(file)
+    ElMessage.success('已从剪贴板添加图片')
+  }
+}
 
 const clearImage = () => {
   imageFile.value = null
   imagePreview.value = ''
+  imageName.value = ''
+  activeAttachmentId.value = ''
+  attachmentNotice.value = ''
   if (fileInput.value) fileInput.value.value = ''
+  if (cameraInput.value) cameraInput.value.value = ''
 }
 
 const stopGeneration = () => {
@@ -191,7 +236,7 @@ const createPayload = (query) => ({
   userId: userId.value,
   plantInstanceId: selectedPlant.value?.id || null,
   canonicalPlantId: selectedPlant.value?.plantId ? String(selectedPlant.value.plantId) : null,
-  query
+  query: query?.trim() ? query.trim() : null
 })
 
 const pushConversation = (query) => {
@@ -203,7 +248,8 @@ const pushConversation = (query) => {
     text: query,
     evidence: [],
     mode: mode.value,
-    imageUrl: mode.value === 'diagnose' ? imagePreview.value : ''
+    imageUrl: mode.value !== 'search' && hasImageContext.value ? imagePreview.value : '',
+    attachmentId: activeAttachmentId.value || ''
   }
   const aiMessage = {
     id: `ai-${now}`,
@@ -211,10 +257,15 @@ const pushConversation = (query) => {
     rawText: '',
     text: '',
     evidence: [],
-    mode: mode.value
+    mode: mode.value,
+    imageUrl: '',
+    attachmentId: activeAttachmentId.value || '',
+    route: '',
+    notice: '',
+    visualObservation: null
   }
   messages.value.push(userMessage, aiMessage)
-  persistMessage({ ...userMessage, imageUrl: '' })
+  persistMessage(userMessage)
   return aiMessage
 }
 
@@ -225,29 +276,48 @@ const sendMessage = async () => {
   }
 
   const query = inputMessage.value.trim()
-  if (!query) return
-  if (mode.value === 'diagnose' && !selectedPlant.value) {
-    ElMessage.warning('图片诊断需要先选择一盆植物')
-    return
-  }
-  if (mode.value === 'diagnose' && !imageFile.value) {
+  const shouldAnalyzeImage = mode.value !== 'search' && hasImageContext.value
+  if (!query && !shouldAnalyzeImage) return
+  if (mode.value === 'diagnose' && !hasImageContext.value) {
     ElMessage.warning('请先上传需要分析的叶片图片')
     return
   }
 
-  const aiMessage = pushConversation(query)
+  const effectiveQuery = query || '请分析这张植物图片'
+  const aiMessage = pushConversation(effectiveQuery)
   const diagnosisImage = imageFile.value
   inputMessage.value = ''
   isLoading.value = true
-  isStreaming.value = mode.value === 'chat'
+  isStreaming.value = mode.value === 'chat' && !shouldAnalyzeImage
   currentEvidence.value = []
   activeEvidence.value = null
   currentController = new AbortController()
   await scrollToBottom()
 
   try {
-    if (mode.value === 'chat') {
-      await ragChatStream(createPayload(query), {
+    if (shouldAnalyzeImage) {
+      const response = await diagnosePlant({
+        image: diagnosisImage,
+        attachmentId: activeAttachmentId.value || null,
+        requestedRoute: mode.value === 'diagnose' ? 'DISEASE_DIAGNOSIS' : 'AUTO',
+        signal: currentController.signal,
+        ...createPayload(effectiveQuery)
+      })
+      aiMessage.rawText = response.answer || '本次图片分析未生成文字结论。'
+      aiMessage.text = aiMessage.rawText
+      aiMessage.evidence = response.evidence || []
+      aiMessage.attachmentId = response.attachmentId || activeAttachmentId.value
+      aiMessage.route = response.route || ''
+      aiMessage.notice = response.notice || ''
+      aiMessage.visualObservation = response.visualObservation || null
+      currentEvidence.value = aiMessage.evidence
+      activeAttachmentId.value = response.attachmentId || activeAttachmentId.value
+      attachmentNotice.value = response.notice || attachmentNotice.value
+      imageFile.value = null
+      if (fileInput.value) fileInput.value.value = ''
+      if (cameraInput.value) cameraInput.value.value = ''
+    } else if (mode.value === 'chat') {
+      await ragChatStream(createPayload(effectiveQuery), {
         signal: currentController.signal,
         onEvidence: (evidence) => {
           aiMessage.evidence = evidence
@@ -259,23 +329,13 @@ const sendMessage = async () => {
           scrollToBottom()
         }
       })
-    } else if (mode.value === 'diagnose') {
-      const response = await diagnosePlant({
-        image: diagnosisImage,
-        ...createPayload(query)
-      })
-      aiMessage.rawText = response.answer || '本次分析未生成文字结论。'
-      aiMessage.text = aiMessage.rawText
-      aiMessage.evidence = response.evidence || []
-      currentEvidence.value = aiMessage.evidence
-      clearImage()
     } else {
       const evidence = await searchEvidence({
-        query,
+        query: effectiveQuery,
         canonicalPlantId: selectedPlant.value?.plantId ? String(selectedPlant.value.plantId) : null
       })
       aiMessage.rawText = evidence.length
-        ? `为你找到 **${evidence.length} 条相关资料**。已按相关性与来源可信度排序，可在右侧查看完整证据。`
+        ? `为你找到 **${evidence.length} 条相关资料**。已按相关性与来源可信度排序，可在右侧查看引用内容。`
         : '暂未检索到足够相关的资料，可以换一种描述再试试。'
       aiMessage.text = aiMessage.rawText
       aiMessage.evidence = evidence
@@ -290,6 +350,7 @@ const sendMessage = async () => {
     } else {
       aiMessage.rawText = `暂时无法连接 AI 服务。${error.message || '请稍后重试。'}`
       aiMessage.text = aiMessage.rawText
+      if (error.message?.includes('图片附件已过期')) clearImage()
       ElMessage.error(error.message || 'AI 服务请求失败')
     }
   } finally {
@@ -311,6 +372,7 @@ const clearMessages = async () => {
     messages.value = []
     currentEvidence.value = []
     activeEvidence.value = null
+    clearImage()
   } catch {
     // 用户取消清空
   }
@@ -397,7 +459,7 @@ onBeforeUnmount(() => {
 
         <div class="safety-note">
           <el-icon><CircleCheckFilled /></el-icon>
-          <p><strong>证据驱动建议</strong><span>回答仅用于辅助养护，不会直接控制设备。</span></p>
+          <p><strong>建议依据可查</strong><span>回答仅用于辅助养护，不会直接控制设备。</span></p>
         </div>
       </aside>
 
@@ -439,8 +501,18 @@ onBeforeUnmount(() => {
                 <div class="message-bubble" :class="{ thinking: message.from === 'ai' && isLoading && !message.rawText && message === messages[messages.length - 1] }">
                   <img v-if="message.imageUrl" :src="message.imageUrl" alt="待诊断植物" class="message-image" />
                   <div v-if="message.rawText || message.text" class="markdown-body" v-html="renderMarkdown(message.rawText || message.text)"></div>
-                  <div v-else class="thinking-dots"><i></i><i></i><i></i><span>正在整理证据</span></div>
+                  <div v-else class="thinking-dots"><i></i><i></i><i></i><span>正在整理参考内容</span></div>
                 </div>
+                <div v-if="message.route || message.notice" class="route-note">
+                  <strong v-if="message.route">{{ ROUTE_LABELS[message.route] || message.route }}</strong>
+                  <span v-if="message.notice">{{ message.notice }}</span>
+                </div>
+                <dl v-if="message.visualObservation && message.from === 'ai'" class="visual-observation">
+                  <div v-for="([label, value], index) in observationItems(message.visualObservation)" :key="`${message.id}-${index}`">
+                    <dt>{{ label }}</dt>
+                    <dd>{{ value }}</dd>
+                  </div>
+                </dl>
                 <div v-if="message.evidence?.length" class="message-evidence">
                   <button v-for="(evidence, index) in message.evidence.slice(0, 4)" :key="evidence.id || index" type="button" @click="selectEvidence(evidence)">
                     <span>[E{{ index + 1 }}]</span>{{ evidenceMeta(evidence.type).label }}
@@ -457,24 +529,27 @@ onBeforeUnmount(() => {
         </button>
 
         <footer class="composer-wrap">
-          <div v-if="mode === 'diagnose'" class="image-composer">
+          <div v-if="mode !== 'search'" class="image-composer">
             <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="handleImageChange" />
-            <button v-if="!imagePreview" type="button" class="upload-tile" @click="chooseImage">
-              <el-icon><UploadFilled /></el-icon><span><strong>添加叶片照片</strong><small>JPG / PNG，最大 10 MB</small></span>
-            </button>
+            <input ref="cameraInput" type="file" accept="image/*" capture="environment" hidden @change="handleImageChange" />
+            <div v-if="!imagePreview" class="attachment-actions">
+              <button type="button" @click="chooseImage"><el-icon><Paperclip /></el-icon><span>添加图片</span></button>
+              <button type="button" @click="takePhoto"><el-icon><Camera /></el-icon><span>拍照</span></button>
+              <small>也可直接粘贴图片 · 最大 10 MB</small>
+            </div>
             <div v-else class="image-preview">
               <img :src="imagePreview" alt="待分析图片" />
-              <span>{{ imageFile?.name }}</span>
+              <div class="image-copy"><strong>{{ imageName }}</strong><small>{{ attachmentNotice }}</small></div>
               <button type="button" aria-label="移除图片" @click="clearImage"><el-icon><Close /></el-icon></button>
             </div>
           </div>
-          <div class="composer">
+          <div class="composer" @paste="handlePaste">
             <el-input
               v-model="inputMessage"
               type="textarea"
               resize="none"
               :autosize="{ minRows: 1, maxRows: 4 }"
-              :placeholder="mode === 'search' ? '描述你想查找的植物知识…' : mode === 'diagnose' ? '补充叶片表现、持续时间等信息…' : '询问植物养护、当前状态或异常原因…'"
+              :placeholder="mode === 'search' ? '描述你想查找的植物知识…' : mode === 'diagnose' ? '可直接发送图片，或补充叶片表现、持续时间…' : '输入问题，也可添加、拍摄或粘贴植物图片…'"
               @keydown.enter.exact.prevent="sendMessage"
             />
             <button type="button" class="send-button" :class="{ stop: isLoading }" @click="sendMessage">
@@ -482,13 +557,13 @@ onBeforeUnmount(() => {
               <span>{{ isLoading ? '停止' : mode === 'search' ? '检索' : '发送' }}</span>
             </button>
           </div>
-          <p class="composer-tip"><span>Enter 发送 · Shift + Enter 换行</span><span>AI 建议请结合植物实际情况判断</span></p>
+          <p class="composer-tip"><span>Enter 发送 · Shift + Enter 换行</span><span>图片仅临时保存，不会写入知识库</span></p>
         </footer>
       </main>
 
       <aside class="evidence-panel">
         <header>
-          <div><p class="eyebrow">EVIDENCE CHAIN</p><h2>本轮证据</h2></div>
+          <div><p class="eyebrow">REFERENCES</p><h2>引用内容</h2></div>
           <span>{{ currentEvidence.length }}</span>
         </header>
 
@@ -501,10 +576,12 @@ onBeforeUnmount(() => {
             :class="[{ active: activeEvidence === evidence }, evidenceMeta(evidence.type).tone]"
             @click="selectEvidence(evidence)"
           >
-            <span class="evidence-index">E{{ index + 1 }}</span>
             <span class="evidence-icon"><el-icon><component :is="evidenceMeta(evidence.type).icon" /></el-icon></span>
             <span class="evidence-main">
-              <span class="evidence-topline"><em>{{ evidenceMeta(evidence.type).label }}</em><b>{{ scoreText(evidence) }}</b></span>
+              <span class="evidence-topline">
+                <span class="evidence-source"><i class="evidence-index">[E{{ index + 1 }}]</i><em>{{ evidenceMeta(evidence.type).label }}</em></span>
+                <b>{{ scoreText(evidence) }}</b>
+              </span>
               <strong>{{ formatSource(evidence) }}</strong>
               <small>{{ evidence.content }}</small>
             </span>
@@ -513,13 +590,13 @@ onBeforeUnmount(() => {
 
         <div v-else class="evidence-empty">
           <div class="evidence-orbit"><el-icon><Connection /></el-icon></div>
-          <h3>证据将在这里汇集</h3>
-          <p>提问后，系统会展示知识、社区、传感器与视觉模型提供的依据。</p>
+          <h3>引用内容将在这里汇集</h3>
+          <p>提问后，系统会列出知识、社区、传感器与视觉模型提供的参考来源。</p>
         </div>
 
         <div v-if="activeEvidence" class="evidence-detail">
           <div class="detail-heading">
-            <span>证据详情</span>
+            <span>引用详情</span>
             <button type="button" @click="activeEvidence = null"><el-icon><Close /></el-icon></button>
           </div>
           <div class="detail-tags">
@@ -557,8 +634,8 @@ onBeforeUnmount(() => {
   --mint-deep: #24815a;
   --cream: #f7f6ee;
   position: relative;
-  height: calc(100vh - 148px);
-  min-height: 620px;
+  height: calc(100dvh - 148px);
+  min-height: 0;
   overflow: hidden;
   color: var(--ink);
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
@@ -572,6 +649,7 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 1;
   height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-columns: 250px minmax(420px, 1fr) 310px;
   background: var(--paper);
@@ -586,6 +664,7 @@ onBeforeUnmount(() => {
 .context-panel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   gap: 22px;
   padding: 24px 20px 18px;
   background: linear-gradient(165deg, #f8faf4 0%, #eef7f0 62%, #f6f0df 150%);
@@ -633,7 +712,7 @@ onBeforeUnmount(() => {
 .safety-note strong { margin-bottom: 3px; font-size: 11px; }
 .safety-note span { font-size: 9px; line-height: 1.45; }
 
-.conversation-panel { position: relative; min-width: 0; display: flex; flex-direction: column; background: rgba(255,255,252,.92); }
+.conversation-panel { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: rgba(255,255,252,.92); }
 .conversation-header { min-height: 72px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 24px; border-bottom: 1px solid var(--line); }
 .conversation-header p { margin: 0 0 3px; color: var(--muted); font-size: 10px; }
 .conversation-header h2 { margin: 0; font-family: "STZhongsong", "SimSun", serif; font-size: 19px; }
@@ -641,7 +720,7 @@ onBeforeUnmount(() => {
 .service-status { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #dce9e2; border-radius: 99px; color: #577168; background: #f9fbf8; font-size: 10px; }
 .service-status i { width: 6px; height: 6px; border-radius: 50%; background: #4bbf7b; box-shadow: 0 0 0 3px rgba(75,191,123,.12); }
 
-.chat-body { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; padding: 26px clamp(24px, 5vw, 64px); background-image: radial-gradient(rgba(72, 122, 98, .08) .6px, transparent .6px); background-size: 18px 18px; }
+.chat-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; padding: 26px clamp(24px, 5vw, 64px); background-image: radial-gradient(rgba(72, 122, 98, .08) .6px, transparent .6px); background-size: 18px 18px; }
 .welcome-state { min-height: 100%; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
 .botanical-mark { width: 68px; height: 68px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 52% 48% 52% 18%; transform: rotate(-8deg); background: linear-gradient(145deg, #d9f2e3, #f2f5d8); box-shadow: 0 12px 30px rgba(62, 145, 99, .13); }
 .botanical-mark span { transform: rotate(8deg); font-family: Georgia, serif; font-size: 18px; font-weight: 700; color: #378b62; }
@@ -676,15 +755,30 @@ onBeforeUnmount(() => {
 .message-evidence button { padding: 4px 7px; border: 1px solid #dbe8e1; border-radius: 7px; background: #f9fbf8; color: #577268; font-size: 9px; cursor: pointer; }
 .message-evidence button span { margin-right: 3px; color: var(--mint-deep); font-weight: 700; }
 .message-evidence > span { color: #879991; font-size: 9px; }
+.route-note { max-width: 100%; margin-top: 7px; display: flex; align-items: flex-start; gap: 7px; color: #71877d; font-size: 9px; line-height: 1.5; }
+.route-note strong { flex: 0 0 auto; padding: 3px 7px; border-radius: 99px; color: #277b57; background: #e8f5ed; }
+.route-note span { padding-top: 3px; }
+.visual-observation { width: 100%; margin: 8px 0 0; padding: 9px 10px; border: 1px solid #dfe8e3; border-radius: 10px; background: #f8fbf9; }
+.visual-observation div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 4px 0; }
+.visual-observation dt { color: #7d9188; font-size: 9px; }
+.visual-observation dd { margin: 0; color: #506b60; font-size: 10px; line-height: 1.5; }
 
 .scroll-button { position: absolute; z-index: 5; right: 28px; bottom: 142px; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid #cfe0d7; border-radius: 50%; color: var(--mint-deep); background: white; box-shadow: 0 6px 16px rgba(39,92,68,.12); cursor: pointer; }
 .composer-wrap { padding: 12px 20px 10px; border-top: 1px solid var(--line); background: rgba(255,255,252,.98); }
 .image-composer { margin-bottom: 8px; }
+.attachment-actions { display: flex; align-items: center; gap: 7px; }
+.attachment-actions button { height: 31px; display: flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid #d3e3da; border-radius: 9px; color: #4d7061; background: #f8fbf8; font-size: 10px; cursor: pointer; transition: .2s ease; }
+.attachment-actions button:hover { transform: translateY(-1px); border-color: #8dc7a8; color: var(--mint-deep); background: #edf8f1; }
+.attachment-actions small { margin-left: 2px; color: #91a099; font-size: 8px; }
 .upload-tile { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px dashed #a9cdbb; border-radius: 11px; color: #527266; background: #f7fbf7; cursor: pointer; }
 .upload-tile .el-icon { font-size: 20px; color: var(--mint); }
 .upload-tile strong, .upload-tile small { display: block; text-align: left; }.upload-tile strong { font-size: 11px; }.upload-tile small { margin-top: 2px; color: #91a099; font-size: 8px; }
-.image-preview { display: grid; grid-template-columns: 42px 1fr 26px; align-items: center; gap: 9px; padding: 5px 8px; border: 1px solid #dce8e1; border-radius: 10px; background: #f7faf7; }
-.image-preview img { width: 42px; height: 38px; border-radius: 7px; object-fit: cover; }.image-preview span { min-width: 0; color: #587168; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.image-preview { display: grid; grid-template-columns: 42px 1fr 26px; align-items: center; gap: 9px; padding: 5px 8px; border: 1px solid #bcdaca; border-radius: 10px; background: linear-gradient(90deg,#f0f8f2,#fbfcf8); }
+.image-preview img { width: 42px; height: 38px; border-radius: 7px; object-fit: cover; }
+.image-copy { min-width: 0; }
+.image-copy strong, .image-copy small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.image-copy strong { color: #3d6454; font-size: 10px; }
+.image-copy small { margin-top: 3px; color: #7d9288; font-size: 8px; }
 .image-preview button, .detail-heading button { display: grid; place-items: center; padding: 0; border: 0; color: #81938c; background: transparent; cursor: pointer; }
 .composer { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 9px; padding: 6px 6px 6px 14px; border: 1px solid #cfe0d7; border-radius: 13px; background: white; box-shadow: 0 7px 22px rgba(39, 92, 68, .06); transition: .2s ease; }
 .composer:focus-within { border-color: #83c5a4; box-shadow: 0 7px 22px rgba(39, 132, 87, .1); }
@@ -694,21 +788,22 @@ onBeforeUnmount(() => {
 .send-button span { font-size: 11px; }
 .composer-tip { display: flex; justify-content: space-between; margin: 6px 3px 0; color: #9aa9a2; font-size: 8px; }
 
-.evidence-panel { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 21px 17px 16px; border-left: 1px solid var(--line); background: #fbfcf8; overflow: hidden; }
+.evidence-panel { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 21px 17px 16px; border-left: 1px solid var(--line); background: #fbfcf8; overflow: hidden; }
 .evidence-panel > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
 .evidence-panel h2 { margin: 0; font-family: "STZhongsong", "SimSun", serif; font-size: 18px; }
 .evidence-panel > header > span { min-width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px; color: var(--mint-deep); background: #e8f5ed; font-size: 11px; font-weight: 700; }
-.evidence-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 2px; }
+.evidence-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 4px; }
 .evidence-card { position: relative; width: 100%; display: grid; grid-template-columns: 30px 1fr; gap: 9px; padding: 11px; border: 1px solid #e0e9e4; border-radius: 12px; color: #47665a; background: white; text-align: left; cursor: pointer; transition: .2s ease; }
 .evidence-card:hover, .evidence-card.active { transform: translateY(-1px); border-color: #a8d4bd; box-shadow: 0 7px 18px rgba(38, 96, 68, .07); }
-.evidence-index { position: absolute; top: 7px; right: 8px; color: #9aaba3; font-family: Georgia, serif; font-size: 8px; }
+.evidence-index { flex: 0 0 auto; padding: 1px 4px; border-radius: 4px; color: #6c847a; background: #edf4f0; font-family: Georgia, serif; font-size: 8px; font-style: normal; line-height: 1.4; }
 .evidence-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: #eaf6ef; color: #3a9569; }
 .evidence-card.community .evidence-icon { color: #9a7944; background: #f8f0df; }.evidence-card.visual .evidence-icon { color: #567ca5; background: #edf3f8; }.evidence-card.warning .evidence-icon { color: #a96943; background: #faeee5; }
 .evidence-main { min-width: 0; display: block; }
-.evidence-topline { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px; }
-.evidence-topline em { color: #789087; font-size: 8px; font-style: normal; }.evidence-topline b { color: #54a77c; font-size: 8px; }
+.evidence-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.evidence-source { min-width: 0; display: flex; align-items: center; gap: 5px; overflow: hidden; }
+.evidence-topline em { min-width: 0; overflow: hidden; color: #789087; font-size: 8px; font-style: normal; white-space: nowrap; text-overflow: ellipsis; }.evidence-topline b { flex: 0 0 auto; color: #3f966a; font-size: 9px; font-variant-numeric: tabular-nums; }
 .evidence-main strong, .evidence-main small { display: block; overflow: hidden; }
-.evidence-main strong { padding-right: 24px; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.evidence-main strong { font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .evidence-main small { display: -webkit-box; margin-top: 5px; color: #82938c; font-size: 9px; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .evidence-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
 .evidence-orbit { width: 62px; height: 62px; display: grid; place-items: center; border: 1px dashed #9fc8b3; border-radius: 50%; color: #65a987; background: #f2f8f2; font-size: 23px; }

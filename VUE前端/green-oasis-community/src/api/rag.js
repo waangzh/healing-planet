@@ -73,13 +73,15 @@ export const searchEvidence = async ({ query, canonicalPlantId }) => {
   return response.json()
 }
 
-export const diagnosePlant = async ({ image, userId, plantInstanceId, canonicalPlantId, query }) => {
+export const diagnosePlant = async ({ image, attachmentId, requestedRoute = 'AUTO', userId, plantInstanceId, canonicalPlantId, query, signal }) => {
   const formData = new FormData()
-  formData.append('image', image)
-  formData.append('userId', userId)
-  formData.append('plantInstanceId', plantInstanceId)
+  if (image) formData.append('image', image)
+  if (attachmentId) formData.append('attachmentId', attachmentId)
+  if (userId) formData.append('userId', userId)
+  if (plantInstanceId) formData.append('plantInstanceId', plantInstanceId)
   if (canonicalPlantId) formData.append('canonicalPlantId', canonicalPlantId)
   if (query) formData.append('query', query)
-  const response = await aiRequest('/api/rag/diagnose', { method: 'POST', body: formData })
+  formData.append('requestedRoute', requestedRoute)
+  const response = await aiRequest('/api/rag/diagnose', { method: 'POST', body: formData, signal })
   return response.json()
 }

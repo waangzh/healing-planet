@@ -74,17 +74,29 @@ export const ragChatStream = async (payload, { signal, onEvidence, onToken } = {
   dispatch(buffer)
 }
 
-export const diagnosePlant = async ({ image, userId, plantInstanceId, canonicalPlantId, query }) => {
+export const diagnosePlant = async ({
+  image,
+  attachmentId,
+  requestedRoute = 'AUTO',
+  userId,
+  plantInstanceId,
+  canonicalPlantId,
+  query,
+  signal
+}) => {
   const formData = new FormData()
-  formData.append('image', image)
-  formData.append('userId', userId)
-  formData.append('plantInstanceId', plantInstanceId)
+  if (image) formData.append('image', image)
+  if (attachmentId) formData.append('attachmentId', attachmentId)
+  if (userId != null) formData.append('userId', userId)
+  if (plantInstanceId != null) formData.append('plantInstanceId', plantInstanceId)
   if (canonicalPlantId) formData.append('canonicalPlantId', canonicalPlantId)
-  if (query) formData.append('query', query)
+  if (query != null) formData.append('query', query)
+  formData.append('requestedRoute', requestedRoute)
 
   const response = await request('/api/rag/diagnose', {
     method: 'POST',
-    body: formData
+    body: formData,
+    signal
   })
   return response.json()
 }
