@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 
 public interface RecommendationService {
@@ -20,6 +21,11 @@ public interface RecommendationService {
      * @return
      */
     UserBindDeviceVO userBindDevice(String deviceKey, User communityUser) throws IOException;
+
+    /**
+     * 获取当前社区用户已绑定的花盆账号与植物实例。
+     */
+    Map<String, Object> getRagContext(User communityUser) throws IOException;
 
     /**
      * 文章推荐接口

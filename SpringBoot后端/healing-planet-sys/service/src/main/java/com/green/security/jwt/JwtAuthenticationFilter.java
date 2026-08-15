@@ -98,6 +98,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         protectedPaths.add("/notification");
         protectedPaths.add("/notification/*");
         protectedPaths.add("/userBindDevice");
+        protectedPaths.add("/rag/context");
         protectedPaths.add("/recommend/**");
         protectedPaths.add("/writePost");
         protectedPaths.add("/postLog");

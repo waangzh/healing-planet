@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { searchTopic } from '@/api/search';
+import { searchEvidence } from '@/api/rag';
 import { ElMessage } from 'element-plus';
 
 const route = useRoute();
@@ -11,10 +12,29 @@ const loading = ref(false);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(10);
+const semanticResults = ref([]);
+const semanticLoading = ref(false);
+
+const fetchSemanticResults = async (keyword) => {
+  semanticLoading.value = true;
+  try {
+    const evidence = await searchEvidence({ query: keyword });
+    semanticResults.value = evidence
+      .filter((item) => item.type === 'COMMUNITY_POST')
+      .slice(0, 6);
+  } catch (error) {
+    console.warn('语义检索暂时不可用:', error);
+    semanticResults.value = [];
+  } finally {
+    semanticLoading.value = false;
+  }
+};
 
 const fetchSearchResults = async () => {
   const keyword = route.query.keyword;
   if (!keyword) return;
+
+  fetchSemanticResults(keyword);
 
   try {
       loading.value = true;
@@ -74,6 +94,30 @@ onMounted(() => {
       <h2>搜索结果: {{ route.query.keyword }}</h2>
       <div class="result-count">共 {{ total }} 条结果</div>
     </div>
+
+    <section v-if="semanticLoading || semanticResults.length" class="semantic-section">
+      <div class="semantic-heading">
+        <div><span>GREENCARE RAG</span><h3>AI 语义发现</h3></div>
+        <small>不只匹配关键词，也理解症状与养护场景</small>
+      </div>
+      <el-skeleton v-if="semanticLoading" :rows="2" animated />
+      <div v-else class="semantic-grid">
+        <button
+          v-for="evidence in semanticResults"
+          :key="evidence.id"
+          type="button"
+          class="semantic-card"
+          @click="goToPostDetail(evidence.sourceId)"
+        >
+          <span class="semantic-type">社区经验</span>
+          <strong>{{ evidence.title }}</strong>
+          <p>{{ evidence.content }}</p>
+          <span class="semantic-score">
+            相关度 {{ Math.round((evidence.finalScore ?? evidence.rerankScore ?? evidence.retrievalScore ?? 0) * 100) }}%
+          </span>
+        </button>
+      </div>
+    </section>
 
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
@@ -154,6 +198,91 @@ onMounted(() => {
   padding: 20px;
 }
 
+.semantic-section {
+  margin-bottom: 28px;
+  padding: 20px;
+  border: 1px solid #d9e9df;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f7fbf5, #f2f8f4 68%, #faf5e8);
+}
+
+.semantic-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.semantic-heading span {
+  color: #7e9b8c;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+}
+
+.semantic-heading h3 {
+  margin: 3px 0 0;
+  color: #214f3c;
+  font-family: "STZhongsong", "SimSun", serif;
+  font-size: 20px;
+}
+
+.semantic-heading small {
+  color: #75887f;
+  font-size: 12px;
+}
+
+.semantic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.semantic-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #deebe4;
+  border-radius: 11px;
+  color: #315f4c;
+  background: rgba(255, 255, 255, .88);
+  text-align: left;
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.semantic-card:hover {
+  transform: translateY(-2px);
+  border-color: #99cdb1;
+  box-shadow: 0 9px 22px rgba(46, 105, 78, .09);
+}
+
+.semantic-type, .semantic-score {
+  color: #5d987a;
+  font-size: 10px;
+}
+
+.semantic-card strong {
+  display: block;
+  margin: 7px 0;
+  overflow: hidden;
+  color: #244c3c;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.semantic-card p {
+  display: -webkit-box;
+  margin: 0 0 10px;
+  overflow: hidden;
+  color: #75887f;
+  font-size: 11px;
+  line-height: 1.6;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .no-results {
   text-align: center;
   padding: 40px;
@@ -219,5 +348,13 @@ onMounted(() => {
   display: flex;
   justify-content: center;
 }
-</style>
 
+@media (max-width: 900px) {
+  .semantic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .semantic-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .semantic-grid { grid-template-columns: 1fr; }
+}
+</style>

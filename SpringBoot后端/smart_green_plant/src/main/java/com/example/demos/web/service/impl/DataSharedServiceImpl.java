@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -31,6 +33,18 @@ public class DataSharedServiceImpl implements DataSharedService {
     public List<String> getPlantNames(String communityUserId) {
 
         return dataSharedMapper.getPlantName(communityUserId);
+    }
+
+    @Override
+    public Map<String, Object> getRagContext(String communityUserId) {
+        Integer backEndUserId = dataSharedMapper.getBackEndUserId(communityUserId);
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("linked", backEndUserId != null);
+        context.put("backEndUserId", backEndUserId);
+        context.put("plants", backEndUserId == null
+                ? java.util.Collections.emptyList()
+                : dataSharedMapper.getRagPlants(communityUserId));
+        return context;
     }
 
     @Override

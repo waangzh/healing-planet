@@ -73,6 +73,19 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
+    @Override
+    public Map<String, Object> getRagContext(User communityUser) throws IOException {
+        Map<String, String> params = new HashMap<>();
+        params.put("communityUserId", communityUser.getId());
+        String response = HttpClientUtil.doPost(baseUrl + "data/rag-context", params);
+        JsonNode root = mapper.readTree(response);
+        if (!"1".equals(root.path("code").asText())) {
+            throw new IOException(root.path("msg").asText("花盆关联信息暂时不可用"));
+        }
+        return mapper.convertValue(root.path("data"), new TypeReference<Map<String, Object>>() {
+        });
+    }
+
     /**
      * 从大模型返回内容中提取推荐 ID 列表。
      */

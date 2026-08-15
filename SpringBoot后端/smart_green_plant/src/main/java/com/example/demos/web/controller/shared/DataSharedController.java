@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -28,6 +29,12 @@ public class DataSharedController {
     public Result<List<String>> PlantDataShared(@RequestParam(value = "userId",required = true) String communityUserId){
         log.info("社区用户id：{}",communityUserId);
         return Result.success(dataSharedService.getPlantNames(communityUserId));
+    }
+
+    @PostMapping("/rag-context")
+    public Result<Map<String, Object>> ragContext(
+            @RequestParam(value = "communityUserId") String communityUserId) {
+        return Result.success(dataSharedService.getRagContext(communityUserId));
     }
 
 

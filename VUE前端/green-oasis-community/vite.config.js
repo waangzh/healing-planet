@@ -30,6 +30,11 @@ export default defineConfig({
         changeOrigin: true,
         // 去掉前缀 /api，再转发给后端
         rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/ai-api': {
+        target: 'http://localhost:8010',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ai-api/, '')
       }
     }
   }

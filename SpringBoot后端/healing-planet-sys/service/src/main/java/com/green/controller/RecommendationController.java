@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import static com.green.security.jwt.JwtUtil.USER_NAME;
 
@@ -46,6 +47,13 @@ public class RecommendationController {
         User communityUser = iUmsUserService.getUserByUsername(userName);
         UserBindDeviceVO userBindDeviceVO = recommendationService.userBindDevice(deviceKey, communityUser);
         return Result.success(userBindDeviceVO);
+    }
+
+    @GetMapping("/rag/context")
+    public Result<Map<String, Object>> ragContext(
+            @RequestHeader(value = USER_NAME) String userName) throws IOException {
+        User communityUser = iUmsUserService.getUserByUsername(userName);
+        return Result.success(recommendationService.getRagContext(communityUser));
     }
 
     // 推荐文章：支持前端“换一换”（递增 pageNo）
