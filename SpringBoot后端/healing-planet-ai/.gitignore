@@ -2,4 +2,5 @@
 /.m2/
 /data/
 /.env
+application.yml
 *.log

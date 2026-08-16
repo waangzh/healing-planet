@@ -1,10 +1,16 @@
 server:
   port: ${AI_SERVER_PORT:8010}
-  shutdown: graceful
 
 spring:
   application:
     name: healing-planet-ai
+  http:
+    client:
+      connect-timeout: ${AI_HTTP_CONNECT_TIMEOUT:10s}
+      read-timeout: ${AI_HTTP_READ_TIMEOUT:60s}
+    reactiveclient:
+      connect-timeout: ${AI_HTTP_CONNECT_TIMEOUT:10s}
+      read-timeout: ${AI_HTTP_REACTIVE_READ_TIMEOUT:120s}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${COMMUNITY_DB_URL:jdbc:mysql://localhost:3306/green_community?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
@@ -16,13 +22,13 @@ spring:
   ai:
     openai:
       api-key: ${LLM_API_KEY:change-me}
-      base-url: ${LLM_BASE_URL:https://api.openai.com}
+      base-url: ${LLM_BASE_URL:https://api.siliconflow.cn}
       chat:
         options:
-          model: ${LLM_MODEL:gpt-4.1-mini}
+          model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}
           temperature: 0.1
       embedding:
-        base-url: ${EMBEDDING_BASE_URL:http://localhost:8081}
+        base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn}
         api-key: ${EMBEDDING_API_KEY:not-required}
         options:
           model: ${EMBEDDING_MODEL:BAAI/bge-m3}
@@ -51,9 +57,9 @@ app:
       disease-collection: ${QDRANT_DISEASE_COLLECTION:disease_knowledge}
       initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
     reranker:
-      enabled: ${RERANKER_ENABLED:false}
-      base-url: ${RERANKER_BASE_URL:http://localhost:8082}
-      path: ${RERANKER_PATH:/rerank}
+      enabled: ${RERANKER_ENABLED:true}
+      base-url: ${RERANKER_BASE_URL:https://api.siliconflow.cn}
+      path: ${RERANKER_PATH:/v1/rerank}
       api-key: ${RERANKER_API_KEY:}
       model: ${RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
     plant-state:
@@ -61,6 +67,9 @@ app:
       api-key: ${PLANT_STATE_API_KEY:}
       connect-timeout-millis: ${PLANT_STATE_CONNECT_TIMEOUT_MILLIS:1000}
       read-timeout-millis: ${PLANT_STATE_READ_TIMEOUT_MILLIS:3000}
+    attachments:
+      ttl-seconds: ${RAG_ATTACHMENT_TTL_SECONDS:900}
+      max-entries: ${RAG_ATTACHMENT_MAX_ENTRIES:32}
     disease-detector:
       base-url: ${DISEASE_DETECTOR_BASE_URL:http://localhost:5000}
       path: ${DISEASE_DETECTOR_PATH:/classify}
