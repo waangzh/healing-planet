@@ -3,7 +3,7 @@ import { useUserStore } from '@/stores'
 // import { ElMessage } from 'element-plus'
 // import { useRouter } from 'vue-router'
 // const baseURL = 'http://120.26.231.14:8080'
-const baseURL = 'http://localhost:8000'
+const baseURL = 'http://localhost:8070'
 // const router =useRouter()
 const instance = axios.create({
   baseURL,

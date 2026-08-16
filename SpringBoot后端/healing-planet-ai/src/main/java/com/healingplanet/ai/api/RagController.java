@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
@@ -33,26 +35,31 @@ public class RagController {
     }
 
     @PostMapping("/rag/chat")
-    public RagResponse chat(@Valid @RequestBody RagChatRequest request) {
-        return ragService.chat(toQuery(request));
+    public Mono<RagResponse> chat(@Valid @RequestBody RagChatRequest request) {
+        return Mono.fromCallable(() -> ragService.chat(toQuery(request)))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     @PostMapping(value = "/rag/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<?>> stream(@Valid @RequestBody RagChatRequest request) {
-        RagService.RagStream stream = ragService.stream(toQuery(request));
-        ServerSentEvent<List<Evidence>> evidence = ServerSentEvent.builder(stream.evidence())
-                .event("evidence").build();
-        Flux<ServerSentEvent<?>> tokens = stream.content().map(content ->
-                ServerSentEvent.builder(Map.of("content", content)).event("token").build());
-        return Flux.concat(Flux.just(evidence), tokens,
-                Flux.just(ServerSentEvent.builder(Map.of("done", true)).event("done").build()));
+        return Mono.fromCallable(() -> ragService.stream(toQuery(request)))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(stream -> {
+                    ServerSentEvent<List<Evidence>> evidence = ServerSentEvent.builder(stream.evidence())
+                            .event("evidence").build();
+                    Flux<ServerSentEvent<?>> tokens = stream.content().map(content ->
+                            ServerSentEvent.builder(Map.of("content", content)).event("token").build());
+                    return Flux.concat(Flux.just(evidence), tokens,
+                            Flux.just(ServerSentEvent.builder(Map.of("done", true)).event("done").build()));
+                });
     }
 
     @GetMapping("/search")
-    public List<Evidence> search(@RequestParam("q") @NotBlank @Size(max = 2000) String query,
-                                 @RequestParam(required = false) String canonicalPlantId) {
-        return ragService.search(new RagQuery(query, null, null, canonicalPlantId,
-                null, List.of(), Map.of()));
+    public Mono<List<Evidence>> search(@RequestParam("q") @NotBlank @Size(max = 2000) String query,
+                                       @RequestParam(required = false) String canonicalPlantId) {
+        return Mono.fromCallable(() -> ragService.search(new RagQuery(query, null, null, canonicalPlantId,
+                        null, List.of(), Map.of())))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     private RagQuery toQuery(RagChatRequest request) {

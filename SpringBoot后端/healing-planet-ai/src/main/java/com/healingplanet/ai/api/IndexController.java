@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
+import java.util.function.Supplier;
 
 @RestController
 @RequestMapping("/internal/index")
@@ -25,48 +29,52 @@ public class IndexController {
     }
 
     @PostMapping("/full")
-    public IndexReport full(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> full(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.fullIndex();
+        return offload(ingestionService::fullIndex);
     }
 
     @PostMapping("/plants")
-    public IndexReport plants(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> plants(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.indexPlants();
+        return offload(ingestionService::indexPlants);
     }
 
     @PostMapping("/community")
-    public IndexReport community(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> community(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.indexCommunity();
+        return offload(ingestionService::indexCommunity);
     }
 
     @PostMapping("/diseases")
-    public IndexReport diseases(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> diseases(@RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.indexDiseases();
+        return offload(ingestionService::indexDiseases);
     }
 
     @PostMapping("/disease/{diseaseId}")
-    public IndexReport disease(@PathVariable String diseaseId,
-                               @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> disease(@PathVariable String diseaseId,
+                                     @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.indexDisease(diseaseId);
+        return offload(() -> ingestionService.indexDisease(diseaseId));
     }
 
     @PostMapping("/post/{postId}")
-    public IndexReport post(@PathVariable String postId,
-                            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> post(@PathVariable String postId,
+                                  @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.indexPost(postId);
+        return offload(() -> ingestionService.indexPost(postId));
     }
 
     @DeleteMapping("/post/{postId}")
-    public IndexReport deletePost(@PathVariable String postId,
-                                  @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+    public Mono<IndexReport> deletePost(@PathVariable String postId,
+                                        @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
-        return ingestionService.deletePost(postId);
+        return offload(() -> ingestionService.deletePost(postId));
+    }
+
+    private Mono<IndexReport> offload(Supplier<IndexReport> action) {
+        return Mono.fromSupplier(action).subscribeOn(Schedulers.boundedElastic());
     }
 
     private void authorize(String apiKey) {
