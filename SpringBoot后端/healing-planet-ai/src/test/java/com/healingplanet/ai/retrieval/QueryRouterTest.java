@@ -20,6 +20,39 @@ class QueryRouterTest {
         assertThat(result.state()).isTrue();
         assertThat(result.community()).isFalse();
         assertThat(result.intent()).isEqualTo(QueryIntent.PERSONAL_CARE);
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION);
+    }
+
+    @Test
+    void shouldRouteCurrentFactToLiveStateOnly() {
+        var result = router.route(RagQuery.of("我的绿萝土壤湿度偏低吗？"));
+
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_FACT_CURRENT);
+    }
+
+    @Test
+    void currentWateringDecisionShouldIncludeHistoryWhenItParticipatesInTheAnswer() {
+        var result = router.route(RagQuery.of("我这盆绿萝现在需要浇水吗？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY);
+    }
+
+    @Test
+    void shouldRouteHistoryFactToSensorHistoryOnly() {
+        var result = router.route(RagQuery.of("这盆绿萝过去24小时土壤湿度趋势怎样？"));
+
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_FACT_HISTORY);
+    }
+
+    @Test
+    void staleWateringQuestionShouldNotLoadCareGuide() {
+        var result = router.route(RagQuery.of("我的绿萝现在需要浇水吗，传感器数据会不会太旧？"));
+
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_FRESHNESS);
     }
 
     @Test
@@ -35,6 +68,53 @@ class QueryRouterTest {
         var result = router.route(RagQuery.of("最近大家怎么养绿萝？"));
 
         assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
+    }
+
+    @Test
+    void generalCareShouldUseFormalKnowledgeOnly() {
+        var result = router.route(RagQuery.of("绿萝建议多久浇一次水？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+        assertThat(result.state()).isFalse();
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+    }
+
+    @Test
+    void formalAndCommunityWordingShouldUseBothSources() {
+        var result = router.route(RagQuery.of("绿萝官方浇水频率是什么？社区经验又怎么做？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
+        assertThat(result.state()).isFalse();
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+    }
+
+    @Test
+    void howToProcessShouldRemainFormalCareQuestion() {
+        var result = router.route(RagQuery.of("绿萝出现枯黄叶片时怎么处理？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+    }
+
+    @Test
+    void separateCommunityFollowUpShouldUseBothSources() {
+        var result = router.route(RagQuery.of("绿萝枯黄叶怎么处理？社区对状态变化有什么观察经验？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
+    void commaSeparatedCommunityFollowUpShouldUseBothSources() {
+        var result = router.route(RagQuery.of("绿萝的正式浇水建议，社区经验怎么做？"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
     }
 }

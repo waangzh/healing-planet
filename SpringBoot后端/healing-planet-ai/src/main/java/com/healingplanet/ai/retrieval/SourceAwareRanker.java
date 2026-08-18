@@ -9,19 +9,40 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class SourceAwareRanker {
+    private static final double MIN_FINAL_SCORE = 0.55;
+    private static final double RELATIVE_FINAL_SCORE = 0.97;
 
     public List<Evidence> rank(RagQuery query, List<RetrievalCandidate> candidates,
                                Map<String, Double> rerankScores, int limit) {
-        return candidates.stream()
+        List<Evidence> ranked = candidates.stream()
                 .map(candidate -> toEvidence(query, candidate, rerankScores.get(candidate.document().id())))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
+                .toList();
+        if (ranked.isEmpty()) return List.of();
+
+        // A plant guide and a community post have different score distributions. Apply
+        // the relative cutoff within each source before merging the final result.
+        Map<String, Double> topScoreBySource = ranked.stream()
+                .collect(Collectors.toMap(this::sourceKey, Evidence::finalScore, Math::max, HashMap::new));
+        return ranked.stream()
+                .filter(evidence -> evidence.finalScore() >= admissionScore(topScoreBySource.get(sourceKey(evidence))))
                 .limit(limit)
                 .toList();
+    }
+
+    private double admissionScore(Double topScore) {
+        return Math.max(MIN_FINAL_SCORE, topScore * RELATIVE_FINAL_SCORE);
+    }
+
+    private String sourceKey(Evidence evidence) {
+        return evidence.sourceType() == null ? evidence.type().name() : evidence.sourceType();
     }
 
     private Evidence toEvidence(RagQuery query, RetrievalCandidate candidate, Double rerankScore) {
