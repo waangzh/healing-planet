@@ -61,11 +61,10 @@ app:
       initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
     entity-resolution:
       candidate-top-k: ${RAG_ENTITY_CANDIDATE_TOP_K:5}
-      vector-acceptance-threshold: ${RAG_ENTITY_VECTOR_ACCEPTANCE_THRESHOLD:0.82}
-      strong-vector-threshold: ${RAG_ENTITY_STRONG_VECTOR_THRESHOLD:0.88}
-      margin-threshold: ${RAG_ENTITY_MARGIN_THRESHOLD:0.08}
-      lexical-acceptance-threshold: ${RAG_ENTITY_LEXICAL_ACCEPTANCE_THRESHOLD:0.90}
-      character-corroboration-threshold: ${RAG_ENTITY_CHARACTER_CORROBORATION_THRESHOLD:0.45}
+      llm-enabled: ${RAG_ENTITY_LLM_ENABLED:true}
+      llm-max-candidates: ${RAG_ENTITY_LLM_MAX_CANDIDATES:5}
+      llm-confidence-threshold: ${RAG_ENTITY_LLM_CONFIDENCE_THRESHOLD:0.90}
+      llm-cache-max-entries: ${RAG_ENTITY_LLM_CACHE_MAX_ENTRIES:256}
     reranker:
       enabled: ${RERANKER_ENABLED:true}
       base-url: ${RERANKER_BASE_URL:https://api.siliconflow.cn}

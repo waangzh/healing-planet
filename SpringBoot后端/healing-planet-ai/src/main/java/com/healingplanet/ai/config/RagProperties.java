@@ -134,24 +134,21 @@ public class RagProperties {
 
     public static class EntityResolution {
         private int candidateTopK = 5;
-        private double vectorAcceptanceThreshold = 0.82;
-        private double strongVectorThreshold = 0.88;
-        private double marginThreshold = 0.08;
-        private double lexicalAcceptanceThreshold = 0.90;
-        private double characterCorroborationThreshold = 0.45;
+        private boolean llmEnabled = true;
+        private int llmMaxCandidates = 5;
+        private double llmConfidenceThreshold = 0.90;
+        private int llmCacheMaxEntries = 256;
 
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
-        public double getVectorAcceptanceThreshold() { return vectorAcceptanceThreshold; }
-        public void setVectorAcceptanceThreshold(double value) { this.vectorAcceptanceThreshold = value; }
-        public double getStrongVectorThreshold() { return strongVectorThreshold; }
-        public void setStrongVectorThreshold(double value) { this.strongVectorThreshold = value; }
-        public double getMarginThreshold() { return marginThreshold; }
-        public void setMarginThreshold(double marginThreshold) { this.marginThreshold = marginThreshold; }
-        public double getLexicalAcceptanceThreshold() { return lexicalAcceptanceThreshold; }
-        public void setLexicalAcceptanceThreshold(double value) { this.lexicalAcceptanceThreshold = value; }
-        public double getCharacterCorroborationThreshold() { return characterCorroborationThreshold; }
-        public void setCharacterCorroborationThreshold(double value) { this.characterCorroborationThreshold = value; }
+        public boolean isLlmEnabled() { return llmEnabled; }
+        public void setLlmEnabled(boolean llmEnabled) { this.llmEnabled = llmEnabled; }
+        public int getLlmMaxCandidates() { return llmMaxCandidates; }
+        public void setLlmMaxCandidates(int llmMaxCandidates) { this.llmMaxCandidates = llmMaxCandidates; }
+        public double getLlmConfidenceThreshold() { return llmConfidenceThreshold; }
+        public void setLlmConfidenceThreshold(double value) { this.llmConfidenceThreshold = value; }
+        public int getLlmCacheMaxEntries() { return llmCacheMaxEntries; }
+        public void setLlmCacheMaxEntries(int value) { this.llmCacheMaxEntries = value; }
     }
 
     public static class Reranker {

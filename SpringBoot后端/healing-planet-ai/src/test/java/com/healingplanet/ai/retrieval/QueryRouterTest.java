@@ -126,4 +126,14 @@ class QueryRouterTest {
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
     }
+
+    @Test
+    void abnormalStateQuestionShouldFallbackToKnowledgeWhenStateIsUnavailable() {
+        var result = router.route(RagQuery.of("我的绿萝当前状态异常吗？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.PERSONAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.state()).isTrue();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION);
+    }
 }

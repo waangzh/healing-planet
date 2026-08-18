@@ -13,7 +13,7 @@ public class QueryRouter {
     private static final Set<String> STATE_TERMS = Set.of(
             "我的", "这盆", "当前", "现在", "今天", "实时", "过去一周", "过去7天", "过去24小时", "近24", "近7",
             "最近土壤", "最近温度", "最近湿度", "传感器", "土壤湿度", "温度适合", "环境异常",
-            "下降这么快", "要不要浇水", "需要浇水"
+            "下降这么快", "要不要浇水", "需要浇水", "状态异常", "有异常吗", "异常吗", "需要处理吗"
     );
     private static final Set<String> COMMUNITY_TERMS = Set.of(
             "社区", "大家", "网友", "有人讨论", "经验", "帖子"
@@ -71,10 +71,16 @@ public class QueryRouter {
         }
         boolean wateringDecision = text.contains("需要浇水") || text.contains("要不要浇水")
                 || text.contains("要不要补水") || text.contains("可以马上浇水");
+        boolean stateDecision = text.contains("状态异常") || text.contains("有异常吗")
+                || text.contains("异常吗") || text.contains("需要处理吗");
         if (wateringDecision) {
             boolean history = text.contains("现在需要浇水") && !text.contains("太旧");
             return new RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
                     history ? StateEvidenceNeed.STATE_DECISION_WITH_HISTORY : StateEvidenceNeed.STATE_DECISION);
+        }
+        if (stateDecision) {
+            return new RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
+                    StateEvidenceNeed.STATE_DECISION);
         }
         return new RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
                 StateEvidenceNeed.STATE_FACT_CURRENT);

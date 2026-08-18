@@ -97,6 +97,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                           PlantEntityResolver.Resolution entity) {
         int finalTopK = properties.getFinalTopK();
         List<Evidence> global = ranker.rank(query, candidates, rerankScores, finalTopK);
+        global = ensureMixedSourceCoverage(query, candidates, rerankScores, global, finalTopK);
         if (entity.kind() != PlantEntityResolver.ResolutionKind.KNOWN
                 || entity.canonicalPlantIds().size() < 2) return global;
 
@@ -119,7 +120,30 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private List<RetrievalCandidate> filterKnowledgeType(RagQuery query, List<RetrievalCandidate> candidates) {
         Object required = query.context().get("requiredKnowledgeType");
         if (!(required instanceof String type) || type.isBlank()) return candidates;
-        return candidates.stream().filter(candidate -> type.equalsIgnoreCase(candidate.document().knowledgeType())).toList();
+        return candidates.stream()
+                .filter(candidate -> candidate.document().source() != KnowledgeSource.PLANT
+                        || type.equalsIgnoreCase(candidate.document().knowledgeType()))
+                .toList();
+    }
+
+    private List<Evidence> ensureMixedSourceCoverage(RagQuery query, List<RetrievalCandidate> candidates,
+                                                      Map<String, Double> rerankScores, List<Evidence> global,
+                                                      int finalTopK) {
+        boolean includePlant = booleanContext(query, "includePlantKnowledge",
+                query.intent() != QueryIntent.COMMUNITY_SEARCH);
+        boolean includeCommunity = booleanContext(query, "includeCommunity", true);
+        if (!includePlant || !includeCommunity) return global;
+
+        Map<String, Evidence> selected = new LinkedHashMap<>();
+        for (KnowledgeSource source : List.of(KnowledgeSource.PLANT, KnowledgeSource.COMMUNITY)) {
+            ranker.rank(query, candidates.stream().filter(candidate -> candidate.document().source() == source).toList(),
+                    rerankScores, 1).stream().findFirst().ifPresent(evidence -> selected.put(evidence.id(), evidence));
+        }
+        if (selected.size() < 2) return global;
+        global.forEach(evidence -> {
+            if (selected.size() < finalTopK) selected.putIfAbsent(evidence.id(), evidence);
+        });
+        return selected.values().stream().limit(finalTopK).toList();
     }
 
     private boolean booleanContext(RagQuery query, String key, boolean defaultValue) {

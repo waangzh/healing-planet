@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -121,5 +122,57 @@ class HybridEvidenceRetrieverTest {
         verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
         verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
         verify(sparseIndex, never()).search(any(), any(), anyInt());
+    }
+
+    @Test
+    void shouldKeepCommunityCandidatesWhenFormalKnowledgeTypeIsRequired() {
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
+        RagQuery query = new RagQuery("绿萝光照和社区经验", null, null, null,
+                null, List.of(), Map.of("requiredKnowledgeType", "LIGHT"));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                document("p1", "LIGHT"), document("p2", "LIGHT"), document("p3", "LIGHT"),
+                document("p4", "LIGHT"), document("p5", "LIGHT"), document("p6", "LIGHT")));
+        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(communityDocument("c1")));
+
+        var result = retriever.retrieve(query);
+
+        assertThat(result).extracting(com.healingplanet.ai.domain.Evidence::type)
+                .contains(com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE,
+                        com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST);
+    }
+
+    private org.springframework.ai.document.Document document(String id, String knowledgeType) {
+        return org.springframework.ai.document.Document.builder().id(id).text(id)
+                .metadata("canonicalPlantId", "1")
+                .metadata("chunkId", id)
+                .metadata("knowledgeType", knowledgeType)
+                .metadata("sourceId", id)
+                .metadata("title", id)
+                .metadata("plantName", "绿萝")
+                .metadata("trustScore", 1d)
+                .metadata("createdAt", Instant.now().toString())
+                .score(0.95)
+                .build();
+    }
+
+    private org.springframework.ai.document.Document communityDocument(String id) {
+        return org.springframework.ai.document.Document.builder().id(id).text(id)
+                .metadata("chunkId", id)
+                .metadata("knowledgeType", "COMMUNITY_EXPERIENCE")
+                .metadata("sourceId", id)
+                .metadata("title", id)
+                .metadata("plantName", "绿萝")
+                .metadata("trustScore", 1d)
+                .metadata("essence", true)
+                .metadata("likes", 30)
+                .metadata("collects", 8)
+                .metadata("comments", 5)
+                .metadata("views", 200)
+                .metadata("createdAt", Instant.now().toString())
+                .score(0.92)
+                .build();
     }
 }

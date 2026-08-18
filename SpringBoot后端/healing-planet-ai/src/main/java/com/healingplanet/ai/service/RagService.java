@@ -38,12 +38,12 @@ public class RagService {
         if (validation != null) return new RagResponse(validation, List.of());
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(query);
         List<Evidence> evidence = retrieval.evidence();
-        if (evidence.isEmpty()) return new RagResponse("当前知识库中没有足够证据回答这个问题。", List.of(),
-                retrieval.entityResolution());
         if (missingStateEvidence(decision, evidence)) {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
                     retrieval.entityResolution());
         }
+        if (evidence.isEmpty()) return new RagResponse("当前知识库中没有足够证据回答这个问题。", List.of(),
+                retrieval.entityResolution());
         String answer = chatClient.prompt().system(promptBuilder.build(decision))
                 .user(userPrompt(query.query(), evidence)).call().content();
         return new RagResponse(answer, evidence, retrieval.entityResolution());
@@ -55,12 +55,12 @@ public class RagService {
         if (validation != null) return new RagStream(List.of(), Flux.just(validation));
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(query);
         List<Evidence> evidence = retrieval.evidence();
+        if (missingStateEvidence(decision, evidence)) {
+            return new RagStream(evidence, retrieval.entityResolution(), Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
+        }
         if (evidence.isEmpty()) {
             return new RagStream(evidence, retrieval.entityResolution(),
                     Flux.just("当前知识库中没有足够证据回答这个问题。"));
-        }
-        if (missingStateEvidence(decision, evidence)) {
-            return new RagStream(evidence, retrieval.entityResolution(), Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
         }
         Flux<String> content = chatClient.prompt().system(promptBuilder.build(decision))
                 .user(userPrompt(query.query(), evidence)).stream().content();
