@@ -3,3 +3,6 @@
 
 # Claude Code 本地配置
 .claude/
+
+# 本地 RAG Judge 配置（API Key 仅通过环境变量提供）
+rag-eval/judge.local.json
