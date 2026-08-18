@@ -10,14 +10,22 @@ import org.springframework.ai.vectorstore.qdrant.QdrantVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.time.Clock;
 
 @Configuration
 public class AiConfiguration {
+
+    @Bean("ragClock")
+    @Profile("!eval")
+    Clock ragClock() {
+        return Clock.systemUTC();
+    }
 
     @Bean(destroyMethod = "close")
     QdrantClient qdrantClient(RagProperties properties) {

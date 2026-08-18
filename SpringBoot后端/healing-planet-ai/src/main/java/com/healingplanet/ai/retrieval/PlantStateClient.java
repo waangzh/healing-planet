@@ -4,6 +4,7 @@ import com.healingplanet.ai.domain.PlantState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -11,7 +12,8 @@ import org.springframework.web.client.RestClientException;
 import java.util.Optional;
 
 @Component
-public class PlantStateClient {
+@Profile("!eval")
+public class PlantStateClient implements PlantStateGateway {
     private static final Logger log = LoggerFactory.getLogger(PlantStateClient.class);
     private final RestClient restClient;
 
@@ -19,6 +21,7 @@ public class PlantStateClient {
         this.restClient = restClient;
     }
 
+    @Override
     public Optional<PlantState> get(Long plantInstanceId, Long userId) {
         try {
             return Optional.ofNullable(restClient.get()

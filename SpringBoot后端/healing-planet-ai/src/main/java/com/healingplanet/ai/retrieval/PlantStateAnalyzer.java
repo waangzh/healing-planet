@@ -3,8 +3,10 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.PlantState;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -17,6 +19,11 @@ import java.util.Map;
 @Component
 public class PlantStateAnalyzer {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+    private final Clock clock;
+
+    public PlantStateAnalyzer(@Qualifier("ragClock") Clock clock) {
+        this.clock = clock;
+    }
 
     public List<Evidence> analyze(PlantState state) {
         Instant observedAt = state.observedAt() == null ? null : state.observedAt().atZone(BUSINESS_ZONE).toInstant();
@@ -26,7 +33,7 @@ public class PlantStateAnalyzer {
         put(common, "plantName", state.plantName());
         put(common, "deviceId", state.deviceId());
         put(common, "observedAt", observedAt);
-        if (observedAt != null) common.put("stale", Duration.between(observedAt, Instant.now()).toMinutes() > 30);
+        if (observedAt != null) common.put("stale", Duration.between(observedAt, clock.instant()).toMinutes() > 30);
 
         List<String> violations = violations(state.current(), state.thresholds());
         Map<String, Object> liveMetadata = new LinkedHashMap<>(common);
@@ -67,7 +74,7 @@ public class PlantStateAnalyzer {
 
     private boolean isStale(java.time.LocalDateTime observedAt) {
         if (observedAt == null) return true;
-        return Duration.between(observedAt.atZone(BUSINESS_ZONE).toInstant(), Instant.now()).toMinutes() > 30;
+        return Duration.between(observedAt.atZone(BUSINESS_ZONE).toInstant(), clock.instant()).toMinutes() > 30;
     }
 
     private String historyContent(PlantState state) {

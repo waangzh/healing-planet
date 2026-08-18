@@ -3,6 +3,8 @@ package com.healingplanet.ai.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneId;
 
 @ConfigurationProperties(prefix = "app.rag")
 public class RagProperties {
@@ -18,6 +20,7 @@ public class RagProperties {
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
     private final Attachments attachments = new Attachments();
+    private final Eval eval = new Eval();
 
     public int getDenseTopK() { return denseTopK; }
     public void setDenseTopK(int denseTopK) { this.denseTopK = denseTopK; }
@@ -36,6 +39,20 @@ public class RagProperties {
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
     public Attachments getAttachments() { return attachments; }
+    public Eval getEval() { return eval; }
+
+    public static class Eval {
+        private Path fixtureDirectory = Path.of("..", "..", "rag-eval", "fixtures");
+        private Instant clockInstant = Instant.parse("2026-08-17T02:00:00Z");
+        private ZoneId clockZone = ZoneId.of("Asia/Shanghai");
+
+        public Path getFixtureDirectory() { return fixtureDirectory; }
+        public void setFixtureDirectory(Path fixtureDirectory) { this.fixtureDirectory = fixtureDirectory; }
+        public Instant getClockInstant() { return clockInstant; }
+        public void setClockInstant(Instant clockInstant) { this.clockInstant = clockInstant; }
+        public ZoneId getClockZone() { return clockZone; }
+        public void setClockZone(ZoneId clockZone) { this.clockZone = clockZone; }
+    }
 
     public static class Attachments {
         private long ttlSeconds = 15 * 60;

@@ -4,6 +4,7 @@ import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.DiseaseDetection;
 import com.healingplanet.ai.domain.ImageAttachment;
 import com.healingplanet.ai.domain.VisualObservation;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.MediaType;
@@ -23,6 +24,7 @@ public class ImageAttachmentStore {
     private final RagProperties properties;
     private final Clock clock;
 
+    @Autowired
     public ImageAttachmentStore(RagProperties properties) {
         this(properties, Clock.systemUTC());
     }

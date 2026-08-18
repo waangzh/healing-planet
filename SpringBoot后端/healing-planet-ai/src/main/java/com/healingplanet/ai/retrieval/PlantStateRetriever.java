@@ -8,10 +8,10 @@ import java.util.List;
 
 @Service
 public class PlantStateRetriever {
-    private final PlantStateClient client;
+    private final PlantStateGateway client;
     private final PlantStateAnalyzer analyzer;
 
-    public PlantStateRetriever(PlantStateClient client, PlantStateAnalyzer analyzer) {
+    public PlantStateRetriever(PlantStateGateway client, PlantStateAnalyzer analyzer) {
         this.client = client;
         this.analyzer = analyzer;
     }
