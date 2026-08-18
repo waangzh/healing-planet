@@ -16,6 +16,7 @@ public class RagProperties {
     private String internalApiKey = "";
     private Path dataDirectory = Path.of("data", "rag");
     private final Qdrant qdrant = new Qdrant();
+    private final EntityResolution entityResolution = new EntityResolution();
     private final Reranker reranker = new Reranker();
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
@@ -35,6 +36,7 @@ public class RagProperties {
     public Path getDataDirectory() { return dataDirectory; }
     public void setDataDirectory(Path dataDirectory) { this.dataDirectory = dataDirectory; }
     public Qdrant getQdrant() { return qdrant; }
+    public EntityResolution getEntityResolution() { return entityResolution; }
     public Reranker getReranker() { return reranker; }
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
@@ -105,6 +107,7 @@ public class RagProperties {
         private boolean tls;
         private String apiKey = "";
         private String plantCollection = "plant_knowledge";
+        private String plantEntityCollection = "plant_entities";
         private String communityCollection = "community_knowledge";
         private String diseaseCollection = "disease_knowledge";
         private boolean initializeSchema = true;
@@ -119,12 +122,36 @@ public class RagProperties {
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
         public String getPlantCollection() { return plantCollection; }
         public void setPlantCollection(String plantCollection) { this.plantCollection = plantCollection; }
+        public String getPlantEntityCollection() { return plantEntityCollection; }
+        public void setPlantEntityCollection(String plantEntityCollection) { this.plantEntityCollection = plantEntityCollection; }
         public String getCommunityCollection() { return communityCollection; }
         public void setCommunityCollection(String communityCollection) { this.communityCollection = communityCollection; }
         public String getDiseaseCollection() { return diseaseCollection; }
         public void setDiseaseCollection(String diseaseCollection) { this.diseaseCollection = diseaseCollection; }
         public boolean isInitializeSchema() { return initializeSchema; }
         public void setInitializeSchema(boolean initializeSchema) { this.initializeSchema = initializeSchema; }
+    }
+
+    public static class EntityResolution {
+        private int candidateTopK = 5;
+        private double vectorAcceptanceThreshold = 0.82;
+        private double strongVectorThreshold = 0.88;
+        private double marginThreshold = 0.08;
+        private double lexicalAcceptanceThreshold = 0.90;
+        private double characterCorroborationThreshold = 0.45;
+
+        public int getCandidateTopK() { return candidateTopK; }
+        public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
+        public double getVectorAcceptanceThreshold() { return vectorAcceptanceThreshold; }
+        public void setVectorAcceptanceThreshold(double value) { this.vectorAcceptanceThreshold = value; }
+        public double getStrongVectorThreshold() { return strongVectorThreshold; }
+        public void setStrongVectorThreshold(double value) { this.strongVectorThreshold = value; }
+        public double getMarginThreshold() { return marginThreshold; }
+        public void setMarginThreshold(double marginThreshold) { this.marginThreshold = marginThreshold; }
+        public double getLexicalAcceptanceThreshold() { return lexicalAcceptanceThreshold; }
+        public void setLexicalAcceptanceThreshold(double value) { this.lexicalAcceptanceThreshold = value; }
+        public double getCharacterCorroborationThreshold() { return characterCorroborationThreshold; }
+        public void setCharacterCorroborationThreshold(double value) { this.characterCorroborationThreshold = value; }
     }
 
     public static class Reranker {

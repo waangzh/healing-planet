@@ -55,9 +55,17 @@ app:
       tls: ${QDRANT_TLS:false}
       api-key: ${QDRANT_API_KEY:}
       plant-collection: ${QDRANT_PLANT_COLLECTION:plant_knowledge}
+      plant-entity-collection: ${QDRANT_PLANT_ENTITY_COLLECTION:plant_entities}
       community-collection: ${QDRANT_COMMUNITY_COLLECTION:community_knowledge}
       disease-collection: ${QDRANT_DISEASE_COLLECTION:disease_knowledge}
       initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
+    entity-resolution:
+      candidate-top-k: ${RAG_ENTITY_CANDIDATE_TOP_K:5}
+      vector-acceptance-threshold: ${RAG_ENTITY_VECTOR_ACCEPTANCE_THRESHOLD:0.82}
+      strong-vector-threshold: ${RAG_ENTITY_STRONG_VECTOR_THRESHOLD:0.88}
+      margin-threshold: ${RAG_ENTITY_MARGIN_THRESHOLD:0.08}
+      lexical-acceptance-threshold: ${RAG_ENTITY_LEXICAL_ACCEPTANCE_THRESHOLD:0.90}
+      character-corroboration-threshold: ${RAG_ENTITY_CHARACTER_CORROBORATION_THRESHOLD:0.45}
     reranker:
       enabled: ${RERANKER_ENABLED:true}
       base-url: ${RERANKER_BASE_URL:https://api.siliconflow.cn}

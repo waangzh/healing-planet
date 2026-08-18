@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,6 +64,27 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
+    void shouldSearchEachResolvedPlantWithItsOwnCanonicalFilter() {
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "20", List.of("20", "21"),
+                Set.of("红掌", "白掌"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
+                1, 0, 1, 2, "");
+        RagQuery query = new RagQuery("红掌和白掌的光照要求一样吗？", null, null, null,
+                null, List.of(), Map.of("includeCommunity", false));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+
+        var result = retriever.retrieveWithDiagnostics(query);
+
+        ArgumentCaptor<SearchRequest> requests = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore, times(2)).similaritySearch(requests.capture());
+        assertThat(requests.getAllValues()).allMatch(SearchRequest::hasFilterExpression);
+        assertThat(requests.getAllValues()).extracting(request -> request.getFilterExpression().toString())
+                .anyMatch(filter -> filter.contains("20"))
+                .anyMatch(filter -> filter.contains("21"));
+        assertThat(result.entityResolution().canonicalPlantIds()).containsExactly("20", "21");
+    }
+
+    @Test
     void shouldStopBeforeSearchingWhenNamedPlantIsUnknown() {
         RagQuery query = RagQuery.of("火星苔藓适合什么光照？");
         when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
@@ -80,6 +102,19 @@ class HybridEvidenceRetrieverTest {
         RagQuery query = RagQuery.of("量子纠缠是什么？");
         when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN, "", Set.of()));
+
+        assertThat(retriever.retrieve(query)).isEmpty();
+
+        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
+        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
+        verify(sparseIndex, never()).search(any(), any(), anyInt());
+    }
+
+    @Test
+    void shouldStopBeforeSearchingWhenPlantEntityIsAmbiguous() {
+        RagQuery query = RagQuery.of("某种室内植物适合什么光照？");
+        when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.AMBIGUOUS, "", Set.of()));
 
         assertThat(retriever.retrieve(query)).isEmpty();
 

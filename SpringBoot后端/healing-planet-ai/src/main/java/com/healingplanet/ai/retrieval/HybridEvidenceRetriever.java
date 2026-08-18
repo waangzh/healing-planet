@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,23 +47,37 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public List<Evidence> retrieve(RagQuery query) {
+        return retrieveWithDiagnostics(query).evidence();
+    }
+
+    @Override
+    public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
         return metrics.time("knowledge_total", "all", () -> retrieveTimed(query));
     }
 
-    private List<Evidence> retrieveTimed(RagQuery query) {
+    private RetrievalResult retrieveTimed(RagQuery query) {
         PlantEntityResolver.Resolution entity = metrics.time("entity_resolve", "all",
                 () -> entityResolver.resolve(query));
         if (entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
+                || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
                 || entity.kind() == PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN) {
             metrics.recordCandidates("selected", "all", 0);
-            return List.of();
+            return new RetrievalResult(List.of(), entity.diagnostics());
         }
 
         List<RetrievalCandidate> fused = new ArrayList<>();
         boolean includePlant = booleanContext(query, "includePlantKnowledge", query.intent() != QueryIntent.COMMUNITY_SEARCH);
         boolean includeCommunity = booleanContext(query, "includeCommunity", true);
         if (includePlant) {
-            fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore, entity));
+            if (entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
+                    && entity.canonicalPlantIds().size() > 1) {
+                for (String canonicalPlantId : entity.canonicalPlantIds()) {
+                    fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore,
+                            PlantEntityResolver.Resolution.forCanonicalPlantId(canonicalPlantId)));
+                }
+            } else {
+                fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore, entity));
+            }
         }
         if (includeCommunity) {
             fused.addAll(retrieveSource(query.query(), KnowledgeSource.COMMUNITY, communityStore, entity));
@@ -72,9 +87,33 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         Map<String, Double> rerankScores = metrics.time("rerank", "all",
                 () -> reranker.rerank(query.query(), filtered));
         List<Evidence> selected = metrics.time("final_rank", "all",
-                () -> ranker.rank(query, filtered, rerankScores, properties.getFinalTopK()));
+                () -> selectEvidence(query, filtered, rerankScores, entity));
         metrics.recordCandidates("selected", "all", selected.size());
-        return selected;
+        return new RetrievalResult(selected, entity.diagnostics());
+    }
+
+    private List<Evidence> selectEvidence(RagQuery query, List<RetrievalCandidate> candidates,
+                                          Map<String, Double> rerankScores,
+                                          PlantEntityResolver.Resolution entity) {
+        int finalTopK = properties.getFinalTopK();
+        List<Evidence> global = ranker.rank(query, candidates, rerankScores, finalTopK);
+        if (entity.kind() != PlantEntityResolver.ResolutionKind.KNOWN
+                || entity.canonicalPlantIds().size() < 2) return global;
+
+        int perEntity = Math.max(1, finalTopK / entity.canonicalPlantIds().size());
+        Map<String, Evidence> selected = new LinkedHashMap<>();
+        for (String canonicalPlantId : entity.canonicalPlantIds()) {
+            List<RetrievalCandidate> entityCandidates = candidates.stream()
+                    .filter(candidate -> canonicalPlantId.equals(candidate.document().canonicalPlantId()))
+                    .toList();
+            ranker.rank(query, entityCandidates, rerankScores, perEntity)
+                    .forEach(evidence -> selected.putIfAbsent(evidence.id(), evidence));
+        }
+        for (Evidence evidence : global) {
+            if (selected.size() >= finalTopK) break;
+            selected.putIfAbsent(evidence.id(), evidence);
+        }
+        return selected.values().stream().limit(finalTopK).toList();
     }
 
     private List<RetrievalCandidate> filterKnowledgeType(RagQuery query, List<RetrievalCandidate> candidates) {

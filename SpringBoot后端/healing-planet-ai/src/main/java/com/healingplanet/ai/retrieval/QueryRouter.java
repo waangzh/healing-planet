@@ -21,6 +21,10 @@ public class QueryRouter {
     private static final Set<String> FORMAL_KNOWLEDGE_TERMS = Set.of(
             "官方", "正式", "指南", "规范", "标准"
     );
+    private static final Set<String> PERSONAL_CONTEXT_TERMS = Set.of(
+            "我的", "我这盆", "这盆", "当前", "现在", "今天", "实时", "传感器"
+    );
+    private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
             Pattern.compile("[？?。；;，,]\\s*社区");
 
@@ -40,7 +44,10 @@ public class QueryRouter {
         }
 
         String text = query.query().toLowerCase(Locale.ROOT);
-        boolean state = STATE_TERMS.stream().anyMatch(text::contains);
+        boolean personalContext = PERSONAL_CONTEXT_TERMS.stream().anyMatch(text::contains);
+        boolean state = STATE_TERMS.stream().anyMatch(term -> !GENERIC_WATERING_STATE_TERMS.contains(term)
+                && text.contains(term));
+        state = state || personalContext && GENERIC_WATERING_STATE_TERMS.stream().anyMatch(text::contains);
         boolean community = COMMUNITY_TERMS.stream().anyMatch(text::contains);
         if (community) {
             boolean mixed = FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(text::contains)

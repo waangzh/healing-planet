@@ -29,10 +29,15 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public List<Evidence> retrieve(RagQuery query) {
+        return retrieveWithDiagnostics(query).evidence();
+    }
+
+    @Override
+    public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
         return metrics.time("retrieve_total", "all", () -> retrieveTimed(query));
     }
 
-    private List<Evidence> retrieveTimed(RagQuery query) {
+    private RetrievalResult retrieveTimed(RagQuery query) {
         QueryRouter.RoutingDecision route = router.route(query);
         List<Evidence> state = route.state()
                 ? metrics.time("state_search", "state", () -> stateRetriever.retrieve(query))
@@ -40,9 +45,14 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         state = state.stream().filter(item -> stateEvidenceRequired(route.stateEvidenceNeed(), item)).toList();
         RagQuery routed = routedQuery(query, route, state);
         List<Evidence> result = new ArrayList<>(state);
-        if (route.knowledge() || route.community()) result.addAll(knowledgeRetriever.retrieve(routed));
+        RetrievalResult knowledge = route.knowledge() || route.community()
+                ? knowledgeRetriever.retrieveWithDiagnostics(routed) : new RetrievalResult(List.of(), null);
+        if (knowledge == null) {
+            knowledge = new RetrievalResult(knowledgeRetriever.retrieve(routed), null);
+        }
+        result.addAll(knowledge.evidence());
         metrics.recordCandidates("response", "all", result.size());
-        return List.copyOf(result);
+        return new RetrievalResult(result, knowledge.entityResolution());
     }
 
     private boolean stateEvidenceRequired(QueryRouter.StateEvidenceNeed need, Evidence evidence) {
@@ -60,9 +70,8 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         Map<String, Object> context = new HashMap<>(query.context());
         context.put("includePlantKnowledge", route.knowledge());
         context.put("includeCommunity", route.community());
-        if (route.knowledge() && isWateringDecision(query.query())) {
-            context.put("requiredKnowledgeType", "WATERING");
-        }
+        String requiredKnowledgeType = route.knowledge() ? requiredKnowledgeType(query.query()) : null;
+        if (requiredKnowledgeType != null) context.put("requiredKnowledgeType", requiredKnowledgeType);
         String plantName = state.stream().map(Evidence::metadata)
                 .map(metadata -> metadata.get("plantName"))
                 .filter(String.class::isInstance).map(String.class::cast)
@@ -73,8 +82,17 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
                 route.intent(), query.keywords(), context);
     }
 
-    private boolean isWateringDecision(String query) {
+    private String requiredKnowledgeType(String query) {
         String text = query == null ? "" : query;
-        return text.contains("浇水") || text.contains("补水");
+        Map<String, Boolean> topics = Map.of(
+                "LIGHT", text.contains("光照") || text.contains("阳光") || text.contains("晒"),
+                "WATERING", text.contains("浇") || text.contains("补水"),
+                "TEMPERATURE", text.contains("温度") || text.contains("耐冷") || text.contains("耐热"),
+                "HUMIDITY", text.contains("湿度"),
+                "FERTILIZING", text.contains("施肥") || text.contains("肥料")
+        );
+        List<String> matched = topics.entrySet().stream().filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey).toList();
+        return matched.size() == 1 ? matched.get(0) : null;
     }
 }

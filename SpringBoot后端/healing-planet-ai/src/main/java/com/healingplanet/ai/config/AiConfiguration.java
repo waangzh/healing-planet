@@ -42,6 +42,11 @@ public class AiConfiguration {
         return vectorStore(client, embeddingModel, properties.getQdrant().getPlantCollection(), properties);
     }
 
+    @Bean("plantEntityVectorStore")
+    VectorStore plantEntityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getPlantEntityCollection(), properties);
+    }
+
     @Bean("communityVectorStore")
     VectorStore communityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
         return vectorStore(client, embeddingModel, properties.getQdrant().getCommunityCollection(), properties);

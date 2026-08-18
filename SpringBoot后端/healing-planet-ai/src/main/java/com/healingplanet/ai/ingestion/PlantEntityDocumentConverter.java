@@ -1,0 +1,35 @@
+package com.healingplanet.ai.ingestion;
+
+import com.healingplanet.ai.domain.KnowledgeDocument;
+import com.healingplanet.ai.domain.KnowledgeSource;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Component
+public class PlantEntityDocumentConverter {
+
+    public KnowledgeDocument convert(KnowledgeRepository.PlantEntityRow plant) {
+        String commonName = safe(plant.commonName());
+        String scientificName = safe(plant.scientificName());
+        String content = "植物名称：%s\n学名：%s".formatted(commonName, scientificName);
+        return new KnowledgeDocument(
+                id(plant.id()), KnowledgeSource.PLANT_ENTITY, plant.id(), commonName, content,
+                plant.id(), commonName, "PLANT_ENTITY", List.of(), 1.0, false,
+                0, 0, 0, 0, Instant.EPOCH,
+                Map.of("commonName", commonName, "scientificName", scientificName, "entityType", "PLANT")
+        );
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String id(String plantId) {
+        return UUID.nameUUIDFromBytes(("plant-entity:" + plantId).getBytes(StandardCharsets.UTF_8)).toString();
+    }
+}

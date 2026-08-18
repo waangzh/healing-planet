@@ -31,6 +31,16 @@ public class KnowledgeRepository {
         )).list();
     }
 
+    public List<PlantEntityRow> findPlantEntities() {
+        return jdbcClient.sql("""
+                select p.id, p.scientific_name, p.common_name
+                from plants p
+                order by p.id
+                """).query((rs, rowNum) -> new PlantEntityRow(
+                rs.getString("id"), rs.getString("scientific_name"), rs.getString("common_name")
+        )).list();
+    }
+
     public List<PostRow> findPublishedPosts() {
         return jdbcClient.sql("""
                 select p.id, p.title, p.content, p.likes, p.collects, p.comments, p.view,
@@ -79,6 +89,9 @@ public class KnowledgeRepository {
                            String lightRequirements, String wateringFrequency,
                            String temperaturePreference, String humidityPreference,
                            String fertilizingTips, String detailAdvice) {
+    }
+
+    public record PlantEntityRow(String id, String scientificName, String commonName) {
     }
 
     public record PostRow(String id, String title, String content, int likes, int collects,

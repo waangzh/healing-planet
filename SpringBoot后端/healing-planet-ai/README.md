@@ -70,8 +70,9 @@
 ### 第一阶段 · 知识检索
 
 - `plants + plant_care_guides` 按光照、浇水、温度、湿度、施肥和综合养护转换为语义文档。
+- `plants` 同时生成一株一条的独立实体文档，写入 `plant_entities`，仅用于名称解析。
 - `post + post_tag + tag` 转换为社区经验文档，只摄取 `status = 1`（兼容历史 `status is null`）的帖子。
-- BGE-M3 dense embedding + Qdrant 两个 collection（植物 / 社区）。
+- BGE-M3 dense embedding + Qdrant 独立 collection（植物实体 / 植物知识 / 社区 / 病害）。
 - Lucene 中文字符 n-gram BM25 稀疏检索。
 - RRF 融合、可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
 - 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
@@ -151,6 +152,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | Embedding 模型 | `https://api.siliconflow.cn` / `BAAI/bge-m3` |
 | `QDRANT_HOST` / `QDRANT_GRPC_PORT` | Qdrant 连接 | `localhost` / `6334` |
 | `QDRANT_PLANT_COLLECTION` | 植物知识 collection | `plant_knowledge` |
+| `QDRANT_PLANT_ENTITY_COLLECTION` | 植物实体 collection | `plant_entities` |
 | `QDRANT_COMMUNITY_COLLECTION` | 社区知识 collection | `community_knowledge` |
 | `QDRANT_DISEASE_COLLECTION` | 病害知识 collection | `disease_knowledge` |
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
@@ -188,13 +190,14 @@ curl -X POST http://localhost:8010/internal/index/full \
 }
 ```
 
-响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据。
+响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据；`entityResolution` 返回实体解析诊断，包括 `resolutionKind`、`resolutionMethod`、`canonicalPlantId`、`canonicalPlantIds`、`top1Score`、`top2Score`、`scoreMargin`、`candidateCount` 和 `rejectionReason`。
 
 ### 流式问答
 
 `POST /api/rag/chat/stream`，事件顺序为：
 
 - `evidence`：本轮选中的全部证据；
+- `entity_resolution`：实体解析诊断；
 - `token`：模型增量文本；
 - `done`：完成标记。
 
@@ -239,7 +242,7 @@ curl "http://localhost:8010/actuator/metrics/healing.planet.rag.retrieval.candid
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/internal/index/full` | 全量索引 |
-| `POST` | `/internal/index/plants` | 仅植物知识 |
+| `POST` | `/internal/index/plants` | 植物实体与植物知识 |
 | `POST` | `/internal/index/community` | 仅社区内容 |
 | `POST` | `/internal/index/post/{postId}` | 单帖子更新 |
 | `DELETE` | `/internal/index/post/{postId}` | 单帖子删除 |

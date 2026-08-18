@@ -84,6 +84,15 @@ class QueryRouterTest {
     }
 
     @Test
+    void wateringQuestionWithoutPersonalContextShouldRemainGeneralCare() {
+        var result = router.route(RagQuery.of("月球绿萝需要浇水吗？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.state()).isFalse();
+    }
+
+    @Test
     void formalAndCommunityWordingShouldUseBothSources() {
         var result = router.route(RagQuery.of("绿萝官方浇水频率是什么？社区经验又怎么做？"));
 

@@ -6,3 +6,8 @@
 
 # 本地 RAG Judge 配置（API Key 仅通过环境变量提供）
 rag-eval/judge.local.json
+
+# Python 本地环境与缓存
+rag-eval/.venv/
+rag-eval/__pycache__/
+*.pyc

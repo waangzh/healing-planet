@@ -7,4 +7,8 @@ import java.util.List;
 
 public interface EvidenceRetriever {
     List<Evidence> retrieve(RagQuery query);
+
+    default RetrievalResult retrieveWithDiagnostics(RagQuery query) {
+        return new RetrievalResult(retrieve(query), null);
+    }
 }

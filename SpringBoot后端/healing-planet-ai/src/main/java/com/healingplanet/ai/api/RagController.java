@@ -52,9 +52,13 @@ public class RagController {
                 .flatMapMany(stream -> {
                     ServerSentEvent<List<Evidence>> evidence = ServerSentEvent.builder(stream.evidence())
                             .event("evidence").build();
+                    Flux<ServerSentEvent<?>> diagnostics = stream.entityResolution() == null
+                            ? Flux.empty()
+                            : Flux.just(ServerSentEvent.builder(stream.entityResolution())
+                            .event("entity_resolution").build());
                     Flux<ServerSentEvent<?>> tokens = stream.content().map(content ->
                             ServerSentEvent.builder(Map.of("content", content)).event("token").build());
-                    return Flux.concat(Flux.just(evidence), tokens,
+                    return Flux.concat(Flux.just(evidence), diagnostics, tokens,
                             Flux.just(ServerSentEvent.builder(Map.of("done", true)).event("done").build()));
                 })
                 .onErrorResume(exception -> {

@@ -4,6 +4,7 @@ import com.healingplanet.ai.domain.IndexReport;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.retrieval.SparseIndexService;
+import com.healingplanet.ai.retrieval.PlantEntityResolver;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -19,24 +20,33 @@ public class IngestionService {
 
     private final KnowledgeRepository repository;
     private final KnowledgeDocumentConverter converter;
+    private final PlantEntityDocumentConverter entityConverter;
+    private final PlantEntityResolver entityResolver;
     private final SparseIndexService sparseIndex;
     private final VectorStore plantVectorStore;
+    private final VectorStore plantEntityVectorStore;
     private final VectorStore communityVectorStore;
     private final VectorStore diseaseVectorStore;
     private final DiseaseKnowledgeRepository diseaseRepository;
     private final DiseaseKnowledgeConverter diseaseConverter;
 
     public IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
+                            PlantEntityDocumentConverter entityConverter,
+                            PlantEntityResolver entityResolver,
                             SparseIndexService sparseIndex,
                             @Qualifier("plantVectorStore") VectorStore plantVectorStore,
+                            @Qualifier("plantEntityVectorStore") VectorStore plantEntityVectorStore,
                             @Qualifier("communityVectorStore") VectorStore communityVectorStore,
                             @Qualifier("diseaseVectorStore") VectorStore diseaseVectorStore,
                             DiseaseKnowledgeRepository diseaseRepository,
                             DiseaseKnowledgeConverter diseaseConverter) {
         this.repository = repository;
         this.converter = converter;
+        this.entityConverter = entityConverter;
+        this.entityResolver = entityResolver;
         this.sparseIndex = sparseIndex;
         this.plantVectorStore = plantVectorStore;
+        this.plantEntityVectorStore = plantEntityVectorStore;
         this.communityVectorStore = communityVectorStore;
         this.diseaseVectorStore = diseaseVectorStore;
         this.diseaseRepository = diseaseRepository;
@@ -52,6 +62,11 @@ public class IngestionService {
     }
 
     public IndexReport indexPlants() {
+        List<KnowledgeDocument> entities = repository.findPlantEntities().stream()
+                .map(entityConverter::convert).toList();
+        replace(KnowledgeSource.PLANT_ENTITY, entities, plantEntityVectorStore);
+        entityResolver.refreshCatalog();
+
         List<KnowledgeDocument> documents = repository.findPlants().stream()
                 .flatMap(row -> converter.fromPlant(row).stream()).toList();
         int deleted = replace(KnowledgeSource.PLANT, documents, plantVectorStore);
