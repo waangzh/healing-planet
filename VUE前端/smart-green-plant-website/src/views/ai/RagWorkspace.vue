@@ -266,7 +266,7 @@ const pushConversation = (query) => {
   }
   messages.value.push(userMessage, aiMessage)
   persistMessage(userMessage)
-  return aiMessage
+  return messages.value[messages.value.length - 1]
 }
 
 const sendMessage = async () => {
