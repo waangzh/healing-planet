@@ -19,7 +19,7 @@ const aiRequest = async (path, options = {}) => {
 
 export const getRagContext = () => request.get('/rag/context')
 
-export const ragChatStream = async (payload, { signal, onEvidence, onToken } = {}) => {
+export const ragChatStream = async (payload, { signal, onEvidence, onToken, onError } = {}) => {
   const response = await aiRequest('/api/rag/chat/stream', {
     method: 'POST',
     headers: {
@@ -53,6 +53,7 @@ export const ragChatStream = async (payload, { signal, onEvidence, onToken } = {
     }
     if (eventName === 'evidence') onEvidence?.(Array.isArray(data) ? data : [])
     if (eventName === 'token') onToken?.(typeof data === 'string' ? data : data.content || '')
+    if (eventName === 'error') onError?.(typeof data === 'string' ? data : data.message || 'AI 回答服务暂时不可用，请稍后重试。')
   }
 
   while (true) {

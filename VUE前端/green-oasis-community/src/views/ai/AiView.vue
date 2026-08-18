@@ -241,7 +241,11 @@ const sendMessage = async () => {
       await ragChatStream(createPayload(effectiveQuery), {
         signal: currentController.signal,
         onEvidence: (evidence) => { aiMessage.evidence = evidence; currentEvidence.value = evidence },
-        onToken: (token) => { aiMessage.rawText += token; scrollToBottom() }
+        onToken: (token) => { aiMessage.rawText += token; scrollToBottom() },
+        onError: (message) => {
+          aiMessage.rawText ||= message
+          ElMessage.error(message)
+        }
       })
     } else if (mode.value === 'search') {
       const evidence = await searchEvidence({

@@ -7,6 +7,8 @@ import com.healingplanet.ai.service.RagService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.validation.annotation.Validated;
@@ -27,6 +29,9 @@ import java.util.Map;
 @RequestMapping("/api")
 @Validated
 public class RagController {
+
+    private static final Logger log = LoggerFactory.getLogger(RagController.class);
+    private static final String STREAM_ERROR_MESSAGE = "AI 回答服务暂时不可用，请稍后重试。";
 
     private final RagService ragService;
 
@@ -51,6 +56,12 @@ public class RagController {
                             ServerSentEvent.builder(Map.of("content", content)).event("token").build());
                     return Flux.concat(Flux.just(evidence), tokens,
                             Flux.just(ServerSentEvent.builder(Map.of("done", true)).event("done").build()));
+                })
+                .onErrorResume(exception -> {
+                    log.error("RAG 流式回答失败", exception);
+                    return Flux.just(
+                            ServerSentEvent.builder(Map.of("message", STREAM_ERROR_MESSAGE)).event("error").build(),
+                            ServerSentEvent.builder(Map.of("done", false)).event("done").build());
                 });
     }
 
