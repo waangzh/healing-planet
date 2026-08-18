@@ -27,13 +27,27 @@ import java.util.regex.Pattern;
 @Component
 public class PlantEntityResolver {
 
-    private static final Pattern NAMED_CARE_QUERY = Pattern.compile(
-            "^\\s*(.+?)\\s*(?:适合|需要|应该|应当|是否|是不是|怎么|如何|多久|多长时间|要不要|可以不可以|耐不耐|能不能|能|对).*$");
+    private static final Pattern CARE_ANCHOR = Pattern.compile(
+            "浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|叶片|晒|太阳|浇|补");
+    private static final Pattern GENERIC_PLANT_QUERY = Pattern.compile(
+            "^(?:请问|想问下|我想问|请|帮我)?(?:"
+                    + "(?:什么|哪种|哪些|哪类|有哪些).*?(?:植物|绿植|盆栽|花卉)|"
+                    + "(?:这种)?(?:植物|绿植|盆栽|花卉)(?:有哪些|推荐|比较好|的|叶|怎么|如何|适合|需要)|"
+                    + "(?:适合|推荐).*(?:宿舍|室内|办公室|卧室|家里).*(?:植物|绿植|盆栽|花卉)|"
+                    + "(?:宿舍|室内|办公室|卧室|家里).*(?:植物|绿植|盆栽|花卉)(?:有哪些|推荐|比较好))");
+    private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
+            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株)+");
+    private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
+            "^(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常)(?:给)?");
+    private static final Pattern TRAILING_MENTION_NOISE = Pattern.compile(
+            "(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常|应该|应当|需要|适合|是否|"
+                    + "是不是|怎么|如何|多久|多长时间|在什么情况下|什么情况下|要不要|"
+                    + "可以不可以|耐不耐|能不能|不能|能|一直|老|该|什么|的)+$");
     private static final Pattern COMPARISON_SEPARATOR = Pattern.compile("[和与跟]");
     private static final Pattern COMPARISON_TERM = Pattern.compile("和|与|跟|比较|对比|相比|是否相同|一样|相同");
     private static final Pattern HAN_NAME = Pattern.compile("[\\p{IsHan}]+");
     private static final Set<String> CARE_TERMS = Set.of(
-            "光照", "阳光", "浇水", "补水", "温度", "湿度", "施肥", "肥料", "土壤", "修剪", "养护", "黄叶", "枯黄", "叶片"
+            "光照", "阳光", "浇水", "补水", "温度", "湿度", "施肥", "肥料", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "叶片", "叶子"
     );
     private static final Set<String> PLANT_DOMAIN_TERMS = Set.of(
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
@@ -95,12 +109,12 @@ public class PlantEntityResolver {
         if (!exactMatches.isEmpty()) {
             return Resolution.known(exactMatches, ResolutionMethod.EXACT_NAME, 1, 0, exactMatches.size());
         }
-        String namedSubject = namedSubject(query.query());
+        String namedSubject = extractPotentialMention(query.query());
         if (!namedSubject.isBlank() && entries.stream().flatMap(entry -> entry.names().stream())
                 .anyMatch(namedSubject::contains)) {
             return Resolution.unknown("known_name_embedded_in_unknown_compound", 1, 0, 1);
         }
-        if (isGenericPlantQuery(normalizedQuery, query.query())) return Resolution.generic();
+        if (isExplicitGenericPlantQuery(normalizedQuery)) return Resolution.generic();
 
         boolean plantDomain = isPlantDomainQuery(normalizedQuery);
         Resolution editDistanceResolution = resolveUniqueShortTypo(query.query(), entries, plantDomain);
@@ -127,10 +141,11 @@ public class PlantEntityResolver {
         Resolution candidateResolution = resolveCandidates(ranked);
         if (candidateResolution != null) return candidateResolution;
 
-        if (!isPlantDomainQuery(normalizedQuery)) return Resolution.outOfDomain();
-        return hasUnknownNamedEntity(query.query())
-                ? Resolution.unknown("no_acceptable_entity_candidate", topScore(ranked), secondScore(ranked), ranked.size())
-                : Resolution.generic();
+        if (!plantDomain) return Resolution.outOfDomain();
+        String rejectionReason = namedSubject.isBlank()
+                ? "plant_query_without_confirmed_entity"
+                : "no_acceptable_entity_candidate";
+        return Resolution.unknown(rejectionReason, topScore(ranked), secondScore(ranked), ranked.size());
     }
 
     public boolean matches(Resolution resolution, KnowledgeDocument document) {
@@ -144,16 +159,6 @@ public class PlantEntityResolver {
         return resolution.names().stream().anyMatch(searchable::contains);
     }
 
-    private boolean hasUnknownNamedEntity(String query) {
-        String normalizedQuery = normalize(query);
-        if (CARE_TERMS.stream().noneMatch(normalizedQuery::contains)) return false;
-        Matcher matcher = NAMED_CARE_QUERY.matcher(query);
-        if (!matcher.matches()) return false;
-        String subject = normalize(matcher.group(1))
-                .replaceFirst("^(请问|想问下|我想问|帮我看看|我的|我这盆|这盆|家里的|一盆)", "");
-        return !subject.isBlank() && !GENERIC_SUBJECTS.contains(subject) && subject.length() <= 30;
-    }
-
     private boolean isPlantDomainQuery(String normalizedQuery) {
         return CARE_TERMS.stream().anyMatch(normalizedQuery::contains)
                 || PLANT_DOMAIN_TERMS.stream().anyMatch(normalizedQuery::contains)
@@ -161,14 +166,13 @@ public class PlantEntityResolver {
                 || normalizedQuery.contains("晒") || normalizedQuery.contains("太阳");
     }
 
-    private boolean isGenericPlantQuery(String normalizedQuery, String rawQuery) {
-        return GENERIC_SUBJECTS.stream().anyMatch(normalizedQuery::contains)
-                && !hasUnknownNamedEntity(rawQuery);
+    private boolean isExplicitGenericPlantQuery(String normalizedQuery) {
+        return GENERIC_PLANT_QUERY.matcher(normalizedQuery).find();
     }
 
     private Resolution resolveUniqueShortTypo(String rawQuery, List<PlantEntry> entries, boolean plantDomain) {
         if (!plantDomain) return null;
-        String subject = namedSubject(rawQuery);
+        String subject = extractPotentialMention(rawQuery);
         if (subject.isBlank()) return null;
 
         List<TypoCandidate> candidates = new ArrayList<>();
@@ -189,11 +193,18 @@ public class PlantEntityResolver {
                 candidate.score(), 0, 1);
     }
 
-    private String namedSubject(String query) {
-        Matcher matcher = NAMED_CARE_QUERY.matcher(query == null ? "" : query);
-        if (!matcher.matches()) return "";
-        return normalize(matcher.group(1))
-                .replaceFirst("^(请问|想问下|我想问|帮我看看|我的|我这盆|这盆|家里的|一盆)", "");
+    private String extractPotentialMention(String query) {
+        String normalized = normalize(query).replaceAll("[？?。，,;；！!]", "");
+        Matcher anchor = CARE_ANCHOR.matcher(normalized);
+        if (!anchor.find()) return "";
+
+        String candidate = normalized.substring(0, anchor.start());
+        candidate = LEADING_MENTION_NOISE.matcher(candidate).replaceFirst("");
+        candidate = LEADING_TIME_CONTEXT.matcher(candidate).replaceFirst("");
+        candidate = candidate.replaceFirst("^给", "");
+        candidate = TRAILING_MENTION_NOISE.matcher(candidate).replaceFirst("");
+        if (candidate.isBlank() || GENERIC_SUBJECTS.contains(candidate) || candidate.length() > 30) return "";
+        return candidate;
     }
 
     private boolean isShortChineseName(String name) {
@@ -230,7 +241,9 @@ public class PlantEntityResolver {
         boolean leftBoundary = left.isEmpty() || !isHan(left.charAt(left.length() - 1))
                 || EXACT_NAME_PREFIXES.stream().anyMatch(left::endsWith);
         boolean rightBoundary = right.isEmpty() || !isHan(right.charAt(0))
-                || EXACT_NAME_FOLLOWERS.stream().anyMatch(right::startsWith);
+                || EXACT_NAME_FOLLOWERS.stream().anyMatch(right::startsWith)
+                || CARE_TERMS.stream().anyMatch(right::startsWith)
+                || PLANT_DOMAIN_TERMS.stream().anyMatch(right::startsWith);
         return leftBoundary && rightBoundary;
     }
 

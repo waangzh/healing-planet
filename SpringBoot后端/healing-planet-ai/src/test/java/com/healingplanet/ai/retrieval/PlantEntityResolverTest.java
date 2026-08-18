@@ -47,6 +47,8 @@ class PlantEntityResolverTest {
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("1");
+        assertThat(resolver.resolve(RagQuery.of("绿萝叶子发黄怎么办？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolver.matches(resolution, document("1", "绿萝", "绿萝光照指南"))).isTrue();
         assertThat(resolver.matches(resolution, document("10", "芦荟", "芦荟光照指南"))).isFalse();
     }
@@ -95,6 +97,24 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void shouldRejectUnregisteredAliasAcrossWateringFrequencyPhrases() {
+        List<String> queries = List.of(
+                "黄金葛一周浇几次水？",
+                "黄金葛多久补一次水？",
+                "一个星期给黄金葛浇几回水？",
+                "想问下黄金葛平时该怎么浇？",
+                "黄金葛是不是不能老浇水？",
+                "黄金葛是什么植物，平时怎么养护？"
+        );
+
+        assertThat(queries).allSatisfy(query -> {
+            var resolution = resolver.resolve(RagQuery.of(query));
+            assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+            assertThat(resolution.rejectionReason()).isEqualTo("no_acceptable_entity_candidate");
+        });
+    }
+
+    @Test
     void shouldResolveAllExactEntitiesInComparison() {
         var resolution = resolver.resolve(RagQuery.of("红掌和白掌的光照要求一样吗？"));
 
@@ -139,9 +159,21 @@ class PlantEntityResolverTest {
         when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
                 entityHit("1", "绿萝", 0.94), entityHit("10", "芦荟", 0.80)
         ));
-        var resolution = resolver.resolve(RagQuery.of("适合宿舍养的耐阴植物有哪些？"));
+        assertThat(List.of(
+                "适合宿舍养的耐阴植物有哪些？",
+                "什么植物比较耐阴？",
+                "推荐几种适合办公室的绿植",
+                "植物叶子发黄怎么办？"
+        )).allSatisfy(query -> assertThat(resolver.resolve(RagQuery.of(query)).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC));
+    }
 
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
+    @Test
+    void shouldNotSearchAllPlantsWhenCareQueryHasNoConfirmedSubject() {
+        var resolution = resolver.resolve(RagQuery.of("多久浇一次水？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(resolution.rejectionReason()).isEqualTo("plant_query_without_confirmed_entity");
     }
 
     @Test
