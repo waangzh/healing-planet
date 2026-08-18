@@ -2,6 +2,7 @@ package com.healingplanet.ai.service;
 
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
+import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.retrieval.EvidenceRetriever;
@@ -43,6 +44,27 @@ class RagServiceTest {
         assertThat(response.answer()).contains("暂时无法获取这盆植物的最新状态");
         assertThat(response.evidence()).hasSize(1);
         assertThat(response.evidence().get(0).type()).isEqualTo(EvidenceType.CARE_GUIDE);
+        verify(chatClient, never()).prompt();
+    }
+
+    @Test
+    void shouldExplainEntityResolutionServiceFailureInsteadOfClaimingMissingKnowledge() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        PromptContextBuilder contextBuilder = mock(PromptContextBuilder.class);
+        GenerationPromptBuilder promptBuilder = mock(GenerationPromptBuilder.class);
+        ChatClient chatClient = mock(ChatClient.class);
+        QueryRouter queryRouter = mock(QueryRouter.class);
+        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter);
+        RagQuery query = RagQuery.of("月球绿萝需要浇水吗？");
+        when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(false, true, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));
+        when(retriever.retrieveWithDiagnostics(query)).thenReturn(new RetrievalResult(List.of(),
+                new EntityResolutionDiagnostics("UNKNOWN", "NONE", null, List.of(),
+                        0.8, 0.3, 0.5, 2, "llm_disambiguation_failed")));
+
+        var response = service.chat(query);
+
+        assertThat(response.answer()).isEqualTo("植物名称识别服务暂时不可用，请稍后重试。");
         verify(chatClient, never()).prompt();
     }
 }

@@ -195,18 +195,39 @@ class PlantEntityResolverTest {
         assertThat(List.of(
                 "绿萝建议多久浇一次水？",
                 "绿萝出现枯黄叶片时怎么处理？",
-                "社区里有没有绿萝的日常养护经验？",
-                "大家分享的绿萝经验里，耐阴等于喜阴吗？",
-                "社区用户遇到绿萝状态变化时是怎么判断的？",
-                "社区经验里绿萝浇水要避免什么情况？",
                 "绿萝官方浇水频率是什么？",
                 "绿萝耐阴吗？"
         )).allSatisfy(query -> {
             var resolution = resolver.resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantId()).isEqualTo("1");
+            assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
+        });
+        assertThat(List.of(
+                "社区里有没有绿萝的日常养护经验？",
+                "大家分享的绿萝经验里，耐阴等于喜阴吗？",
+                "社区用户遇到绿萝状态变化时是怎么判断的？",
+                "社区经验里绿萝浇水要避免什么情况？"
+        )).allSatisfy(query -> {
+            var resolution = resolver.resolve(RagQuery.of(query));
+            assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+            assertThat(resolution.canonicalPlantId()).isEqualTo("1");
             assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
         });
+    }
+
+    @Test
+    void shouldNotCallLlmWhenCareQueryHasNoEntityMention() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
+        when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                entityHit("1", "绿萝", 0.81), entityHit("10", "芦荟", 0.79)
+        ));
+
+        var resolution = resolver.resolve(RagQuery.of("多久浇一次水？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
     @Test

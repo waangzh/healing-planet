@@ -42,7 +42,7 @@ public class RagService {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
                     retrieval.entityResolution());
         }
-        if (evidence.isEmpty()) return new RagResponse("当前知识库中没有足够证据回答这个问题。", List.of(),
+        if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution());
         String answer = chatClient.prompt().system(promptBuilder.build(decision))
                 .user(userPrompt(query.query(), evidence)).call().content();
@@ -60,7 +60,7 @@ public class RagService {
         }
         if (evidence.isEmpty()) {
             return new RagStream(evidence, retrieval.entityResolution(),
-                    Flux.just("当前知识库中没有足够证据回答这个问题。"));
+                    Flux.just(emptyEvidenceAnswer(retrieval)));
         }
         Flux<String> content = chatClient.prompt().system(promptBuilder.build(decision))
                 .user(userPrompt(query.query(), evidence)).stream().content();
@@ -73,6 +73,14 @@ public class RagService {
 
     private String userPrompt(String query, List<Evidence> evidence) {
         return "用户问题：\n" + query + "\n\n可用证据：\n" + contextBuilder.build(evidence);
+    }
+
+    private String emptyEvidenceAnswer(RetrievalResult retrieval) {
+        if (retrieval.entityResolution() != null
+                && "llm_disambiguation_failed".equals(retrieval.entityResolution().rejectionReason())) {
+            return "植物名称识别服务暂时不可用，请稍后重试。";
+        }
+        return "当前知识库中没有足够证据回答这个问题。";
     }
 
     private String validateStateQuery(RagQuery query, QueryRouter.RoutingDecision decision) {

@@ -104,6 +104,7 @@ public class PlantEntityResolver {
         }
 
         String normalizedQuery = normalize(query.query());
+        String namedSubject = extractPotentialMention(query.query());
         ComparisonMentions comparison = comparisonMentions(normalizedQuery, entries);
         if (comparison.detected() && !comparison.complete()) {
             return Resolution.unknown("comparison_entity_unresolved", 1, 0, comparison.entries().size());
@@ -116,8 +117,13 @@ public class PlantEntityResolver {
         List<PlantEntry> exactMatches = entries.stream()
                 .filter(entry -> entry.names().stream().anyMatch(name -> hasStandaloneName(normalizedQuery, name)))
                 .toList();
-        if (!exactMatches.isEmpty()) {
+        if (exactMatches.size() == 1) {
             return Resolution.known(exactMatches, ResolutionMethod.EXACT_NAME, 1, 0, exactMatches.size());
+        }
+        List<PlantEntry> leadingNameMatches = leadingNameMatches(normalizedQuery, entries);
+        if (leadingNameMatches.size() == 1) {
+            return Resolution.known(leadingNameMatches, ResolutionMethod.EXACT_NAME,
+                    1, 0, leadingNameMatches.size());
         }
         boolean catalogNameMentioned = entries.stream()
                 .anyMatch(entry -> entry.names().stream().anyMatch(normalizedQuery::contains));
@@ -125,7 +131,6 @@ public class PlantEntityResolver {
 
         boolean plantDomain = query.intent() == QueryIntent.COMMUNITY_SEARCH || isPlantDomainQuery(normalizedQuery)
                 || catalogNameMentioned;
-        String namedSubject = extractPotentialMention(query.query());
 
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         addDirectMentionCandidates(normalizedQuery, entries, candidates);
@@ -211,6 +216,20 @@ public class PlantEntityResolver {
         return leftBoundary && rightBoundary;
     }
 
+    private List<PlantEntry> leadingNameMatches(String query, List<PlantEntry> entries) {
+        int longestName = entries.stream()
+                .flatMap(entry -> entry.names().stream())
+                .filter(query::startsWith)
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        if (longestName == 0) return List.of();
+        return entries.stream()
+                .filter(entry -> entry.names().stream()
+                        .anyMatch(name -> name.length() == longestName && query.startsWith(name)))
+                .toList();
+    }
+
     private boolean isHan(char value) {
         return Character.UnicodeScript.of(value) == Character.UnicodeScript.HAN;
     }
@@ -281,6 +300,7 @@ public class PlantEntityResolver {
     private Resolution resolveWithLlm(String rawQuery, String namedSubject, List<Candidate> ranked,
                                       boolean plantDomain) {
         if (!plantDomain || disambiguator == null || ranked.isEmpty()) return null;
+        if (namedSubject.isBlank() && ranked.stream().noneMatch(Candidate::directMention)) return null;
         List<PlantEntityDisambiguator.CandidateOption> options = ranked.stream()
                 .map(candidate -> new PlantEntityDisambiguator.CandidateOption(
                         candidate.entry().canonicalPlantId(),

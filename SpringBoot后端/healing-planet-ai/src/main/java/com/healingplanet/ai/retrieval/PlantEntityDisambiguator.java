@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
@@ -30,6 +31,7 @@ public class PlantEntityDisambiguator {
     private final StructuredCaller caller;
     private final Map<String, Decision> cache = new ConcurrentHashMap<>();
 
+    @Autowired
     public PlantEntityDisambiguator(ChatClient chatClient, RagProperties ragProperties) {
         this(ragProperties, (systemPrompt, userPrompt) -> {
             BeanOutputConverter<LlmDecision> converter = new BeanOutputConverter<>(LlmDecision.class);
