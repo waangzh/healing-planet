@@ -10,7 +10,7 @@ spring:
       read-timeout: ${AI_HTTP_READ_TIMEOUT:60s}
     reactiveclient:
       connect-timeout: ${AI_HTTP_CONNECT_TIMEOUT:10s}
-      read-timeout: ${AI_HTTP_REACTIVE_READ_TIMEOUT:120s}
+      read-timeout: ${AI_HTTP_REACTIVE_READ_TIMEOUT:60s}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${COMMUNITY_DB_URL:jdbc:mysql://localhost:3306/green_community?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
@@ -20,6 +20,8 @@ spring:
       maximum-pool-size: 5
       read-only: true
   ai:
+    retry:
+      max-attempts: ${AI_RETRY_MAX_ATTEMPTS:1}
     openai:
       api-key: ${LLM_API_KEY:change-me}
       base-url: ${LLM_BASE_URL:https://api.siliconflow.cn}
@@ -37,7 +39,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
 
 app:
   rag:

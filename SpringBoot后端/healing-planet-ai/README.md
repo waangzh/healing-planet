@@ -74,6 +74,7 @@
 - BGE-M3 dense embedding + Qdrant 两个 collection（植物 / 社区）。
 - Lucene 中文字符 n-gram BM25 稀疏检索。
 - RRF 融合、可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
+- 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用。
 - 全量索引、植物索引、社区索引、单帖子更新与删除。
 
@@ -144,6 +145,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | 环境变量 | 说明 | 默认值 |
 | --- | --- | --- |
 | `AI_SERVER_PORT` | 服务端口 | `8010` |
+| `AI_HTTP_READ_TIMEOUT` / `AI_HTTP_REACTIVE_READ_TIMEOUT` / `AI_RETRY_MAX_ATTEMPTS` | 聊天模型读超时 / 响应式读超时 / 最大尝试次数 | `60s` / `60s` / `1` |
 | `COMMUNITY_DB_URL` | 社区库 JDBC 地址 | `jdbc:mysql://localhost:3306/green_community` |
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 聊天模型 | `change-me` / `https://api.siliconflow.cn` / `Qwen/Qwen3.5-397B-A17B` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | Embedding 模型 | `https://api.siliconflow.cn` / `BAAI/bge-m3` |
@@ -199,6 +201,38 @@ curl -X POST http://localhost:8010/internal/index/full \
 ### 语义搜索
 
 `GET /api/search?q=适合宿舍养又耐阴的植物&canonicalPlantId=可选`
+
+### 检索观测
+
+Actuator 暴露 `health`、`info` 和 `metrics`。Spring AI 自带的 Observation 用于查看 Embedding 与 VectorStore 调用；项目另外记录以下指标：
+
+```text
+healing.planet.rag.retrieval.stage
+healing.planet.rag.retrieval.candidates
+```
+
+阶段耗时的低基数标签包括 `stage`、`source` 和 `status`。当前阶段包括：
+
+```text
+entity_resolve
+dense_search
+sparse_search
+rrf_fusion
+rerank
+final_rank
+knowledge_total
+state_search
+retrieve_total
+```
+
+例如：
+
+```bash
+curl "http://localhost:8010/actuator/metrics/healing.planet.rag.retrieval.stage"
+curl "http://localhost:8010/actuator/metrics/healing.planet.rag.retrieval.candidates"
+```
+
+指标不会使用原始问题、植物名称或文档 ID 作为 tag，避免泄露用户输入及造成高基数时间序列。
 
 ### 索引管理
 
