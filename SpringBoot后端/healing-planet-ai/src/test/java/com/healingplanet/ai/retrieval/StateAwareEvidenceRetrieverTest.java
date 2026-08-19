@@ -4,6 +4,7 @@ import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.config.RagProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -51,6 +52,31 @@ class StateAwareEvidenceRetrieverTest {
         verify(knowledgeRetriever).retrieve(routed.capture());
         assertThat(routed.getValue().context()).containsEntry("requiredKnowledgeType", "WATERING");
         assertThat(result).extracting(Evidence::type).containsExactly(EvidenceType.LIVE_STATE);
+    }
+
+    @Test
+    void shouldExposeRoutingSnapshotWhenEvalTraceIsEnabled() {
+        QueryRouter router = mock(QueryRouter.class);
+        HybridEvidenceRetriever knowledgeRetriever = mock(HybridEvidenceRetriever.class);
+        PlantStateRetriever stateRetriever = mock(PlantStateRetriever.class);
+        RagQuery query = RagQuery.of("绿萝需要什么光照？");
+        var route = new QueryRouter.RoutingDecision(true, false, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE);
+        when(router.route(query)).thenReturn(route);
+        when(knowledgeRetriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new RetrievalResult(List.of(), null));
+        RagProperties properties = new RagProperties();
+        properties.getEval().setRetrievalTraceEnabled(true);
+        StateAwareEvidenceRetriever retriever = new StateAwareEvidenceRetriever(router, knowledgeRetriever,
+                stateRetriever, new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+
+        var trace = retriever.retrieveWithDiagnostics(query).retrievalTrace();
+
+        assertThat(trace.routing().knowledge()).isTrue();
+        assertThat(trace.routing().community()).isFalse();
+        assertThat(trace.routing().intent()).isEqualTo("GENERAL_CARE");
+        assertThat(trace.routing().requiredKnowledgeType()).isEqualTo("LIGHT");
+        assertThat(trace.stages()).extracting(item -> item.stage()).contains("query_route");
     }
 
     private StateAwareEvidenceRetriever retriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,

@@ -4,6 +4,7 @@ import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.RagResponse;
+import com.healingplanet.ai.domain.RetrievalTrace;
 import com.healingplanet.ai.retrieval.EvidenceRetriever;
 import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalResult;
@@ -44,14 +45,14 @@ public class RagService {
         List<Evidence> evidence = retrieval.evidence();
         if (missingStateEvidence(decision, evidence)) {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
-                    retrieval.entityResolution());
+                    retrieval.entityResolution(), retrieval.retrievalTrace());
         }
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
-                retrieval.entityResolution());
+                retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
                 chatClient.prompt().system(promptBuilder.build(decision))
                         .user(userPrompt(query.query(), evidence)).call().content());
-        return new RagResponse(answer, evidence, retrieval.entityResolution());
+        return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
     }
 
     public RagStream stream(RagQuery query) {
@@ -61,16 +62,17 @@ public class RagService {
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(query);
         List<Evidence> evidence = retrieval.evidence();
         if (missingStateEvidence(decision, evidence)) {
-            return new RagStream(evidence, retrieval.entityResolution(), Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
+            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
+                    Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
         }
         if (evidence.isEmpty()) {
-            return new RagStream(evidence, retrieval.entityResolution(),
+            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
                     Flux.just(emptyEvidenceAnswer(retrieval)));
         }
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
                 chatClient.prompt().system(promptBuilder.build(decision))
                         .user(userPrompt(query.query(), evidence)).stream().content());
-        return new RagStream(evidence, retrieval.entityResolution(), content);
+        return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
     }
 
     public List<Evidence> search(RagQuery query) {
@@ -105,9 +107,15 @@ public class RagService {
     }
 
     public record RagStream(List<Evidence> evidence, EntityResolutionDiagnostics entityResolution,
+                            RetrievalTrace retrievalTrace,
                             Flux<String> content) {
         public RagStream(List<Evidence> evidence, Flux<String> content) {
-            this(evidence, null, content);
+            this(evidence, null, null, content);
+        }
+
+        public RagStream(List<Evidence> evidence, EntityResolutionDiagnostics entityResolution,
+                         Flux<String> content) {
+            this(evidence, entityResolution, null, content);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.healingplanet.ai.api;
 
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
+import com.healingplanet.ai.domain.RetrievalTrace;
 import com.healingplanet.ai.service.RagService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.codec.ServerSentEvent;
@@ -48,5 +49,22 @@ class RagControllerTest {
         assertThat(events).extracting(ServerSentEvent::event)
                 .containsExactly("evidence", "entity_resolution", "token", "done");
         assertThat(events.get(1).data()).isEqualTo(diagnostics);
+    }
+
+    @Test
+    void streamEmitsRetrievalTraceBeforeTokens() {
+        RagService ragService = mock(RagService.class);
+        var trace = new RetrievalTrace(null, null, List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of());
+        when(ragService.stream(any())).thenReturn(new RagService.RagStream(List.of(), null, trace,
+                Flux.just("回答")));
+
+        List<ServerSentEvent<?>> events = new RagController(ragService)
+                .stream(new RagChatRequest(null, null, null, null, "绿萝怎么养？"))
+                .collectList().block();
+
+        assertThat(events).extracting(ServerSentEvent::event)
+                .containsExactly("evidence", "retrieval_trace", "token", "done");
+        assertThat(events.get(1).data()).isEqualTo(trace);
     }
 }

@@ -47,6 +47,7 @@ public class RagProperties {
         private Path fixtureDirectory = Path.of("..", "..", "rag-eval", "fixtures");
         private Instant clockInstant = Instant.parse("2026-08-17T02:00:00Z");
         private ZoneId clockZone = ZoneId.of("Asia/Shanghai");
+        private boolean retrievalTraceEnabled;
 
         public Path getFixtureDirectory() { return fixtureDirectory; }
         public void setFixtureDirectory(Path fixtureDirectory) { this.fixtureDirectory = fixtureDirectory; }
@@ -54,6 +55,10 @@ public class RagProperties {
         public void setClockInstant(Instant clockInstant) { this.clockInstant = clockInstant; }
         public ZoneId getClockZone() { return clockZone; }
         public void setClockZone(ZoneId clockZone) { this.clockZone = clockZone; }
+        public boolean isRetrievalTraceEnabled() { return retrievalTraceEnabled; }
+        public void setRetrievalTraceEnabled(boolean retrievalTraceEnabled) {
+            this.retrievalTraceEnabled = retrievalTraceEnabled;
+        }
     }
 
     public static class Attachments {

@@ -56,9 +56,13 @@ public class RagController {
                             ? Flux.empty()
                             : Flux.just(ServerSentEvent.builder(stream.entityResolution())
                             .event("entity_resolution").build());
+                    Flux<ServerSentEvent<?>> retrievalTrace = stream.retrievalTrace() == null
+                            ? Flux.empty()
+                            : Flux.just(ServerSentEvent.builder(stream.retrievalTrace())
+                            .event("retrieval_trace").build());
                     Flux<ServerSentEvent<?>> tokens = stream.content().map(content ->
                             ServerSentEvent.builder(Map.of("content", content)).event("token").build());
-                    return Flux.concat(Flux.just(evidence), diagnostics, tokens,
+                    return Flux.concat(Flux.just(evidence), diagnostics, retrievalTrace, tokens,
                             Flux.just(ServerSentEvent.builder(Map.of("done", true)).event("done").build()));
                 })
                 .onErrorResume(exception -> {

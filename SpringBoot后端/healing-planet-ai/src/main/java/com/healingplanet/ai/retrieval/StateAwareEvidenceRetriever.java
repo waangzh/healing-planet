@@ -1,7 +1,10 @@
 package com.healingplanet.ai.retrieval;
 
+import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.domain.RetrievalTrace;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -18,13 +21,22 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     private final HybridEvidenceRetriever knowledgeRetriever;
     private final PlantStateRetriever stateRetriever;
     private final RetrievalMetrics metrics;
+    private final RagProperties properties;
 
+    @Autowired
     public StateAwareEvidenceRetriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,
-                                       PlantStateRetriever stateRetriever, RetrievalMetrics metrics) {
+                                       PlantStateRetriever stateRetriever, RetrievalMetrics metrics,
+                                       RagProperties properties) {
         this.router = router;
         this.knowledgeRetriever = knowledgeRetriever;
         this.stateRetriever = stateRetriever;
         this.metrics = metrics;
+        this.properties = properties;
+    }
+
+    StateAwareEvidenceRetriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,
+                                PlantStateRetriever stateRetriever, RetrievalMetrics metrics) {
+        this(router, knowledgeRetriever, stateRetriever, metrics, new RagProperties());
     }
 
     @Override
@@ -34,13 +46,27 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
-        return metrics.time("retrieve_total", "all", () -> retrieveTimed(query));
+        RetrievalTraceCollector trace = new RetrievalTraceCollector(
+                properties.getEval().isRetrievalTraceEnabled());
+        RetrievalPayload payload = metrics.time("retrieve_total", "all", () -> retrieveTimed(query, trace));
+        RetrievalResult result = payload.result();
+        RetrievalTrace retrievalTrace = result.retrievalTrace();
+        if (properties.getEval().isRetrievalTraceEnabled()) {
+            if (retrievalTrace == null) {
+                retrievalTrace = new RetrievalTrace(null, result.entityResolution(), List.of(), List.of(),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+            }
+            retrievalTrace = retrievalTrace.withRouting(routingSnapshot(payload.route(), payload.routed()),
+                    trace.stages());
+        }
+        return new RetrievalResult(result.evidence(), result.entityResolution(), retrievalTrace);
     }
 
-    private RetrievalResult retrieveTimed(RagQuery query) {
-        QueryRouter.RoutingDecision route = router.route(query);
+    private RetrievalPayload retrieveTimed(RagQuery query, RetrievalTraceCollector trace) {
+        QueryRouter.RoutingDecision route = trace.time("query_route", "all", "all", () -> router.route(query));
         List<Evidence> state = route.state()
-                ? metrics.time("state_search", "state", () -> stateRetriever.retrieve(query))
+                ? trace.time("state_search", "state", "all",
+                        () -> metrics.time("state_search", "state", () -> stateRetriever.retrieve(query)))
                 : List.of();
         state = state.stream().filter(item -> stateEvidenceRequired(route.stateEvidenceNeed(), item)).toList();
         RagQuery routed = routedQuery(query, route, state);
@@ -52,7 +78,16 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         }
         result.addAll(knowledge.evidence());
         metrics.recordCandidates("response", "all", result.size());
-        return new RetrievalResult(result, knowledge.entityResolution());
+        return new RetrievalPayload(new RetrievalResult(result, knowledge.entityResolution(),
+                knowledge.retrievalTrace()), route, routed);
+    }
+
+    private RetrievalTrace.RoutingSnapshot routingSnapshot(QueryRouter.RoutingDecision route, RagQuery routed) {
+        Object requiredKnowledgeType = routed.context().get("requiredKnowledgeType");
+        return new RetrievalTrace.RoutingSnapshot(route.knowledge(), route.community(), route.state(),
+                route.intent() == null ? null : route.intent().name(),
+                route.stateEvidenceNeed() == null ? null : route.stateEvidenceNeed().name(), routed.query(),
+                requiredKnowledgeType == null ? null : requiredKnowledgeType.toString());
     }
 
     private boolean stateEvidenceRequired(QueryRouter.StateEvidenceNeed need, Evidence evidence) {
@@ -95,4 +130,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
                 .map(Map.Entry::getKey).toList();
         return matched.size() == 1 ? matched.get(0) : null;
     }
+
+    private record RetrievalPayload(RetrievalResult result, QueryRouter.RoutingDecision route,
+                                    RagQuery routed) { }
 }
