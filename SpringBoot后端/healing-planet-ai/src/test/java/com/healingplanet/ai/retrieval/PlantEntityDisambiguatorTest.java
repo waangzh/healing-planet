@@ -29,6 +29,23 @@ class PlantEntityDisambiguatorTest {
     }
 
     @Test
+    void shouldPreserveAmbiguousDecisionWhenContextCannotChooseACandidate() {
+        RagProperties properties = new RagProperties();
+        PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,
+                (systemPrompt, userPrompt) -> new PlantEntityDisambiguator.LlmDecision(
+                        "AMBIGUOUS", "", 0.76, "insufficient context"));
+
+        var result = disambiguator.disambiguate("万年青的叶片为什么发黄？", "万年青", List.of(
+                new PlantEntityDisambiguator.CandidateOption("30", Set.of("广东万年青", "万年青"), 0, 1),
+                new PlantEntityDisambiguator.CandidateOption("31", Set.of("花叶万年青", "万年青"), 0, 1)
+        ));
+
+        assertThat(result.attempted()).isTrue();
+        assertThat(result.ambiguous()).isTrue();
+        assertThat(result.reason()).isEqualTo("llm_ambiguous");
+    }
+
+    @Test
     void shouldRejectInvalidCandidateReturnedByLlm() {
         RagProperties properties = new RagProperties();
         PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,

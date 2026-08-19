@@ -21,11 +21,12 @@ public class PlantEntityDisambiguator {
     private static final String SYSTEM_PROMPT = """
             你是植物实体消歧器。你的任务不是回答养护问题，而是判断用户提到的植物是否能安全映射到候选列表中的某一个标准植物。
             规则：
-            1. 只能在提供的 canonicalPlantId 候选中选择一个，或返回 UNKNOWN。
+            1. 只能在提供的 canonicalPlantId 候选中选择一个，或返回 UNKNOWN / AMBIGUOUS。
             2. 泛类词、类别词、场景词、修饰词不能映射到具体植物，例如“绿植”“盆栽”“花卉”“植物”“室内植物”都应返回 UNKNOWN。
             3. 如果用户表达的是未知复合名称、未登记别称、无法确认的新名字，也返回 UNKNOWN。
             4. 只有在你能较有把握地判断用户确实想表达某个候选植物时，才返回 KNOWN。
-            5. 输出必须符合给定结构，不要输出额外文本。
+            5. 如果能确认提及指向候选范围，但上下文不足以在多个候选中唯一选择，返回 AMBIGUOUS。
+            6. 输出必须符合给定结构，不要输出额外文本。
             """;
 
     private final RagProperties.EntityResolution properties;
@@ -73,25 +74,31 @@ public class PlantEntityDisambiguator {
             LlmDecision result = timedCall(() -> circuitBreaker.execute(
                     () -> caller.call(SYSTEM_PROMPT, buildUserPrompt(query, mention, limited))));
             if (result == null || result.decision() == null) {
-                return Decision.unknown("llm_empty_response");
+                return Decision.unavailable("llm_empty_response");
             }
             String action = result.decision().trim().toUpperCase(Locale.ROOT);
-            if (!"KNOWN".equals(action)) {
+            if ("AMBIGUOUS".equals(action)) {
+                return Decision.ambiguous("llm_ambiguous");
+            }
+            if ("UNKNOWN".equals(action)) {
                 return Decision.unknown("llm_rejected_or_unknown");
             }
+            if (!"KNOWN".equals(action)) return Decision.unavailable("llm_invalid_decision");
             String canonicalPlantId = result.canonicalPlantId() == null ? "" : result.canonicalPlantId().trim();
             double confidence = result.confidence() == null ? 0 : result.confidence();
             if (!allowedIds.contains(canonicalPlantId)) {
-                return Decision.unknown("llm_returned_invalid_candidate");
+                return Decision.unavailable("llm_returned_invalid_candidate");
             }
             if (confidence < properties.getLlmConfidenceThreshold()) {
-                return Decision.unknown("llm_confidence_too_low");
+                return limited.size() > 1
+                        ? Decision.ambiguous("llm_confidence_too_low")
+                        : Decision.unknown("llm_confidence_too_low");
             }
             return cache(cacheKey, Decision.known(canonicalPlantId, confidence));
         } catch (CircuitOpenException ignored) {
-            return Decision.unknown("llm_disambiguation_circuit_open");
+            return Decision.unavailable("llm_disambiguation_circuit_open");
         } catch (RuntimeException ignored) {
-            return Decision.unknown("llm_disambiguation_failed");
+            return Decision.unavailable("llm_disambiguation_failed");
         }
     }
 
@@ -130,7 +137,7 @@ public class PlantEntityDisambiguator {
                 %s
 
                 请返回：
-                - decision: KNOWN 或 UNKNOWN
+                - decision: KNOWN、UNKNOWN 或 AMBIGUOUS
                 - canonicalPlantId: 仅当 decision=KNOWN 时填写候选中的一个 ID，否则留空
                 - confidence: 0 到 1
                 - reason: 简短说明
@@ -194,17 +201,40 @@ public class PlantEntityDisambiguator {
 
     public record CandidateOption(String canonicalPlantId, Set<String> names, double vectorScore, double lexicalScore) { }
 
-    public record Decision(boolean known, String canonicalPlantId, double confidence, String reason, boolean attempted) {
+    public enum DecisionKind { KNOWN, AMBIGUOUS, UNKNOWN, UNAVAILABLE, SKIPPED }
+
+    public record Decision(DecisionKind kind, String canonicalPlantId, double confidence,
+                           String reason, boolean attempted) {
+        public boolean known() {
+            return kind == DecisionKind.KNOWN;
+        }
+
+        public boolean ambiguous() {
+            return kind == DecisionKind.AMBIGUOUS;
+        }
+
+        public boolean unavailable() {
+            return kind == DecisionKind.UNAVAILABLE;
+        }
+
         static Decision known(String canonicalPlantId, double confidence) {
-            return new Decision(true, canonicalPlantId, confidence, "", true);
+            return new Decision(DecisionKind.KNOWN, canonicalPlantId, confidence, "", true);
+        }
+
+        static Decision ambiguous(String reason) {
+            return new Decision(DecisionKind.AMBIGUOUS, "", 0, reason, true);
         }
 
         static Decision unknown(String reason) {
-            return new Decision(false, "", 0, reason, true);
+            return new Decision(DecisionKind.UNKNOWN, "", 0, reason, true);
+        }
+
+        static Decision unavailable(String reason) {
+            return new Decision(DecisionKind.UNAVAILABLE, "", 0, reason, true);
         }
 
         static Decision skipped(String reason) {
-            return new Decision(false, "", 0, reason, false);
+            return new Decision(DecisionKind.SKIPPED, "", 0, reason, false);
         }
     }
 

@@ -143,6 +143,71 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void shouldDisambiguateAliasCollisionWithOnlyTheMatchedCandidates() {
+        String query = "万年青在广东湿热环境里叶片为什么发黄？";
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        when(disambiguator.disambiguate(any(), any(), any())).thenAnswer(invocation -> {
+            assertThat(invocation.getArgument(0, String.class)).isEqualTo(query);
+            assertThat(invocation.getArgument(1, String.class)).isEqualTo("万年青");
+            List<PlantEntityDisambiguator.CandidateOption> candidates = invocation.getArgument(2);
+            assertThat(candidates).extracting(PlantEntityDisambiguator.CandidateOption::canonicalPlantId)
+                    .containsExactlyInAnyOrder("30", "31");
+            return PlantEntityDisambiguator.Decision.known("30", 0.96);
+        });
+        resolver = new PlantEntityResolver(aliasCollisionRepository(), entityStore, null,
+                new RagProperties(), null, disambiguator);
+
+        var resolution = resolver.resolve(RagQuery.of(query));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantId()).isEqualTo("30");
+        assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
+        assertThat(resolution.candidateCount()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldKeepAliasCollisionAmbiguousWhenContextCannotChooseOneCandidate() {
+        useAliasCollisionDecision(PlantEntityDisambiguator.Decision.ambiguous("llm_ambiguous"));
+
+        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
+        assertThat(resolution.rejectionReason()).isEqualTo("llm_ambiguous");
+    }
+
+    @Test
+    void shouldRejectAliasCollisionWhenNoCandidateFitsTheMention() {
+        useAliasCollisionDecision(PlantEntityDisambiguator.Decision.unknown("llm_rejected_or_unknown"));
+
+        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(resolution.rejectionReason()).isEqualTo("llm_rejected_or_unknown");
+    }
+
+    @Test
+    void shouldFailClosedAsAmbiguousWhenAliasCollisionDisambiguationIsUnavailable() {
+        useAliasCollisionDecision(PlantEntityDisambiguator.Decision.unavailable("llm_disambiguation_failed"));
+
+        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
+        assertThat(resolution.rejectionReason()).isEqualTo("llm_disambiguation_failed");
+    }
+
+    @Test
+    void shouldNotUseSingleEntityDisambiguatorForDifferentPlantMentions() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null,
+                new RagProperties(), null, disambiguator);
+
+        var resolution = resolver.resolve(RagQuery.of("绿萝、虎尾兰，分别需要什么光照？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
+    }
+
+    @Test
     void shouldResolveConfiguredAliasAcrossWateringFrequencyPhrases() {
         List<String> queries = List.of(
                 "黄金葛一周浇几次水？",
@@ -377,6 +442,24 @@ class PlantEntityResolverTest {
         disambiguator = mock(PlantEntityDisambiguator.class);
         when(disambiguator.disambiguate(any(), any(), any())).thenReturn(decision);
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
+    }
+
+    private void useAliasCollisionDecision(PlantEntityDisambiguator.Decision decision) {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        when(disambiguator.disambiguate(any(), any(), any())).thenReturn(decision);
+        resolver = new PlantEntityResolver(aliasCollisionRepository(), entityStore, null,
+                new RagProperties(), null, disambiguator);
+    }
+
+    private KnowledgeRepository aliasCollisionRepository() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        when(repository.findPlantEntities()).thenReturn(List.of(
+                new KnowledgeRepository.PlantEntityRow(
+                        "30", "Aglaonema modestum", "广东万年青", List.of("万年青")),
+                new KnowledgeRepository.PlantEntityRow(
+                        "31", "Dieffenbachia seguine", "花叶万年青", List.of("万年青"))
+        ));
+        return repository;
     }
 
     private KnowledgeRepository mockRepository() {

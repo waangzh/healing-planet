@@ -72,16 +72,28 @@ public class PlantAliasMatcher {
 
     private MatchResult uniqueMatch(List<PlantCatalogEntry> matches, String matchedName, String ambiguousReason) {
         if (matches.isEmpty()) return MatchResult.none();
-        if (matches.size() > 1) return MatchResult.ambiguous(ambiguousReason, matches.size());
+        boolean alias = matches.stream().anyMatch(entry -> entry.aliases().contains(matchedName));
+        if (matches.size() > 1) {
+            return MatchResult.candidates(matches, alias, matchedName, ambiguousReason);
+        }
         PlantCatalogEntry entry = matches.get(0);
-        return MatchResult.known(matches, entry.aliases().contains(matchedName));
+        return MatchResult.known(matches, entry.aliases().contains(matchedName), matchedName);
     }
 
     private MatchResult uniqueNameMatch(List<NameMatch> matches, String ambiguousReason) {
         if (matches.isEmpty()) return MatchResult.none();
+        Set<String> matchedNames = matches.stream().map(NameMatch::matchedName)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (matches.size() > 1 && matchedNames.size() == 1) {
+            String matchedName = matchedNames.iterator().next();
+            List<PlantCatalogEntry> entries = matches.stream().map(NameMatch::entry).distinct().toList();
+            boolean alias = entries.stream().anyMatch(entry -> entry.aliases().contains(matchedName));
+            return MatchResult.candidates(entries, alias, matchedName, ambiguousReason);
+        }
         if (matches.size() > 1) return MatchResult.ambiguous(ambiguousReason, matches.size());
         NameMatch match = matches.get(0);
-        return MatchResult.known(List.of(match.entry()), match.entry().aliases().contains(match.matchedName()));
+        return MatchResult.known(List.of(match.entry()), match.entry().aliases().contains(match.matchedName()),
+                match.matchedName());
     }
 
     private List<PlantCatalogEntry> exactMatches(String mention, List<PlantCatalogEntry> entries) {
@@ -154,7 +166,7 @@ public class PlantAliasMatcher {
         if (!leftKnown || !rightKnown) return MatchResult.unknown("comparison_entity_unresolved");
         boolean alias = leftMatch.entry().aliases().contains(leftMatch.matchedName())
                 || rightMatch.entry().aliases().contains(rightMatch.matchedName());
-        return MatchResult.known(List.of(leftMatch.entry(), rightMatch.entry()), alias);
+        return MatchResult.known(List.of(leftMatch.entry(), rightMatch.entry()), alias, "");
     }
 
     private String comparisonSubject(String value, boolean rightSide) {
@@ -234,19 +246,26 @@ public class PlantAliasMatcher {
         return value >= 'a' && value <= 'z' || value >= '0' && value <= '9';
     }
 
-    enum MatchStatus { NONE, KNOWN, AMBIGUOUS, UNKNOWN }
+    enum MatchStatus { NONE, KNOWN, CANDIDATES, AMBIGUOUS, UNKNOWN }
 
     record MatchResult(MatchStatus status, List<PlantCatalogEntry> entries, boolean alias,
-                       String reason, int candidateCount) {
-        static MatchResult none() { return new MatchResult(MatchStatus.NONE, List.of(), false, "", 0); }
-        static MatchResult known(List<PlantCatalogEntry> entries, boolean alias) {
-            return new MatchResult(MatchStatus.KNOWN, List.copyOf(entries), alias, "", entries.size());
+                       String mention, String reason, int candidateCount) {
+        static MatchResult none() {
+            return new MatchResult(MatchStatus.NONE, List.of(), false, "", "", 0);
+        }
+        static MatchResult known(List<PlantCatalogEntry> entries, boolean alias, String mention) {
+            return new MatchResult(MatchStatus.KNOWN, List.copyOf(entries), alias, mention, "", entries.size());
+        }
+        static MatchResult candidates(List<PlantCatalogEntry> entries, boolean alias,
+                                      String mention, String reason) {
+            return new MatchResult(MatchStatus.CANDIDATES, List.copyOf(entries), alias,
+                    mention, reason, entries.size());
         }
         static MatchResult ambiguous(String reason, int count) {
-            return new MatchResult(MatchStatus.AMBIGUOUS, List.of(), false, reason, count);
+            return new MatchResult(MatchStatus.AMBIGUOUS, List.of(), false, "", reason, count);
         }
         static MatchResult unknown(String reason) {
-            return new MatchResult(MatchStatus.UNKNOWN, List.of(), false, reason, 0);
+            return new MatchResult(MatchStatus.UNKNOWN, List.of(), false, "", reason, 0);
         }
     }
 

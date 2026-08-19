@@ -95,6 +95,9 @@ public class PlantEntityResolver {
                             ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
                     1, 0, aliasMatch.candidateCount());
         }
+        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.CANDIDATES) {
+            return resolveAliasCandidates(query.query(), aliasMatch);
+        }
         if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.AMBIGUOUS) {
             return Resolution.ambiguous(1, 1, aliasMatch.candidateCount(), aliasMatch.reason());
         }
@@ -164,6 +167,34 @@ public class PlantEntityResolver {
         return ranked.get(0).vectorScore() > 0 ? second.vectorScore() : second.characterScore();
     }
 
+    private Resolution resolveAliasCandidates(String rawQuery, PlantAliasMatcher.MatchResult match) {
+        if (disambiguator == null) {
+            return Resolution.ambiguous(1, 1, match.candidateCount(), match.reason());
+        }
+        List<PlantEntityDisambiguator.CandidateOption> options = match.entries().stream()
+                .map(entry -> new PlantEntityDisambiguator.CandidateOption(
+                        entry.canonicalPlantId(), entry.names(), 0, 1))
+                .toList();
+        PlantEntityDisambiguator.Decision decision = disambiguator.disambiguate(
+                rawQuery, match.mention(), options);
+        if (decision == null || !decision.attempted()) {
+            return Resolution.ambiguous(1, 1, match.candidateCount(), match.reason());
+        }
+        if (decision.unavailable() || decision.ambiguous()) {
+            return Resolution.ambiguous(1, 1, match.candidateCount(), decision.reason());
+        }
+        if (!decision.known()) {
+            return Resolution.unknown(decision.reason(), 1, 1, match.candidateCount());
+        }
+        return match.entries().stream()
+                .filter(entry -> entry.canonicalPlantId().equals(decision.canonicalPlantId()))
+                .findFirst()
+                .map(entry -> Resolution.known(entry, ResolutionMethod.LLM,
+                        decision.confidence(), 0, match.candidateCount()))
+                .orElseGet(() -> Resolution.ambiguous(1, 1, match.candidateCount(),
+                        "llm_returned_invalid_candidate"));
+    }
+
     private Resolution resolveWithLlm(String rawQuery, String namedSubject,
                                       List<PlantCandidateGenerator.Candidate> ranked,
                                       boolean plantDomain) {
@@ -182,6 +213,9 @@ public class PlantEntityResolver {
             return Resolution.unknown("llm_empty_response", topScore(ranked), secondScore(ranked), ranked.size());
         }
         if (!decision.attempted()) return null;
+        if (decision.ambiguous()) {
+            return Resolution.ambiguous(topScore(ranked), secondScore(ranked), ranked.size(), decision.reason());
+        }
         if (!decision.known()) {
             return Resolution.unknown(decision.reason(), topScore(ranked), secondScore(ranked), ranked.size());
         }
