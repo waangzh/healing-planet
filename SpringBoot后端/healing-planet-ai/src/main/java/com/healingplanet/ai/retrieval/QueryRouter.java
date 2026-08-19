@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 @Component
 public class QueryRouter {
     private static final Set<String> STATE_TERMS = Set.of(
-            "我的", "这盆", "当前", "现在", "今天", "实时", "过去一周", "过去7天", "过去24小时", "近24", "近7",
+            "我的", "我这盆", "这盆", "这株", "这棵", "家里的", "过去一周", "过去7天", "过去24小时", "近24", "近7",
             "最近土壤", "最近温度", "最近湿度", "传感器", "土壤湿度", "温度适合", "环境异常",
             "下降这么快", "要不要浇水", "需要浇水", "状态异常", "有异常吗", "异常吗", "需要处理吗"
     );
@@ -22,7 +22,22 @@ public class QueryRouter {
             "官方", "正式", "指南", "规范", "标准"
     );
     private static final Set<String> PERSONAL_CONTEXT_TERMS = Set.of(
-            "我的", "我这盆", "这盆", "当前", "现在", "今天", "实时", "传感器"
+            "我的", "我这盆", "这盆", "这株", "这棵", "家里的", "传感器"
+    );
+    private static final Set<String> CURRENT_STATE_PHRASES = Set.of(
+            "当前状态", "当前土壤", "当前湿度", "当前温度", "当前读数", "当前数据"
+    );
+    private static final Set<String> HISTORY_TERMS = Set.of(
+            "过去24小时", "过去一周", "过去7天", "近24", "近7", "趋势", "变化", "波动"
+    );
+    private static final Set<String> FRESHNESS_TERMS = Set.of(
+            "实时数据", "还能当", "太旧", "数据时效"
+    );
+    private static final Set<String> WATERING_DECISION_TERMS = Set.of(
+            "需要浇水", "要不要浇水", "要不要补水", "可以马上浇水"
+    );
+    private static final Set<String> STATE_DECISION_TERMS = Set.of(
+            "状态异常", "有异常吗", "异常吗", "需要处理吗"
     );
     private static final Set<String> PLANT_DOMAIN_TERMS = Set.of(
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
@@ -33,6 +48,9 @@ public class QueryRouter {
     private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
             Pattern.compile("[？?。；;，,]\\s*社区");
+    private static final Pattern COMMUNITY_NEGATION_SCOPE = Pattern.compile(
+            "(?:不要|别|无需|不用|不参考|不采用|不混入|排除|去掉|剔除|避免)"
+                    + "[^，。！？?;；]{0,16}$");
     private static final Pattern GENERIC_PLANT_QUERY = Pattern.compile(
             "^(?:请问|想问下|我想问|请|帮我)?(?:"
                     + "(?:什么|哪种|哪些|哪类|有哪些).*?(?:植物|绿植|盆栽|花卉)|"
@@ -60,11 +78,12 @@ public class QueryRouter {
         } else if (query.intent() == QueryIntent.GENERAL_CARE) {
             decision = new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
         } else {
-            boolean personalContext = PERSONAL_CONTEXT_TERMS.stream().anyMatch(text::contains);
+            boolean personalContext = hasPersonalContext(text);
             boolean state = STATE_TERMS.stream().anyMatch(term -> !GENERIC_WATERING_STATE_TERMS.contains(term)
                     && text.contains(term));
             state = state || personalContext && GENERIC_WATERING_STATE_TERMS.stream().anyMatch(text::contains);
-            boolean community = COMMUNITY_TERMS.stream().anyMatch(text::contains);
+            state = state || CURRENT_STATE_PHRASES.stream().anyMatch(text::contains);
+            boolean community = hasPositiveCommunityIntent(text);
             if (community) {
                 boolean mixed = FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(text::contains)
                         || COMMUNITY_FOLLOW_UP.matcher(text).find();
@@ -102,29 +121,47 @@ public class QueryRouter {
                 || PLANT_CARE_ACTION_QUERY.matcher(text).matches();
     }
 
+    private boolean hasPersonalContext(String text) {
+        return PERSONAL_CONTEXT_TERMS.stream().anyMatch(text::contains)
+                || CURRENT_STATE_PHRASES.stream().anyMatch(text::contains);
+    }
+
+    private boolean hasPositiveCommunityIntent(String text) {
+        return COMMUNITY_TERMS.stream().anyMatch(term -> text.contains(term) && !isNegatedCommunityTerm(text, term));
+    }
+
+    private boolean isNegatedCommunityTerm(String text, String term) {
+        int index = text.indexOf(term);
+        while (index >= 0) {
+            String prefix = text.substring(Math.max(0, index - 24), index);
+            if (!COMMUNITY_NEGATION_SCOPE.matcher(prefix).find()) return false;
+            index = text.indexOf(term, index + term.length());
+        }
+        return true;
+    }
+
     private RoutingDecision personalCareRoute(String query) {
         String text = query == null ? "" : query.toLowerCase(Locale.ROOT);
-        if (text.contains("过去24小时") || text.contains("趋势") || text.contains("近24")) {
-            return new RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
-                    StateEvidenceNeed.STATE_FACT_HISTORY);
-        }
-        if (text.contains("实时数据") || text.contains("还能当") || text.contains("太旧")
-                || text.contains("数据时效")) {
+        boolean historyRequested = HISTORY_TERMS.stream().anyMatch(text::contains)
+                || text.contains("现在需要浇水");
+        boolean freshnessCheck = FRESHNESS_TERMS.stream().anyMatch(text::contains);
+        boolean wateringDecision = WATERING_DECISION_TERMS.stream().anyMatch(text::contains);
+        boolean stateDecision = STATE_DECISION_TERMS.stream().anyMatch(text::contains);
+        if (freshnessCheck) {
             return new RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
                     StateEvidenceNeed.STATE_FRESHNESS);
         }
-        boolean wateringDecision = text.contains("需要浇水") || text.contains("要不要浇水")
-                || text.contains("要不要补水") || text.contains("可以马上浇水");
-        boolean stateDecision = text.contains("状态异常") || text.contains("有异常吗")
-                || text.contains("异常吗") || text.contains("需要处理吗");
         if (wateringDecision) {
-            boolean history = text.contains("现在需要浇水") && !text.contains("太旧");
             return new RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
-                    history ? StateEvidenceNeed.STATE_DECISION_WITH_HISTORY : StateEvidenceNeed.STATE_DECISION);
+                    historyRequested ? StateEvidenceNeed.STATE_DECISION_WITH_HISTORY : StateEvidenceNeed.STATE_DECISION);
         }
         if (stateDecision) {
             return new RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
                     StateEvidenceNeed.STATE_DECISION);
+        }
+        if (historyRequested) {
+            return new RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
+                    StateEvidenceNeed.STATE_FACT_HISTORY);
         }
         return new RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
                 StateEvidenceNeed.STATE_FACT_CURRENT);

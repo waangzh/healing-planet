@@ -155,6 +155,35 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
+    void shouldAllowMultiplePlantKnowledgeTypes() {
+        RagProperties properties = new RagProperties();
+        properties.getEval().setRetrievalTraceEnabled(true);
+        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
+                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
+                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
+        RagQuery query = new RagQuery("绿萝需要土壤吗？每周如何补水？", null, null, null,
+                null, List.of(), Map.of("includeCommunity", false,
+                "requiredKnowledgeTypes", List.of("WATERING", "GENERAL_CARE")));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                document("watering", "WATERING"),
+                document("soil", "GENERAL_CARE"),
+                document("light", "LIGHT")));
+
+        var result = retriever.retrieveWithDiagnostics(query);
+
+        assertThat(result.evidence()).extracting(com.healingplanet.ai.domain.Evidence::id)
+                .contains("watering", "soil")
+                .doesNotContain("light");
+        assertThat(result.retrievalTrace().knowledgeTypeFiltered()).extracting(item -> item.id())
+                .contains("watering", "soil")
+                .doesNotContain("light");
+    }
+
+    @Test
     void shouldMarkEvidenceSelectedByEntityQuota() {
         RagProperties properties = new RagProperties();
         properties.getEval().setRetrievalTraceEnabled(true);

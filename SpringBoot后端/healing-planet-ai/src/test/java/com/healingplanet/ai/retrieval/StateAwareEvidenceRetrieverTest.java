@@ -55,6 +55,24 @@ class StateAwareEvidenceRetrieverTest {
     }
 
     @Test
+    void multiTopicQuestionShouldKeepAllMatchedKnowledgeTypes() {
+        QueryRouter router = mock(QueryRouter.class);
+        HybridEvidenceRetriever knowledgeRetriever = mock(HybridEvidenceRetriever.class);
+        PlantStateRetriever stateRetriever = mock(PlantStateRetriever.class);
+        RagQuery query = RagQuery.of("空气凤梨需要土壤吗？每周如何补水？");
+        when(router.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, false, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));
+
+        retriever(router, knowledgeRetriever, stateRetriever).retrieve(query);
+
+        ArgumentCaptor<RagQuery> routed = ArgumentCaptor.forClass(RagQuery.class);
+        verify(knowledgeRetriever).retrieve(routed.capture());
+        assertThat(routed.getValue().context().get("requiredKnowledgeType")).isNull();
+        assertThat(routed.getValue().context().get("requiredKnowledgeTypes"))
+                .isEqualTo(java.util.Set.of("WATERING", "GENERAL_CARE"));
+    }
+
+    @Test
     void shouldExposeRoutingSnapshotWhenEvalTraceIsEnabled() {
         QueryRouter router = mock(QueryRouter.class);
         HybridEvidenceRetriever knowledgeRetriever = mock(HybridEvidenceRetriever.class);

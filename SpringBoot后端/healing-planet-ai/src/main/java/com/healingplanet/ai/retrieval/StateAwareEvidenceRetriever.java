@@ -10,9 +10,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Primary
 @Service
@@ -84,6 +86,12 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     private RetrievalTrace.RoutingSnapshot routingSnapshot(QueryRouter.RoutingDecision route, RagQuery routed) {
         Object requiredKnowledgeType = routed.context().get("requiredKnowledgeType");
+        if (requiredKnowledgeType == null) {
+            Object multi = routed.context().get("requiredKnowledgeTypes");
+            if (multi instanceof Iterable<?> values) {
+                requiredKnowledgeType = joinValues(values);
+            }
+        }
         return new RetrievalTrace.RoutingSnapshot(route.knowledge(), route.community(), route.state(),
                 route.intent() == null ? null : route.intent().name(),
                 route.stateEvidenceNeed() == null ? null : route.stateEvidenceNeed().name(), routed.query(),
@@ -105,8 +113,12 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         Map<String, Object> context = new HashMap<>(query.context());
         context.put("includePlantKnowledge", route.knowledge());
         context.put("includeCommunity", route.community());
-        String requiredKnowledgeType = route.knowledge() ? requiredKnowledgeType(query.query()) : null;
-        if (requiredKnowledgeType != null) context.put("requiredKnowledgeType", requiredKnowledgeType);
+        Set<String> requiredKnowledgeTypes = route.knowledge() ? requiredKnowledgeTypes(query.query()) : Set.of();
+        if (requiredKnowledgeTypes.size() == 1) {
+            context.put("requiredKnowledgeType", requiredKnowledgeTypes.iterator().next());
+        } else if (!requiredKnowledgeTypes.isEmpty()) {
+            context.put("requiredKnowledgeTypes", requiredKnowledgeTypes);
+        }
         String plantName = state.stream().map(Evidence::metadata)
                 .map(metadata -> metadata.get("plantName"))
                 .filter(String.class::isInstance).map(String.class::cast)
@@ -117,18 +129,30 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
                 route.intent(), query.keywords(), context);
     }
 
-    private String requiredKnowledgeType(String query) {
+    private Set<String> requiredKnowledgeTypes(String query) {
         String text = query == null ? "" : query;
         Map<String, Boolean> topics = Map.of(
                 "LIGHT", text.contains("光照") || text.contains("阳光") || text.contains("晒"),
                 "WATERING", text.contains("浇") || text.contains("补水"),
                 "TEMPERATURE", text.contains("温度") || text.contains("耐冷") || text.contains("耐热"),
                 "HUMIDITY", text.contains("湿度"),
-                "FERTILIZING", text.contains("施肥") || text.contains("肥料")
+                "FERTILIZING", text.contains("施肥") || text.contains("肥料"),
+                "GENERAL_CARE", text.contains("土壤") || text.contains("盆土") || text.contains("介质")
         );
-        List<String> matched = topics.entrySet().stream().filter(Map.Entry::getValue)
-                .map(Map.Entry::getKey).toList();
-        return matched.size() == 1 ? matched.get(0) : null;
+        return topics.entrySet().stream()
+                .filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private String joinValues(Iterable<?> values) {
+        StringBuilder result = new StringBuilder();
+        for (Object value : values) {
+            if (value == null) continue;
+            if (result.length() > 0) result.append(",");
+            result.append(value);
+        }
+        return result.toString();
     }
 
     private record RetrievalPayload(RetrievalResult result, QueryRouter.RoutingDecision route,

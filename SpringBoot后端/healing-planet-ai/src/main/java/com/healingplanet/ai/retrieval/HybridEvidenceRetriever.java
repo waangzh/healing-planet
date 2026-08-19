@@ -145,12 +145,29 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     }
 
     private List<RetrievalCandidate> filterKnowledgeType(RagQuery query, List<RetrievalCandidate> candidates) {
-        Object required = query.context().get("requiredKnowledgeType");
-        if (!(required instanceof String type) || type.isBlank()) return candidates;
+        Set<String> types = requiredKnowledgeTypes(query);
+        if (types.isEmpty()) return candidates;
         return candidates.stream()
                 .filter(candidate -> candidate.document().source() != KnowledgeSource.PLANT
-                        || type.equalsIgnoreCase(candidate.document().knowledgeType()))
+                        || candidate.document().knowledgeType() != null
+                        && types.contains(candidate.document().knowledgeType().toUpperCase(java.util.Locale.ROOT)))
                 .toList();
+    }
+
+    private Set<String> requiredKnowledgeTypes(RagQuery query) {
+        Object required = query.context().get("requiredKnowledgeType");
+        if (required instanceof String type && !type.isBlank()) {
+            return Set.of(type.toUpperCase(java.util.Locale.ROOT));
+        }
+        Object multi = query.context().get("requiredKnowledgeTypes");
+        if (!(multi instanceof Iterable<?> values)) return Set.of();
+        Set<String> result = new HashSet<>();
+        for (Object value : values) {
+            if (value instanceof String type && !type.isBlank()) {
+                result.add(type.toUpperCase(java.util.Locale.ROOT));
+            }
+        }
+        return result;
     }
 
     private CoverageResult ensureMixedSourceCoverage(RagQuery query, List<RetrievalCandidate> candidates,

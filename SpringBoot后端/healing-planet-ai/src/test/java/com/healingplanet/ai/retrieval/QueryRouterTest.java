@@ -48,6 +48,16 @@ class QueryRouterTest {
     }
 
     @Test
+    void wateringDecisionWithHistoryTermsShouldKeepDecisionAndHistoryTogether() {
+        var result = router.route(RagQuery.of(
+                "我这盆绿萝现在需要浇水吗？请完整说明当前读数、过去24小时趋势和正式指南。"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.state()).isTrue();
+        assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY);
+    }
+
+    @Test
     void staleWateringQuestionShouldNotLoadCareGuide() {
         var result = router.route(RagQuery.of("我的绿萝现在需要浇水吗，传感器数据会不会太旧？"));
 
@@ -128,6 +138,15 @@ class QueryRouterTest {
     }
 
     @Test
+    void negatedCommunityPhraseShouldNotSwitchToCommunityIntent() {
+        var result = router.route(RagQuery.of("芦荟多久浇一次水？不要混入虎尾兰的耐旱经验。"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+    }
+
+    @Test
     void abnormalStateQuestionShouldFallbackToKnowledgeWhenStateIsUnavailable() {
         var result = router.route(RagQuery.of("我的绿萝当前状态异常吗？"));
 
@@ -187,6 +206,16 @@ class QueryRouterTest {
 
         assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
         assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.REQUIRED);
+    }
+
+    @Test
+    void currentGuideQuestionShouldStayInFormalKnowledgeRoute() {
+        var result = router.route(RagQuery.of(
+                "红掌适宜温度是多少？请只给当前指南范围，不要补充未给出的耐寒结论。"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.state()).isFalse();
     }
 
     @Test
