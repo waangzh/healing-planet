@@ -28,6 +28,30 @@ class GenerationPromptBuilderTest {
     }
 
     @Test
+    void personalCareDecisionWithHistoryShouldRequireCurrentValueAndTrendTogether() {
+        String prompt = builder.build(new QueryRouter.RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
+                QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY));
+
+        assertThat(prompt).contains("必须同时说明当前值和最相关的近24小时趋势");
+    }
+
+    @Test
+    void personalCareHistoryFactShouldRequireAverageValueWhenAvailable() {
+        String prompt = builder.build(new QueryRouter.RoutingDecision(false, false, true, QueryIntent.PERSONAL_CARE,
+                QueryRouter.StateEvidenceNeed.STATE_FACT_HISTORY));
+
+        assertThat(prompt).contains("若证据给出了对应窗口平均值，也要一并说明");
+    }
+
+    @Test
+    void personalCareImmediateWateringShouldForbidFalseRefusalInsideRange() {
+        String prompt = builder.build(new QueryRouter.RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
+                QueryRouter.StateEvidenceNeed.STATE_DECISION));
+
+        assertThat(prompt).contains("不得仅因缺少上次操作时间而拒答");
+    }
+
+    @Test
     void communitySearchShouldKeepExperienceAttribution() {
         String prompt = builder.build(decision(false, true, false, QueryIntent.COMMUNITY_SEARCH));
 
@@ -43,7 +67,8 @@ class GenerationPromptBuilderTest {
 
         assertThat(prompt)
                 .contains("正式指南与社区经验的混合问题", "分别以“正式指南”和“社区经验”陈述")
-                .contains("两类证据冲突时，以正式指南为准");
+                .contains("两类证据冲突时，以正式指南为准")
+                .contains("保留这条最关键的具体表现");
     }
 
     @Test

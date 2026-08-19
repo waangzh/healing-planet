@@ -62,11 +62,13 @@ public class PlantStateAnalyzer {
         PlantState.SensorMetrics current = state.current();
         String freshness = state.observedAt() == null ? "未知" : state.observedAt().toString();
         String freshnessStatus = isStale(state.observedAt()) ? "已超过30分钟，不能视为实时读数" : "30分钟内";
-        return "植物：%s\n数据采集时间：%s\n数据时效：%s\n当前温度：%s ℃\n当前空气湿度：%s %%\n当前土壤湿度：%s %%\n当前光照：%s Lux\n当前 CO₂：%s ppm\n阈值判断：%s"
+        return "植物：%s\n数据采集时间：%s\n数据时效：%s\n当前温度：%s ℃\n当前空气湿度：%s %%\n当前土壤湿度：%s %%\n土壤湿度配置范围：%s\n当前光照：%s Lux\n当前 CO₂：%s ppm\n阈值判断：%s"
                 .formatted(blank(state.plantName()), freshness, freshnessStatus,
                         value(current == null ? null : current.temperature()),
                         value(current == null ? null : current.humidity()),
                         value(current == null ? null : current.soilMoisture()),
+                        thresholdRange(state.thresholds() == null ? null : state.thresholds().soilMoistureMin(),
+                                state.thresholds() == null ? null : state.thresholds().soilMoistureMax(), "%"),
                         value(current == null ? null : current.lightIntensity()),
                         value(current == null ? null : current.co2()),
                         violations.isEmpty() ? "当前读数均未超出已配置阈值" : String.join("；", violations));
@@ -120,6 +122,13 @@ public class PlantStateAnalyzer {
         if ("DECREASING".equals(value)) return "下降";
         if ("STABLE".equals(value)) return "稳定";
         return "未知";
+    }
+
+    private String thresholdRange(Double min, Double max, String unit) {
+        if (min == null && max == null) return "未配置";
+        if (min == null) return "≤ " + value(max) + unit;
+        if (max == null) return "≥ " + value(min) + unit;
+        return value(min) + unit + " - " + value(max) + unit;
     }
 
     private String value(Double value) { return value == null ? "无数据" : String.format(Locale.ROOT, "%.2f", value); }

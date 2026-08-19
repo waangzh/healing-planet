@@ -33,6 +33,22 @@ class PlantStateAnalyzerTest {
     }
 
     @Test
+    void shouldExposeConfiguredSoilMoistureRangeWhenCurrentValueIsWithinThreshold() {
+        var current = new PlantState.SensorMetrics(26d, 55d, 68d, 4500d, 460d);
+        var thresholds = new PlantState.SensorThresholds(18d, 30d, 40d, 70d,
+                30d, 70d, 1000d, 10000d, 300d, 1000d);
+        var state = new PlantState(103L, "1", "绿萝", 8L, LocalDateTime.of(2026, 8, 17, 9, 58),
+                current, null, null, thresholds);
+
+        var analyzer = new PlantStateAnalyzer(Clock.fixed(Instant.parse("2026-08-17T02:00:00Z"), ZoneOffset.UTC));
+        var evidence = analyzer.analyze(state);
+
+        assertThat(evidence.get(0).content())
+                .contains("土壤湿度配置范围：30.00% - 70.00%")
+                .contains("当前读数均未超出已配置阈值");
+    }
+
+    @Test
     void shouldUseInjectedClockToMarkStaleState() {
         var current = new PlantState.SensorMetrics(28d, 50d, 20d, 5000d, 420d);
         var state = new PlantState(104L, "1", "绿萝", 9L, LocalDateTime.of(2026, 8, 17, 9, 29),
