@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
+import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.ingestion.KnowledgeRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -402,6 +403,30 @@ class PlantEntityResolverTest {
                 "植物叶子发黄怎么办？"
         )).allSatisfy(query -> assertThat(resolver.resolve(RagQuery.of(query)).kind())
                 .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC));
+    }
+
+    @Test
+    void shouldKeepBroadCommunitySearchOpenWithoutResolvingAnEntity() {
+        var query = new RagQuery("社区最近有哪些比较热门的养护经验？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var resolution = resolver.resolve(query);
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
+        verify(entityStore, never()).similaritySearch(any(SearchRequest.class));
+    }
+
+    @Test
+    void canonicalPlantIdShouldBypassTextEntityResolution() {
+        var query = new RagQuery("社区最近有哪些比较热门的养护经验？", null, null, "1",
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var resolution = resolver.resolve(query);
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantId()).isEqualTo("1");
+        assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.EXPLICIT_ID);
+        verify(entityStore, never()).similaritySearch(any(SearchRequest.class));
     }
 
     @Test

@@ -146,6 +146,42 @@ class QueryRouterTest {
     }
 
     @Test
+    void shouldKeepBroadCommunitySearchEntityOptional() {
+        var query = new RagQuery("社区最近有哪些比较热门的养护经验？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var result = router.route(query);
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.OPTIONAL);
+    }
+
+    @Test
+    void shouldRequireEntityForPlantSpecificCommunitySearch() {
+        var query = new RagQuery("社区里大家怎么养绿萝？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var result = router.route(query);
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.REQUIRED);
+    }
+
+    @Test
+    void sourcePreferenceShouldNotProvePlantDomain() {
+        var query = new RagQuery("网友对量子纠缠有什么经验？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var result = router.route(query);
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.OUT_OF_DOMAIN);
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.NONE);
+    }
+
+    @Test
     void shouldRequireEntityForSpecificCareQuestions() {
         var result = router.route(RagQuery.of("多久浇一次水？"));
 

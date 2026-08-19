@@ -16,7 +16,7 @@ public class QueryRouter {
             "下降这么快", "要不要浇水", "需要浇水", "状态异常", "有异常吗", "异常吗", "需要处理吗"
     );
     private static final Set<String> COMMUNITY_TERMS = Set.of(
-            "社区", "大家", "网友", "有人讨论", "经验", "帖子"
+            "社区", "大家", "网友", "花友", "有人讨论", "经验", "帖子"
     );
     private static final Set<String> FORMAL_KNOWLEDGE_TERMS = Set.of(
             "官方", "正式", "指南", "规范", "标准"
@@ -28,7 +28,7 @@ public class QueryRouter {
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
             "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",
             "光照", "阳光", "温度", "湿度", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "耐阴",
-            "喜阴", "弱光", "强光", "直射", "社区", "网友", "花友", "经验", "状态"
+            "喜阴", "弱光", "强光", "直射", "状态"
     );
     private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
@@ -41,6 +41,11 @@ public class QueryRouter {
                     + "(?:宿舍|室内|办公室|卧室|家里).*(?:植物|绿植|盆栽|花卉)(?:有哪些|推荐|比较好))");
     private static final Pattern GENERIC_CARE_CONCEPT_QUERY = Pattern.compile(
             ".*(?:耐阴|喜阴|弱光|强光|直射|光照|浇水|补水|状态|异常).*(?:等于|区别|一样|相同|是什么意思|什么叫).*");
+    private static final Pattern GENERIC_COMMUNITY_QUERY = Pattern.compile(
+            "^(?:请问|想问下|我想问|请|帮我)?"
+                    + "(?:(?:社区|网友|花友|大家|帖子|有人讨论)(?:里|中)?)*"
+                    + "(?:最近|近期|现在|当前)?(?:有)?(?:哪些|什么|有什么|有哪些|哪类|推荐|热门|比较热门).*");
+    private static final Pattern PLANT_CARE_ACTION_QUERY = Pattern.compile(".*(?:怎么|如何)养(?!生).*");
 
     public RoutingDecision route(RagQuery query) {
         String text = query.query() == null ? "" : query.query().toLowerCase(Locale.ROOT);
@@ -76,9 +81,14 @@ public class QueryRouter {
     }
 
     private RoutingDecision withEntityPolicy(RoutingDecision decision, String text, boolean explicitIntent) {
-        boolean generic = GENERIC_PLANT_QUERY.matcher(text.replaceAll("\\s+", "")).find()
-                || GENERIC_CARE_CONCEPT_QUERY.matcher(text.replaceAll("\\s+", "")).matches();
-        boolean plantDomain = explicitIntent || generic || isPlantDomainQuery(text);
+        String compactText = text.replaceAll("\\s+", "");
+        boolean genericPlant = GENERIC_PLANT_QUERY.matcher(compactText).find()
+                || GENERIC_CARE_CONCEPT_QUERY.matcher(compactText).matches();
+        boolean genericCommunity = decision.intent() == QueryIntent.COMMUNITY_SEARCH
+                && GENERIC_COMMUNITY_QUERY.matcher(compactText).matches();
+        boolean explicitPlantIntent = explicitIntent && decision.intent() != QueryIntent.COMMUNITY_SEARCH;
+        boolean plantDomain = explicitPlantIntent || genericPlant || isPlantDomainQuery(compactText);
+        boolean generic = genericPlant || genericCommunity;
         EntityRequirement entityRequirement = !plantDomain ? EntityRequirement.NONE
                 : generic ? EntityRequirement.OPTIONAL : EntityRequirement.REQUIRED;
         return new RoutingDecision(decision.knowledge(), decision.community(), decision.state(), decision.intent(),
@@ -88,7 +98,8 @@ public class QueryRouter {
 
     private boolean isPlantDomainQuery(String text) {
         return PLANT_DOMAIN_TERMS.stream().anyMatch(text::contains)
-                || text.contains("浇") || text.contains("补") || text.contains("晒") || text.contains("太阳");
+                || text.contains("浇") || text.contains("补") || text.contains("晒") || text.contains("太阳")
+                || PLANT_CARE_ACTION_QUERY.matcher(text).matches();
     }
 
     private RoutingDecision personalCareRoute(String query) {
