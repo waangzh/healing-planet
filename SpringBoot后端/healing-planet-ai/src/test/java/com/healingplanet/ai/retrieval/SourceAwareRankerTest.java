@@ -17,25 +17,26 @@ class SourceAwareRankerTest {
     private final SourceAwareRanker ranker = new SourceAwareRanker();
 
     @Test
-    void shouldAdmitOnlyCandidatesCloseToTheBestFinalScore() {
+    void shouldRerankAndFillLimitWithoutRelativeScoreCutoff() {
         List<RetrievalCandidate> candidates = List.of(
-                candidate("strong"), candidate("medium"), candidate("tail"));
+                candidate("strong"), candidate("medium"), candidate("tail"), candidate("last"));
         Map<String, Double> rerankScores = Map.of(
                 "strong", 1.0,
                 "medium", 0.98,
-                "tail", 0.5);
+                "tail", 0.5,
+                "last", 0.2);
 
-        List<Evidence> result = ranker.rank(RagQuery.of("光照"), candidates, rerankScores, 6);
+        List<Evidence> result = ranker.rank(RagQuery.of("光照"), candidates, rerankScores, 3);
 
-        assertThat(result).extracting(Evidence::id).containsExactly("strong", "medium");
+        assertThat(result).extracting(Evidence::id).containsExactly("strong", "medium", "tail");
     }
 
     @Test
-    void shouldReturnNoEvidenceWhenBestCandidateIsBelowMinimumScore() {
+    void shouldKeepBestAvailableEvidenceBelowOldMinimumScore() {
         List<Evidence> result = ranker.rank(RagQuery.of("光照"),
                 List.of(candidate("weak")), Map.of("weak", 0.4), 6);
 
-        assertThat(result).isEmpty();
+        assertThat(result).extracting(Evidence::id).containsExactly("weak");
     }
 
     @Test
@@ -53,7 +54,7 @@ class SourceAwareRankerTest {
     }
 
     @Test
-    void shouldRejectIrrelevantCommunityCandidateIndependently() {
+    void shouldKeepCommunityTailCandidateForRecall() {
         List<RetrievalCandidate> candidates = List.of(
                 candidate("guide"), communityCandidate("relevant"), communityCandidate("irrelevant"));
         Map<String, Double> rerankScores = Map.of(
@@ -64,7 +65,7 @@ class SourceAwareRankerTest {
         List<Evidence> result = ranker.rank(RagQuery.of("绿萝官方建议，社区经验怎么做？"),
                 candidates, rerankScores, 6);
 
-        assertThat(result).extracting(Evidence::id).containsExactly("guide", "relevant");
+        assertThat(result).extracting(Evidence::id).containsExactly("guide", "relevant", "irrelevant");
     }
 
     private RetrievalCandidate candidate(String id) {

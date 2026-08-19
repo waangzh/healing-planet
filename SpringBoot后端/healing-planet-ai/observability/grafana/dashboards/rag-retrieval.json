@@ -1,0 +1,184 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 2, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "sum by (stage) (rate(healing_planet_rag_retrieval_stage_seconds_count{stage=~\"$stage\",source=~\"$source\",status=\"ok\"}[$__rate_interval]))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RAG 阶段请求速率",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 3, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(healing_planet_rag_retrieval_stage_seconds_bucket{stage=~\"$stage\",source=~\"$source\",status=\"ok\"}[$__rate_interval])))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RAG 阶段 P50",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 3, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(healing_planet_rag_retrieval_stage_seconds_bucket{stage=~\"$stage\",source=~\"$source\",status=\"ok\"}[$__rate_interval])))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RAG 阶段 P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 2, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "sum by (stage) (rate(healing_planet_rag_retrieval_stage_seconds_count{stage=~\"$stage\",source=~\"$source\",status=~\"error|cancelled\"}[$__rate_interval])) / sum by (stage) (rate(healing_planet_rag_retrieval_stage_seconds_count{stage=~\"$stage\",source=~\"$source\"}[$__rate_interval]))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RAG 阶段失败或取消率",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 2, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 5,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "expr": "sum by (stage) (rate(healing_planet_rag_retrieval_candidates_sum{stage=~\"$stage\",source=~\"$source\"}[$__rate_interval])) / sum by (stage) (rate(healing_planet_rag_retrieval_candidates_count{stage=~\"$stage\",source=~\"$source\"}[$__rate_interval]))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "title": "平均检索候选数量",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 6,
+      "options": {"calculate": false, "cellGap": 1, "color": {"mode": "scheme", "scheme": "Oranges"}, "legend": {"show": true}, "rowsFrame": {"layout": "auto"}, "showValue": "never", "tooltip": {"show": true, "yHistogram": false}, "yAxis": {"axisPlacement": "left", "reverse": false, "unit": "s"}},
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(healing_planet_rag_retrieval_stage_seconds_bucket{stage=\"$heatmapStage\",source=~\"$source\",status=\"ok\"}[$__rate_interval]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ],
+      "title": "阶段延迟直方图：$heatmapStage",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 0, "mappings": [{"options": {"0": {"color": "red", "index": 0, "text": "不可达"}, "1": {"color": "green", "index": 1, "text": "正常"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24},
+      "id": 7,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "max(up{job=\"healing-planet-ai\"})", "refId": "A"}],
+      "title": "Prometheus 抓取状态",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"decimals": 0, "min": 0}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 24},
+      "id": 8,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "sum(increase(healing_planet_rag_retrieval_stage_seconds_count{status=\"ok\"}[$__range]))", "refId": "A"}],
+      "title": "时间范围内成功阶段数",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["healing-planet", "rag", "prometheus"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".+",
+        "current": {"text": "All", "value": ["$__all"]},
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(healing_planet_rag_retrieval_stage_seconds_count, stage)",
+        "includeAll": true,
+        "label": "阶段",
+        "multi": true,
+        "name": "stage",
+        "options": [],
+        "query": "label_values(healing_planet_rag_retrieval_stage_seconds_count, stage)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {"text": "All", "value": ["$__all"]},
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(healing_planet_rag_retrieval_stage_seconds_count, source)",
+        "includeAll": true,
+        "label": "来源",
+        "multi": true,
+        "name": "source",
+        "options": [],
+        "query": "label_values(healing_planet_rag_retrieval_stage_seconds_count, source)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {"text": "answer_generation", "value": "answer_generation"},
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(healing_planet_rag_retrieval_stage_seconds_count, stage)",
+        "includeAll": false,
+        "label": "热力图阶段",
+        "multi": false,
+        "name": "heatmapStage",
+        "options": [],
+        "query": "label_values(healing_planet_rag_retrieval_stage_seconds_count, stage)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Healing Planet RAG 检索观测",
+  "uid": "healing-planet-rag",
+  "version": 1,
+  "weekStart": ""
+}

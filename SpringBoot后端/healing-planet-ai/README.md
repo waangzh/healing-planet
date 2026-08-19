@@ -21,6 +21,7 @@
 - [病害知识准备](#病害知识准备)
 - [项目结构](#项目结构)
 - [测试与验证](#测试与验证)
+- [可观测性](#可观测性)
 - [安全与部署注意事项](#安全与部署注意事项)
 
 ## 简介
@@ -209,7 +210,7 @@ curl -X POST http://localhost:8010/internal/index/full \
 
 ### 检索观测
 
-Actuator 暴露 `health`、`info` 和 `metrics`。Spring AI 自带的 Observation 用于查看 Embedding 与 VectorStore 调用；项目另外记录以下指标：
+Actuator 暴露 `health`、`info`、`metrics` 和 `prometheus`。Spring AI 自带的 Observation 用于查看 Embedding 与 VectorStore 调用；项目另外记录以下指标：
 
 ```text
 healing.planet.rag.retrieval.stage
@@ -241,6 +242,7 @@ retrieve_total
 ```bash
 curl "http://localhost:8010/actuator/metrics/healing.planet.rag.retrieval.stage"
 curl "http://localhost:8010/actuator/metrics/healing.planet.rag.retrieval.candidates"
+curl "http://localhost:8010/actuator/prometheus"
 ```
 
 指标不会使用原始问题、植物名称或文档 ID 作为 tag，避免泄露用户输入及造成高基数时间序列。
@@ -305,6 +307,29 @@ mvn test
 ```
 
 单元测试只覆盖关键纯逻辑：语义文档转换、RRF 融合、路由、状态分析和提示注入隔离。外部 MySQL、Qdrant、IoT、embedding、reranker 与 LLM 的连通性由部署环境健康检查负责。
+
+## 可观测性
+
+项目使用 Prometheus 拉取 `/actuator/prometheus`，Grafana 自动加载 RAG 检索仪表盘。服务运行在宿主机时，启动观测组件：
+
+```bash
+docker compose up -d prometheus grafana
+```
+
+Prometheus 位于 `http://localhost:9090`，Grafana 位于 `http://localhost:3000`。首次查看仪表盘前必须先请求一次 RAG 接口，指标会在首次记录时创建。Grafana 默认账号来自 `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`；`.env.example` 仅提供本地默认值，生产环境必须由部署系统注入强密码。
+
+仪表盘包含按 `stage`、`source` 筛选的吞吐量、P50、P95、错误率、候选数量和延迟热力图。P50/P95 使用 Prometheus histogram 聚合，例如：
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, stage) (
+    rate(healing_planet_rag_retrieval_stage_seconds_bucket{status="ok"}[5m])
+  )
+)
+```
+
+当前 Compose 假设 AI 服务运行在 Docker 宿主机，因此 Prometheus 的目标为 `host.docker.internal:8010`。若以后将 AI 服务加入同一 Compose 网络，应改为对应服务名和端口。生产环境不要将 Actuator 管理端口公开到公网，应使用独立管理端口并限制为 Prometheus 所在私网访问。
 
 ## 安全与部署注意事项
 

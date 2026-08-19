@@ -29,6 +29,7 @@ class HybridEvidenceRetrieverTest {
     private VectorStore communityStore;
     private SparseIndexService sparseIndex;
     private PlantEntityResolver entityResolver;
+    private Reranker reranker;
     private HybridEvidenceRetriever retriever;
 
     @BeforeEach
@@ -37,7 +38,7 @@ class HybridEvidenceRetrieverTest {
         communityStore = mock(VectorStore.class);
         sparseIndex = mock(SparseIndexService.class);
         entityResolver = mock(PlantEntityResolver.class);
-        Reranker reranker = mock(Reranker.class);
+        reranker = mock(Reranker.class);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
         when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
         when(sparseIndex.search(any(), any(), anyInt())).thenReturn(List.of());
@@ -125,7 +126,7 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
-    void shouldKeepCommunityCandidatesWhenFormalKnowledgeTypeIsRequired() {
+    void shouldKeepLowScoringCommunityEvidenceWhenFormalKnowledgeTypeIsRequired() {
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝光照和社区经验", null, null, null,
@@ -136,6 +137,7 @@ class HybridEvidenceRetrieverTest {
                 document("p1", "LIGHT"), document("p2", "LIGHT"), document("p3", "LIGHT"),
                 document("p4", "LIGHT"), document("p5", "LIGHT"), document("p6", "LIGHT")));
         when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(communityDocument("c1")));
+        when(reranker.rerank(any(), any())).thenReturn(Map.of("c1", 0.1));
 
         var result = retriever.retrieve(query);
 

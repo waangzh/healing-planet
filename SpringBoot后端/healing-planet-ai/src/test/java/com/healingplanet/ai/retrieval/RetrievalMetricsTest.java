@@ -1,6 +1,8 @@
 package com.healingplanet.ai.retrieval;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
@@ -51,5 +53,21 @@ class RetrievalMetricsTest {
         assertThat(registry.get(RetrievalMetrics.STAGE_TIMER)
                 .tags("stage", "answer_generation", "source", "llm", "status", "ok")
                 .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldExposeAggregableHistogramToPrometheus() {
+        var registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        var metrics = new RetrievalMetrics(registry);
+
+        metrics.time("dense_search", "plant", () -> "ok");
+        metrics.recordCandidates("dense", "plant", 3);
+
+        assertThat(registry.scrape())
+                .contains("healing_planet_rag_retrieval_stage_seconds_bucket")
+                .contains("healing_planet_rag_retrieval_stage_seconds_count")
+                .contains("healing_planet_rag_retrieval_candidates_count")
+                .contains("healing_planet_rag_retrieval_candidates_sum")
+                .containsPattern("healing_planet_rag_retrieval_stage_seconds_bucket\\{(?=[^}]*stage=\\\"dense_search\\\")(?=[^}]*source=\\\"plant\\\")(?=[^}]*status=\\\"ok\\\")[^}]*}");
     }
 }
