@@ -40,7 +40,9 @@ public class PlantEntityResolver {
     private static final Pattern GENERIC_CARE_CONCEPT_QUERY = Pattern.compile(
             ".*(?:耐阴|喜阴|弱光|强光|直射|光照|浇水|补水|状态|异常).*(?:等于|区别|一样|相同|是什么意思|什么叫).*");
     private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
-            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株)+");
+            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株|"
+                    + "社区里有没有|社区里有没|社区里是否有|社区里的|社区经验里|社区用户遇到|"
+                    + "大家分享的|帮我找一篇网友写的|网友写的|网友分享的|这篇社区经验中)+");
     private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
             "^(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常)(?:给)?");
     private static final Pattern TRAILING_MENTION_NOISE = Pattern.compile(
@@ -113,6 +115,10 @@ public class PlantEntityResolver {
             return Resolution.known(comparison.entries(), ResolutionMethod.EXACT_NAME,
                     1, 0, comparison.entries().size());
         }
+        List<PlantEntry> subjectMatches = exactNameMatches(namedSubject, entries);
+        if (subjectMatches.size() == 1) {
+            return Resolution.known(subjectMatches, ResolutionMethod.EXACT_NAME, 1, 0, subjectMatches.size());
+        }
 
         List<PlantEntry> exactMatches = entries.stream()
                 .filter(entry -> entry.names().stream().anyMatch(name -> hasStandaloneName(normalizedQuery, name)))
@@ -182,15 +188,22 @@ public class PlantEntityResolver {
     private String extractPotentialMention(String query) {
         String normalized = normalize(query).replaceAll("[？?。，,;；！!]", "");
         Matcher anchor = CARE_ANCHOR.matcher(normalized);
-        if (!anchor.find()) return "";
+        while (anchor.find()) {
+            String candidate = normalized.substring(0, anchor.start());
+            candidate = LEADING_MENTION_NOISE.matcher(candidate).replaceFirst("");
+            candidate = LEADING_TIME_CONTEXT.matcher(candidate).replaceFirst("");
+            candidate = candidate.replaceFirst("^给", "");
+            candidate = TRAILING_MENTION_NOISE.matcher(candidate).replaceFirst("");
+            if (!candidate.isBlank() && candidate.length() <= 30) return candidate;
+        }
+        return "";
+    }
 
-        String candidate = normalized.substring(0, anchor.start());
-        candidate = LEADING_MENTION_NOISE.matcher(candidate).replaceFirst("");
-        candidate = LEADING_TIME_CONTEXT.matcher(candidate).replaceFirst("");
-        candidate = candidate.replaceFirst("^给", "");
-        candidate = TRAILING_MENTION_NOISE.matcher(candidate).replaceFirst("");
-        if (candidate.isBlank() || candidate.length() > 30) return "";
-        return candidate;
+    private List<PlantEntry> exactNameMatches(String mention, List<PlantEntry> entries) {
+        if (mention == null || mention.isBlank()) return List.of();
+        return entries.stream()
+                .filter(entry -> entry.names().stream().anyMatch(name -> name.equals(mention)))
+                .toList();
     }
 
     private boolean hasStandaloneName(String query, String name) {
@@ -378,7 +391,9 @@ public class PlantEntityResolver {
         try {
             SearchRequest request = SearchRequest.builder().query(query)
                     .topK(properties.getCandidateTopK()).similarityThreshold(0).build();
-            List<org.springframework.ai.document.Document> hits = entityStore.similaritySearch(request);
+            List<org.springframework.ai.document.Document> hits = metrics == null
+                    ? entityStore.similaritySearch(request)
+                    : metrics.time("embedding", "plant_entity", () -> entityStore.similaritySearch(request));
             Map<String, PlantEntry> byId = entriesById(entries);
             for (org.springframework.ai.document.Document hit : hits) {
                 Object canonicalPlantId = hit.getMetadata().get("canonicalPlantId");

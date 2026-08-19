@@ -10,6 +10,8 @@ import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.healingplanet.ai.retrieval.RetrievalMetrics;
 
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,8 @@ class RagServiceTest {
         GenerationPromptBuilder promptBuilder = mock(GenerationPromptBuilder.class);
         ChatClient chatClient = mock(ChatClient.class);
         QueryRouter queryRouter = mock(QueryRouter.class);
-        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter);
+        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
         RagQuery query = new RagQuery("我的绿萝当前状态异常吗？", 1L, 1L, null,
                 QueryIntent.PERSONAL_CARE, List.of(), Map.of());
         when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, false, true,
@@ -54,7 +57,8 @@ class RagServiceTest {
         GenerationPromptBuilder promptBuilder = mock(GenerationPromptBuilder.class);
         ChatClient chatClient = mock(ChatClient.class);
         QueryRouter queryRouter = mock(QueryRouter.class);
-        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter);
+        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
         RagQuery query = RagQuery.of("月球绿萝需要浇水吗？");
         when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(false, true, false,
                 QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));

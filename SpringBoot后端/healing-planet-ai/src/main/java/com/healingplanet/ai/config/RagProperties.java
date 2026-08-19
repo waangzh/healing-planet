@@ -138,6 +138,10 @@ public class RagProperties {
         private int llmMaxCandidates = 5;
         private double llmConfidenceThreshold = 0.90;
         private int llmCacheMaxEntries = 256;
+        private int llmConnectTimeoutMillis = 1000;
+        private int llmReadTimeoutMillis = 8000;
+        private int circuitBreakerFailureThreshold = 3;
+        private long circuitBreakerOpenMillis = 30000;
 
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
@@ -149,6 +153,14 @@ public class RagProperties {
         public void setLlmConfidenceThreshold(double value) { this.llmConfidenceThreshold = value; }
         public int getLlmCacheMaxEntries() { return llmCacheMaxEntries; }
         public void setLlmCacheMaxEntries(int value) { this.llmCacheMaxEntries = value; }
+        public int getLlmConnectTimeoutMillis() { return llmConnectTimeoutMillis; }
+        public void setLlmConnectTimeoutMillis(int value) { this.llmConnectTimeoutMillis = value; }
+        public int getLlmReadTimeoutMillis() { return llmReadTimeoutMillis; }
+        public void setLlmReadTimeoutMillis(int value) { this.llmReadTimeoutMillis = value; }
+        public int getCircuitBreakerFailureThreshold() { return circuitBreakerFailureThreshold; }
+        public void setCircuitBreakerFailureThreshold(int value) { this.circuitBreakerFailureThreshold = value; }
+        public long getCircuitBreakerOpenMillis() { return circuitBreakerOpenMillis; }
+        public void setCircuitBreakerOpenMillis(long value) { this.circuitBreakerOpenMillis = value; }
     }
 
     public static class Reranker {

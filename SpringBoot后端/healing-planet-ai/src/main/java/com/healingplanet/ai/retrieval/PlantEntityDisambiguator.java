@@ -1,8 +1,6 @@
 package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +10,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Component
@@ -29,23 +29,30 @@ public class PlantEntityDisambiguator {
 
     private final RagProperties.EntityResolution properties;
     private final StructuredCaller caller;
+    private final RetrievalMetrics metrics;
+    private final FailureCircuitBreaker circuitBreaker;
     private final Map<String, Decision> cache = new ConcurrentHashMap<>();
 
     @Autowired
-    public PlantEntityDisambiguator(ChatClient chatClient, RagProperties ragProperties) {
-        this(ragProperties, (systemPrompt, userPrompt) -> {
-            BeanOutputConverter<LlmDecision> converter = new BeanOutputConverter<>(LlmDecision.class);
-            return chatClient.prompt()
-                    .system(systemPrompt + "\n" + converter.getFormat())
-                    .user(userPrompt)
-                    .call()
-                    .entity(converter);
-        });
+    public PlantEntityDisambiguator(RagProperties ragProperties, StructuredCaller caller,
+                                    RetrievalMetrics metrics) {
+        this(ragProperties, caller, metrics, new FailureCircuitBreaker(
+                ragProperties.getEntityResolution().getCircuitBreakerFailureThreshold(),
+                ragProperties.getEntityResolution().getCircuitBreakerOpenMillis()));
     }
 
     PlantEntityDisambiguator(RagProperties ragProperties, StructuredCaller caller) {
+        this(ragProperties, caller, null, new FailureCircuitBreaker(
+                ragProperties.getEntityResolution().getCircuitBreakerFailureThreshold(),
+                ragProperties.getEntityResolution().getCircuitBreakerOpenMillis()));
+    }
+
+    PlantEntityDisambiguator(RagProperties ragProperties, StructuredCaller caller,
+                             RetrievalMetrics metrics, FailureCircuitBreaker circuitBreaker) {
         this.properties = ragProperties.getEntityResolution();
         this.caller = caller;
+        this.metrics = metrics;
+        this.circuitBreaker = circuitBreaker;
     }
 
     public Decision disambiguate(String query, String mention, List<CandidateOption> candidates) {
@@ -62,7 +69,8 @@ public class PlantEntityDisambiguator {
                 .map(CandidateOption::canonicalPlantId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         try {
-            LlmDecision result = caller.call(SYSTEM_PROMPT, buildUserPrompt(query, mention, limited));
+            LlmDecision result = timedCall(() -> circuitBreaker.execute(
+                    () -> caller.call(SYSTEM_PROMPT, buildUserPrompt(query, mention, limited))));
             if (result == null || result.decision() == null) {
                 return cache(cacheKey, Decision.unknown("llm_empty_response"));
             }
@@ -79,9 +87,15 @@ public class PlantEntityDisambiguator {
                 return cache(cacheKey, Decision.unknown("llm_confidence_too_low"));
             }
             return cache(cacheKey, Decision.known(canonicalPlantId, confidence));
+        } catch (CircuitOpenException ignored) {
+            return Decision.unknown("llm_disambiguation_circuit_open");
         } catch (RuntimeException ignored) {
             return Decision.unknown("llm_disambiguation_failed");
         }
+    }
+
+    private LlmDecision timedCall(java.util.function.Supplier<LlmDecision> operation) {
+        return metrics == null ? operation.get() : metrics.time("entity_disambiguation", "llm", operation);
     }
 
     private Decision cache(String key, Decision value) {
@@ -126,9 +140,49 @@ public class PlantEntityDisambiguator {
     }
 
     @FunctionalInterface
-    interface StructuredCaller {
+    public interface StructuredCaller {
         LlmDecision call(String systemPrompt, String userPrompt);
     }
+
+    static final class FailureCircuitBreaker {
+        private static final long HALF_OPEN = Long.MAX_VALUE;
+        private final int failureThreshold;
+        private final long openNanos;
+        private final AtomicInteger failures = new AtomicInteger();
+        private final AtomicLong openUntil = new AtomicLong();
+
+        FailureCircuitBreaker(int failureThreshold, long openMillis) {
+            this.failureThreshold = Math.max(1, failureThreshold);
+            this.openNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(Math.max(1, openMillis));
+        }
+
+        <T> T execute(java.util.function.Supplier<T> operation) {
+            acquire();
+            try {
+                T result = operation.get();
+                failures.set(0);
+                openUntil.set(0);
+                return result;
+            } catch (RuntimeException exception) {
+                int count = failures.incrementAndGet();
+                if (openUntil.get() == HALF_OPEN || count >= failureThreshold) {
+                    openUntil.set(System.nanoTime() + openNanos);
+                }
+                throw exception;
+            }
+        }
+
+        private void acquire() {
+            long state = openUntil.get();
+            if (state == 0) return;
+            long now = System.nanoTime();
+            if (state == HALF_OPEN || now < state || !openUntil.compareAndSet(state, HALF_OPEN)) {
+                throw new CircuitOpenException();
+            }
+        }
+    }
+
+    static final class CircuitOpenException extends RuntimeException { }
 
     public record CandidateOption(String canonicalPlantId, Set<String> names, double vectorScore, double lexicalScore) { }
 

@@ -132,14 +132,14 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldNotTreatUnregisteredAliasAsTypo() {
+    void shouldNotTreatAliasAsDeterministicTypoWithoutLlm() {
         var resolution = resolver.resolve(RagQuery.of("虎皮兰需要什么光照？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
     }
 
     @Test
-    void shouldRejectUnregisteredAliasAcrossWateringFrequencyPhrases() {
+    void shouldRejectAliasAcrossWateringFrequencyPhrasesWithoutLlm() {
         List<String> queries = List.of(
                 "黄金葛一周浇几次水？",
                 "黄金葛多久补一次水？",
@@ -173,12 +173,15 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldUseLlmForKnownNameWithNaturalLanguageContext() {
-        useLlmDecision(PlantEntityDisambiguator.Decision.known("1", 0.95));
-        assertThat(resolver.resolve(RagQuery.of("我的绿萝需要什么光照？")).kind())
-                .isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
-        assertThat(resolver.resolve(RagQuery.of("这盆绿萝需要什么光照？")).kind())
-                .isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+    void shouldResolveKnownNameWithNaturalLanguageContextWithoutLlm() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
+
+        assertThat(resolver.resolve(RagQuery.of("我的绿萝需要什么光照？")).method())
+                .isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
+        assertThat(resolver.resolve(RagQuery.of("这盆绿萝需要什么光照？")).method())
+                .isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
     @Test
@@ -212,8 +215,28 @@ class PlantEntityResolverTest {
             var resolution = resolver.resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantId()).isEqualTo("1");
-            assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
+            assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
         });
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
+    }
+
+    @Test
+    void shouldAllowKnownAliasesWhenLlmConfirmsCanonicalPlant() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        when(disambiguator.disambiguate(any(), any(), any())).thenReturn(
+                PlantEntityDisambiguator.Decision.known("2", 0.95),
+                PlantEntityDisambiguator.Decision.known("1", 0.95),
+                PlantEntityDisambiguator.Decision.known("3", 0.95));
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
+        when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                entityHit("2", "虎尾兰", 0.84),
+                entityHit("1", "绿萝", 0.82),
+                entityHit("3", "龟背竹", 0.80)
+        ));
+
+        assertThat(resolver.resolve(RagQuery.of("虎皮兰需要什么光照？")).canonicalPlantId()).isEqualTo("2");
+        assertThat(resolver.resolve(RagQuery.of("黄金葛一周浇几次水？")).canonicalPlantId()).isEqualTo("1");
+        assertThat(resolver.resolve(RagQuery.of("蓬莱蕉适合什么光照？")).canonicalPlantId()).isEqualTo("3");
     }
 
     @Test

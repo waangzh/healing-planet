@@ -162,8 +162,10 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         }
         SearchRequest request = requestBuilder.build();
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
+        List<org.springframework.ai.document.Document> documents = metrics.time("embedding", sourceTag,
+                () -> store.similaritySearch(request));
         List<RrfFusion.DenseHit> dense = metrics.time("dense_search", sourceTag,
-                () -> store.similaritySearch(request).stream()
+                () -> documents.stream()
                 .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, source),
                         document.getScore() == null ? 0d : document.getScore()))
                 .filter(hit -> entityResolver.matches(entity, hit.document()))

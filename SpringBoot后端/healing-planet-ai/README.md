@@ -158,6 +158,8 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
+| `RAG_ENTITY_LLM_CONNECT_TIMEOUT_MILLIS` / `RAG_ENTITY_LLM_READ_TIMEOUT_MILLIS` | 实体消歧独立连接 / 读取超时；固定单次尝试 | `1000` / `8000` |
+| `RAG_ENTITY_CIRCUIT_FAILURE_THRESHOLD` / `RAG_ENTITY_CIRCUIT_OPEN_MILLIS` | 实体消歧连续失败阈值 / 熔断时长 | `3` / `30000` |
 | `RERANKER_ENABLED` / `RERANKER_MODEL` | 重排序开关与模型 | `false` / `BAAI/bge-reranker-v2-m3` |
 | `PLANT_STATE_BASE_URL` / `PLANT_STATE_API_KEY` | IoT 状态服务 | `http://localhost:8070` / 空 |
 | `DISEASE_DETECTOR_BASE_URL` / `DISEASE_DETECTOR_PATH` | 病害检测服务 | `http://localhost:5000` / `/classify` |
@@ -218,6 +220,8 @@ healing.planet.rag.retrieval.candidates
 
 ```text
 entity_resolve
+entity_disambiguation
+embedding
 dense_search
 sparse_search
 rrf_fusion
@@ -225,8 +229,12 @@ rerank
 final_rank
 knowledge_total
 state_search
+plant_state_query
+answer_generation
 retrieve_total
 ```
+
+`embedding` 覆盖请求期的查询向量化与随后向量库查询；`plant_state_query` 只覆盖 IoT HTTP 查询，外层 `state_search` 还包含状态分析。同步与流式回答都会在流终止后记录 `answer_generation`。阶段 Timer 发布 P50/P95 与可聚合直方图，可按 `stage`、`source`、`status` 定位 P95。
 
 例如：
 

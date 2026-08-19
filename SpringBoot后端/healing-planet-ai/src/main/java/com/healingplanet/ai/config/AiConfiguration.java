@@ -5,6 +5,13 @@ import io.qdrant.client.QdrantGrpcClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.model.openai.autoconfigure.OpenAIAutoConfigurationUtil;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiConnectionProperties;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.qdrant.QdrantVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,6 +20,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.retry.support.RetryTemplate;
+import com.healingplanet.ai.retrieval.PlantEntityDisambiguator;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -68,6 +78,42 @@ public class AiConfiguration {
     @Bean
     ChatClient chatClient(ChatModel chatModel) {
         return ChatClient.create(chatModel);
+    }
+
+    @Bean
+    PlantEntityDisambiguator.StructuredCaller entityResolutionStructuredCaller(
+            OpenAiConnectionProperties commonProperties, OpenAiChatProperties chatProperties,
+            RagProperties ragProperties, ObservationRegistry observationRegistry) {
+        var connection = OpenAIAutoConfigurationUtil.resolveConnectionProperties(
+                commonProperties, chatProperties, "chat");
+        var entity = ragProperties.getEntityResolution();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(entity.getLlmConnectTimeoutMillis())).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofMillis(entity.getLlmReadTimeoutMillis()));
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(connection.baseUrl())
+                .apiKey(connection.apiKey())
+                .headers(connection.headers())
+                .completionsPath(chatProperties.getCompletionsPath())
+                .restClientBuilder(RestClient.builder().requestFactory(requestFactory))
+                .build();
+        OpenAiChatModel model = OpenAiChatModel.builder()
+                .openAiApi(api)
+                .defaultOptions(OpenAiChatOptions.fromOptions(chatProperties.getOptions()))
+                .retryTemplate(RetryTemplate.builder().maxAttempts(1).noBackoff().build())
+                .observationRegistry(observationRegistry)
+                .build();
+        ChatClient client = ChatClient.create(model);
+        return (systemPrompt, userPrompt) -> {
+            BeanOutputConverter<PlantEntityDisambiguator.LlmDecision> converter =
+                    new BeanOutputConverter<>(PlantEntityDisambiguator.LlmDecision.class);
+            return client.prompt()
+                    .system(systemPrompt + "\n" + converter.getFormat())
+                    .user(userPrompt)
+                    .call()
+                    .entity(converter);
+        };
     }
 
     @Bean("rerankerRestClient")

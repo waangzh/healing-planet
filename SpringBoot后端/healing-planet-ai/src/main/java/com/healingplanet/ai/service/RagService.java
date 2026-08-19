@@ -7,6 +7,7 @@ import com.healingplanet.ai.domain.RagResponse;
 import com.healingplanet.ai.retrieval.EvidenceRetriever;
 import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalResult;
+import com.healingplanet.ai.retrieval.RetrievalMetrics;
 import com.healingplanet.ai.domain.EvidenceType;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -22,14 +23,17 @@ public class RagService {
     private final GenerationPromptBuilder promptBuilder;
     private final ChatClient chatClient;
     private final QueryRouter queryRouter;
+    private final RetrievalMetrics metrics;
 
     public RagService(EvidenceRetriever retriever, PromptContextBuilder contextBuilder,
-                      GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter) {
+                      GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter,
+                      RetrievalMetrics metrics) {
         this.retriever = retriever;
         this.contextBuilder = contextBuilder;
         this.promptBuilder = promptBuilder;
         this.chatClient = chatClient;
         this.queryRouter = queryRouter;
+        this.metrics = metrics;
     }
 
     public RagResponse chat(RagQuery query) {
@@ -44,8 +48,9 @@ public class RagService {
         }
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution());
-        String answer = chatClient.prompt().system(promptBuilder.build(decision))
-                .user(userPrompt(query.query(), evidence)).call().content();
+        String answer = metrics.time("answer_generation", "llm", () ->
+                chatClient.prompt().system(promptBuilder.build(decision))
+                        .user(userPrompt(query.query(), evidence)).call().content());
         return new RagResponse(answer, evidence, retrieval.entityResolution());
     }
 
@@ -62,8 +67,9 @@ public class RagService {
             return new RagStream(evidence, retrieval.entityResolution(),
                     Flux.just(emptyEvidenceAnswer(retrieval)));
         }
-        Flux<String> content = chatClient.prompt().system(promptBuilder.build(decision))
-                .user(userPrompt(query.query(), evidence)).stream().content();
+        Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
+                chatClient.prompt().system(promptBuilder.build(decision))
+                        .user(userPrompt(query.query(), evidence)).stream().content());
         return new RagStream(evidence, retrieval.entityResolution(), content);
     }
 
@@ -77,7 +83,8 @@ public class RagService {
 
     private String emptyEvidenceAnswer(RetrievalResult retrieval) {
         if (retrieval.entityResolution() != null
-                && "llm_disambiguation_failed".equals(retrieval.entityResolution().rejectionReason())) {
+                && retrieval.entityResolution().rejectionReason() != null
+                && retrieval.entityResolution().rejectionReason().startsWith("llm_disambiguation_")) {
             return "植物名称识别服务暂时不可用，请稍后重试。";
         }
         return "当前知识库中没有足够证据回答这个问题。";

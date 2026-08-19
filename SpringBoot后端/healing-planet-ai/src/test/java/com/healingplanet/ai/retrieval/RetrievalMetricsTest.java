@@ -2,6 +2,7 @@ package com.healingplanet.ai.retrieval;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +37,19 @@ class RetrievalMetricsTest {
 
         assertThat(registry.get(RetrievalMetrics.STAGE_TIMER)
                 .tags("stage", "rerank", "source", "all", "status", "error")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRecordReactiveStageWhenStreamTerminates() {
+        var registry = new SimpleMeterRegistry();
+        var metrics = new RetrievalMetrics(registry);
+
+        assertThat(metrics.timeFlux("answer_generation", "llm", () -> Flux.just("a", "b"))
+                .collectList().block()).containsExactly("a", "b");
+
+        assertThat(registry.get(RetrievalMetrics.STAGE_TIMER)
+                .tags("stage", "answer_generation", "source", "llm", "status", "ok")
                 .timer().count()).isEqualTo(1);
     }
 }

@@ -91,4 +91,26 @@ class PlantEntityDisambiguatorTest {
 
         assertThat(calls).hasValue(1);
     }
+
+    @Test
+    void shouldOpenCircuitAfterConfiguredConsecutiveFailures() {
+        RagProperties properties = new RagProperties();
+        properties.getEntityResolution().setCircuitBreakerFailureThreshold(2);
+        AtomicInteger calls = new AtomicInteger();
+        PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,
+                (systemPrompt, userPrompt) -> {
+                    calls.incrementAndGet();
+                    throw new IllegalStateException("boom");
+                });
+        List<PlantEntityDisambiguator.CandidateOption> candidates = List.of(
+                new PlantEntityDisambiguator.CandidateOption("1", Set.of("绿萝"), 0.44, 0.50));
+
+        assertThat(disambiguator.disambiguate("绿箩1", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_failed");
+        assertThat(disambiguator.disambiguate("绿箩2", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_failed");
+        assertThat(disambiguator.disambiguate("绿箩3", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_circuit_open");
+        assertThat(calls).hasValue(2);
+    }
 }

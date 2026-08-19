@@ -4,7 +4,9 @@ import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 @Component
@@ -28,13 +30,24 @@ public class RetrievalMetrics {
             status = "error";
             throw exception;
         } finally {
-            sample.stop(Timer.builder(STAGE_TIMER)
-                    .description("RAG retrieval stage duration")
-                    .tag("stage", stage)
-                    .tag("source", source)
-                    .tag("status", status)
-                    .register(registry));
+            stop(sample, stage, source, status);
         }
+    }
+
+    public <T> Flux<T> timeFlux(String stage, String source, Supplier<Flux<T>> operation) {
+        return Flux.defer(() -> {
+            Timer.Sample sample = Timer.start(registry);
+            AtomicReference<String> status = new AtomicReference<>("ok");
+            try {
+                return operation.get()
+                        .doOnError(ignored -> status.set("error"))
+                        .doOnCancel(() -> status.set("cancelled"))
+                        .doFinally(ignored -> stop(sample, stage, source, status.get()));
+            } catch (RuntimeException exception) {
+                stop(sample, stage, source, "error");
+                throw exception;
+            }
+        });
     }
 
     public void recordCandidates(String stage, String source, int count) {
@@ -44,5 +57,16 @@ public class RetrievalMetrics {
                 .tag("source", source)
                 .register(registry)
                 .record(count);
+    }
+
+    private void stop(Timer.Sample sample, String stage, String source, String status) {
+        sample.stop(Timer.builder(STAGE_TIMER)
+                .description("RAG pipeline stage duration")
+                .publishPercentiles(0.5, 0.95)
+                .publishPercentileHistogram()
+                .tag("stage", stage)
+                .tag("source", source)
+                .tag("status", status)
+                .register(registry));
     }
 }
