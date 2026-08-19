@@ -146,7 +146,7 @@ public class RagProperties {
         private int llmConnectTimeoutMillis = 1000;
         private int llmReadTimeoutMillis = 8000;
         private int circuitBreakerFailureThreshold = 3;
-        private long circuitBreakerOpenMillis = 30000;
+        private long circuitBreakerOpenMillis = 5000;
 
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }

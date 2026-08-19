@@ -342,6 +342,39 @@
             placeholder="请输入详细建议"
           />
         </el-form-item>
+
+        <template v-if="isEdit">
+          <el-divider content-position="left">别名管理</el-divider>
+          <div class="alias-management" v-loading="aliasLoading">
+            <div class="alias-management-header">
+              <span>已维护别名</span>
+              <el-button type="primary" plain :icon="Plus" @click="openAddAliasDialog">新增别名</el-button>
+            </div>
+            <el-table :data="aliases" size="small" empty-text="暂无别名">
+              <el-table-column prop="alias" label="别名" min-width="160" />
+              <el-table-column label="类型" min-width="160">
+                <template #default="{ row }">
+                  <el-tag size="small" effect="plain">{{ aliasTypeLabel(row.aliasType) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="启用" width="90">
+                <template #default="{ row }">
+                  <el-switch v-model="row.enabled" @change="toggleAlias(row)" />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" align="right">
+                <template #default="{ row }">
+                  <el-tooltip content="编辑别名">
+                    <el-button text circle :icon="Edit" @click="openEditAliasDialog(row)" />
+                  </el-tooltip>
+                  <el-tooltip content="删除别名">
+                    <el-button text circle type="danger" :icon="Delete" @click="removeAlias(row)" />
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
       </el-form>
       
       <template #footer>
@@ -353,14 +386,52 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="aliasDialog"
+      :title="aliasForm.id ? '编辑别名' : '新增别名'"
+      width="460px"
+      append-to-body
+      @closed="resetAliasForm"
+    >
+      <el-form ref="aliasFormRef" :model="aliasForm" :rules="aliasRules" label-width="88px">
+        <el-form-item label="别名" prop="alias">
+          <el-input v-model="aliasForm.alias" maxlength="100" show-word-limit />
+        </el-form-item>
+        <el-form-item label="别名类型" prop="aliasType">
+          <el-select v-model="aliasForm.aliasType" style="width: 100%">
+            <el-option label="常用别名" value="COMMON_ALIAS" />
+            <el-option label="错别字变体" value="TYPO_VARIANT" />
+            <el-option label="旧学名" value="FORMER_SCIENTIFIC_NAME" />
+            <el-option label="地区名称" value="REGIONAL_NAME" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="aliasForm.enabled" active-text="启用" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="aliasDialog = false">取消</el-button>
+        <el-button type="primary" :loading="aliasSaving" @click="saveAlias">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Plus } from '@element-plus/icons-vue'
-import { getPlantsList, addPlant, updatePlant, deletePlants } from '@/api/plants'
+import { Search, Plus, Edit, Delete } from '@element-plus/icons-vue'
+import {
+  getPlantsList,
+  addPlant,
+  updatePlant,
+  deletePlants,
+  getPlantAliases,
+  addPlantAlias,
+  updatePlantAlias,
+  deletePlantAlias
+} from '@/api/plants'
 import { uploadFileService } from '@/api/common'
 
 // 响应式数据
@@ -371,6 +442,11 @@ const plantFormDialog = ref(false)
 const selectedPlant = ref(null)
 const isEdit = ref(false)
 const plantFormRef = ref()
+const aliasFormRef = ref()
+const aliasDialog = ref(false)
+const aliasLoading = ref(false)
+const aliasSaving = ref(false)
+const aliases = ref([])
 
 // 图片上传相关
 const imageLoading = ref(false)
@@ -432,6 +508,23 @@ const plantRules = {
   ],
   humidityPreference: [
     { required: true, message: '请输入湿度偏好', trigger: 'blur' }
+  ]
+}
+
+const aliasForm = reactive({
+  id: null,
+  alias: '',
+  aliasType: 'COMMON_ALIAS',
+  enabled: true
+})
+
+const aliasRules = {
+  alias: [
+    { required: true, message: '请输入别名', trigger: 'blur' },
+    { max: 100, message: '别名不能超过 100 个字符', trigger: 'blur' }
+  ],
+  aliasType: [
+    { required: true, message: '请选择别名类型', trigger: 'change' }
   ]
 }
 
@@ -497,15 +590,16 @@ const viewPlant = (plant) => {
 const showCreateDialog = () => {
   isEdit.value = false
   resetForm()
+  aliases.value = []
   plantFormDialog.value = true
 }
 
-const editPlant = (plant) => {
+const editPlant = async (plant) => {
   isEdit.value = true
   Object.assign(plantForm, plant)
-  // 设置图片预览
   imagePreview.value = plant.coverImg || ''
   plantFormDialog.value = true
+  await fetchAliases(plant.id)
 }
 
 const deletePlant = async (plant) => {
@@ -652,6 +746,130 @@ const resetForm = () => {
   }
 }
 
+const fetchAliases = async (plantId = plantForm.id) => {
+  if (!plantId) {
+    aliases.value = []
+    return
+  }
+  try {
+    aliasLoading.value = true
+    const response = await getPlantAliases(plantId)
+    if (response.data.code === 200) {
+      aliases.value = response.data.data || []
+    } else {
+      ElMessage.error(response.data.message || '获取别名失败')
+    }
+  } catch (error) {
+    console.error('获取植物别名失败:', error)
+    ElMessage.error('获取别名失败')
+  } finally {
+    aliasLoading.value = false
+  }
+}
+
+const resetAliasForm = () => {
+  Object.assign(aliasForm, {
+    id: null,
+    alias: '',
+    aliasType: 'COMMON_ALIAS',
+    enabled: true
+  })
+  if (aliasFormRef.value) {
+    aliasFormRef.value.clearValidate()
+  }
+}
+
+const openAddAliasDialog = () => {
+  resetAliasForm()
+  aliasDialog.value = true
+}
+
+const openEditAliasDialog = (alias) => {
+  Object.assign(aliasForm, alias)
+  aliasDialog.value = true
+}
+
+const saveAlias = async () => {
+  if (!aliasFormRef.value) return
+  const valid = await aliasFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  try {
+    aliasSaving.value = true
+    const data = {
+      alias: aliasForm.alias,
+      aliasType: aliasForm.aliasType,
+      enabled: aliasForm.enabled
+    }
+    const response = aliasForm.id
+      ? await updatePlantAlias(plantForm.id, aliasForm.id, data)
+      : await addPlantAlias(plantForm.id, data)
+    if (response.data.code !== 200) {
+      ElMessage.error(response.data.message || '保存别名失败')
+      return
+    }
+    ElMessage.success(aliasForm.id ? '别名已更新' : '别名已添加')
+    aliasDialog.value = false
+    await fetchAliases()
+  } catch (error) {
+    console.error('保存植物别名失败:', error)
+    ElMessage.error(error.response?.data?.message || '保存别名失败')
+  } finally {
+    aliasSaving.value = false
+  }
+}
+
+const toggleAlias = async (alias) => {
+  const previous = !alias.enabled
+  try {
+    const response = await updatePlantAlias(plantForm.id, alias.id, {
+      alias: alias.alias,
+      aliasType: alias.aliasType,
+      enabled: alias.enabled
+    })
+    if (response.data.code !== 200) {
+      alias.enabled = previous
+      ElMessage.error(response.data.message || '更新别名状态失败')
+    }
+  } catch (error) {
+    alias.enabled = previous
+    console.error('更新植物别名状态失败:', error)
+    ElMessage.error('更新别名状态失败')
+  }
+}
+
+const removeAlias = async (alias) => {
+  try {
+    await ElMessageBox.confirm(`确定删除别名“${alias.alias}”吗？`, '删除别名', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    const response = await deletePlantAlias(plantForm.id, alias.id)
+    if (response.data.code !== 200) {
+      ElMessage.error(response.data.message || '删除别名失败')
+      return
+    }
+    ElMessage.success('别名已删除')
+    await fetchAliases()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除植物别名失败:', error)
+      ElMessage.error('删除别名失败')
+    }
+  }
+}
+
+const aliasTypeLabel = (aliasType) => {
+  const labels = {
+    COMMON_ALIAS: '常用别名',
+    TYPO_VARIANT: '错别字变体',
+    FORMER_SCIENTIFIC_NAME: '旧学名',
+    REGIONAL_NAME: '地区名称'
+  }
+  return labels[aliasType] || aliasType
+}
+
 // 辅助方法
 const getDifficultyType = (difficulty) => {
   // 支持 1-5 级的标签类型映射
@@ -757,6 +975,23 @@ onMounted(() => {
         font-size: 12px;
         color: #606266;
       }
+    }
+  }
+
+  .alias-management {
+    width: 100%;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    padding: 12px;
+    box-sizing: border-box;
+
+    .alias-management-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      color: #303133;
+      font-weight: 600;
     }
   }
   

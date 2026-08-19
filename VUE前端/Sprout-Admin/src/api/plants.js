@@ -211,7 +211,17 @@ export const addPlant = (data) => request.post(`/admin/plants/add`, data)
 //   "fertilizingTips": "生长季节（春夏季）每月施一次稀释的液体肥",
 //   "detailAdvice": "定期擦拭叶片以保持光泽，生长过快时可适当修剪"
 // }
-export const updatePlant = (data) => request.post(`/admin/plants/update`, data)
+export const updatePlant = (data) => request.put(`/admin/plants/update`, data)
 
 // 批量删除绿植
 export const deletePlants = (ids) => request.delete(`/admin/plants/delete?ids=${ids.join(',')}`)
+
+export const getPlantAliases = (plantId) => request.get(`/admin/plants/${plantId}/aliases`)
+
+export const addPlantAlias = (plantId, data) => request.post(`/admin/plants/${plantId}/aliases`, data)
+
+export const updatePlantAlias = (plantId, aliasId, data) =>
+  request.put(`/admin/plants/${plantId}/aliases/${aliasId}`, data)
+
+export const deletePlantAlias = (plantId, aliasId) =>
+  request.delete(`/admin/plants/${plantId}/aliases/${aliasId}`)

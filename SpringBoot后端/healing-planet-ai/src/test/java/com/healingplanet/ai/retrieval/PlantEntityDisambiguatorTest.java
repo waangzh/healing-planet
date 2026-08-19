@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -93,6 +94,30 @@ class PlantEntityDisambiguatorTest {
     }
 
     @Test
+    void shouldNotCacheFailedDecisionSoSameQueryCanRetry() {
+        RagProperties properties = new RagProperties();
+        AtomicInteger calls = new AtomicInteger();
+        PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,
+                (systemPrompt, userPrompt) -> {
+                    if (calls.getAndIncrement() == 0) {
+                        throw new IllegalStateException("boom");
+                    }
+                    return new PlantEntityDisambiguator.LlmDecision("KNOWN", "1", 0.91, "retry-ok");
+                });
+        List<PlantEntityDisambiguator.CandidateOption> candidates = List.of(
+                new PlantEntityDisambiguator.CandidateOption("1", Set.of("绿萝"), 0.44, 0.50));
+
+        assertThat(disambiguator.disambiguate("绿箩能一直晒大太阳不？", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_failed");
+
+        var retried = disambiguator.disambiguate("绿箩能一直晒大太阳不？", "绿箩", candidates);
+
+        assertThat(retried.known()).isTrue();
+        assertThat(retried.canonicalPlantId()).isEqualTo("1");
+        assertThat(calls).hasValue(2);
+    }
+
+    @Test
     void shouldOpenCircuitAfterConfiguredConsecutiveFailures() {
         RagProperties properties = new RagProperties();
         properties.getEntityResolution().setCircuitBreakerFailureThreshold(2);
@@ -112,5 +137,60 @@ class PlantEntityDisambiguatorTest {
         assertThat(disambiguator.disambiguate("绿箩3", "绿箩", candidates).reason())
                 .isEqualTo("llm_disambiguation_circuit_open");
         assertThat(calls).hasValue(2);
+    }
+
+    @Test
+    void shouldAllowOneHalfOpenProbeAndCloseCircuitAfterRecovery() {
+        AtomicLong clock = new AtomicLong();
+        PlantEntityDisambiguator.FailureCircuitBreaker breaker =
+                new PlantEntityDisambiguator.FailureCircuitBreaker(1, 100, clock::get);
+
+        try {
+            breaker.execute(() -> {
+                throw new IllegalStateException("boom");
+            });
+        } catch (IllegalStateException ignored) {
+            // Expected first failure opens the circuit.
+        }
+        assertThatThrownByCircuitOpen(breaker);
+
+        clock.addAndGet(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(101));
+        assertThat(breaker.execute(() -> "recovered")).isEqualTo("recovered");
+        assertThat(breaker.execute(() -> "closed")).isEqualTo("closed");
+    }
+
+    @Test
+    void shouldRetryAfterCircuitCooldownForRealDisambiguator() throws InterruptedException {
+        RagProperties properties = new RagProperties();
+        properties.getEntityResolution().setCircuitBreakerFailureThreshold(2);
+        properties.getEntityResolution().setCircuitBreakerOpenMillis(20);
+        AtomicInteger calls = new AtomicInteger();
+        PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,
+                (systemPrompt, userPrompt) -> {
+                    if (calls.getAndIncrement() < 2) {
+                        throw new IllegalStateException("boom");
+                    }
+                    return new PlantEntityDisambiguator.LlmDecision("KNOWN", "1", 0.93, "recovered");
+                });
+        List<PlantEntityDisambiguator.CandidateOption> candidates = List.of(
+                new PlantEntityDisambiguator.CandidateOption("1", Set.of("绿萝"), 0.44, 0.50));
+
+        assertThat(disambiguator.disambiguate("绿箩1", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_failed");
+        assertThat(disambiguator.disambiguate("绿箩2", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_failed");
+        assertThat(disambiguator.disambiguate("绿箩3", "绿箩", candidates).reason())
+                .isEqualTo("llm_disambiguation_circuit_open");
+
+        Thread.sleep(30);
+
+        var recovered = disambiguator.disambiguate("绿箩4", "绿箩", candidates);
+        assertThat(recovered.known()).isTrue();
+        assertThat(recovered.canonicalPlantId()).isEqualTo("1");
+    }
+
+    private void assertThatThrownByCircuitOpen(PlantEntityDisambiguator.FailureCircuitBreaker breaker) {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> breaker.execute(() -> "blocked"))
+                .isInstanceOf(PlantEntityDisambiguator.CircuitOpenException.class);
     }
 }

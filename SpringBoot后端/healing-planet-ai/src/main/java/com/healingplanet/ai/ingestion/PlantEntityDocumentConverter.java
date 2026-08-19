@@ -16,12 +16,20 @@ public class PlantEntityDocumentConverter {
     public KnowledgeDocument convert(KnowledgeRepository.PlantEntityRow plant) {
         String commonName = safe(plant.commonName());
         String scientificName = safe(plant.scientificName());
-        String content = "植物名称：%s\n学名：%s".formatted(commonName, scientificName);
+        List<String> aliases = plant.aliases().stream()
+                .map(this::safe)
+                .filter(alias -> !alias.isBlank())
+                .distinct()
+                .toList();
+        String content = aliases.isEmpty()
+                ? "植物名称：%s\n学名：%s".formatted(commonName, scientificName)
+                : "植物名称：%s\n学名：%s\n别名：%s".formatted(commonName, scientificName, String.join("、", aliases));
         return new KnowledgeDocument(
                 id(plant.id()), KnowledgeSource.PLANT_ENTITY, plant.id(), commonName, content,
                 plant.id(), commonName, "PLANT_ENTITY", List.of(), 1.0, false,
                 0, 0, 0, 0, Instant.EPOCH,
-                Map.of("commonName", commonName, "scientificName", scientificName, "entityType", "PLANT")
+                Map.of("commonName", commonName, "scientificName", scientificName,
+                        "aliases", String.join(",", aliases), "entityType", "PLANT")
         );
     }
 

@@ -42,7 +42,8 @@ public class PlantEntityResolver {
     private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
             "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株|"
                     + "社区里有没有|社区里有没|社区里是否有|社区里的|社区经验里|社区用户遇到|"
-                    + "大家分享的|帮我找一篇网友写的|网友写的|网友分享的|这篇社区经验中)+");
+                    + "社区里|社区中|大家分享的|帮我找一篇网友写的|网友写的|网友分享的|"
+                    + "网友养|网友遇到|网友|这篇社区经验中)+");
     private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
             "^(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常)(?:给)?");
     private static final Pattern TRAILING_MENTION_NOISE = Pattern.compile(
@@ -106,6 +107,7 @@ public class PlantEntityResolver {
         }
 
         String normalizedQuery = normalize(query.query());
+        String mentionQuery = stripLeadingMentionNoise(normalizedQuery);
         String namedSubject = extractPotentialMention(query.query());
         ComparisonMentions comparison = comparisonMentions(normalizedQuery, entries);
         if (comparison.detected() && !comparison.complete()) {
@@ -117,18 +119,20 @@ public class PlantEntityResolver {
         }
         List<PlantEntry> subjectMatches = exactNameMatches(namedSubject, entries);
         if (subjectMatches.size() == 1) {
-            return Resolution.known(subjectMatches, ResolutionMethod.EXACT_NAME, 1, 0, subjectMatches.size());
+            return Resolution.known(subjectMatches, resolutionMethod(namedSubject, subjectMatches),
+                    1, 0, subjectMatches.size());
         }
 
         List<PlantEntry> exactMatches = entries.stream()
                 .filter(entry -> entry.names().stream().anyMatch(name -> hasStandaloneName(normalizedQuery, name)))
                 .toList();
         if (exactMatches.size() == 1) {
-            return Resolution.known(exactMatches, ResolutionMethod.EXACT_NAME, 1, 0, exactMatches.size());
+            return Resolution.known(exactMatches, resolutionMethod(normalizedQuery, exactMatches),
+                    1, 0, exactMatches.size());
         }
-        List<PlantEntry> leadingNameMatches = leadingNameMatches(normalizedQuery, entries);
+        List<PlantEntry> leadingNameMatches = leadingNameMatches(mentionQuery, entries);
         if (leadingNameMatches.size() == 1) {
-            return Resolution.known(leadingNameMatches, ResolutionMethod.EXACT_NAME,
+            return Resolution.known(leadingNameMatches, resolutionMethod(mentionQuery, leadingNameMatches),
                     1, 0, leadingNameMatches.size());
         }
         boolean catalogNameMentioned = entries.stream()
@@ -199,11 +203,21 @@ public class PlantEntityResolver {
         return "";
     }
 
+    private String stripLeadingMentionNoise(String query) {
+        return LEADING_MENTION_NOISE.matcher(query).replaceFirst("");
+    }
+
     private List<PlantEntry> exactNameMatches(String mention, List<PlantEntry> entries) {
         if (mention == null || mention.isBlank()) return List.of();
         return entries.stream()
                 .filter(entry -> entry.names().stream().anyMatch(name -> name.equals(mention)))
                 .toList();
+    }
+
+    private ResolutionMethod resolutionMethod(String query, List<PlantEntry> entries) {
+        boolean alias = entries.stream().anyMatch(entry -> entry.aliases().stream()
+                .anyMatch(name -> name.equals(query) || hasStandaloneName(query, name) || query.startsWith(name)));
+        return alias ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME;
     }
 
     private boolean hasStandaloneName(String query, String name) {
@@ -283,9 +297,16 @@ public class PlantEntityResolver {
 
     private PlantEntry comparisonEntry(String mention, List<PlantEntry> entries) {
         return entries.stream()
-                .filter(entry -> entry.names().stream().anyMatch(name -> name.equals(mention)))
+                .filter(entry -> entry.names().stream().anyMatch(name -> name.equals(mention)
+                        || mention.startsWith(name) && isComparisonSuffix(mention.substring(name.length()))))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private boolean isComparisonSuffix(String suffix) {
+        return suffix.isBlank() || suffix.startsWith("的") || suffix.startsWith("适宜")
+                || suffix.startsWith("需要") || suffix.startsWith("应该") || suffix.startsWith("是否")
+                || CARE_ANCHOR.matcher(suffix).find();
     }
 
     private boolean looksLikeUnknownMention(String text, boolean rightSide) {
@@ -359,7 +380,7 @@ public class PlantEntityResolver {
     private void addDirectMentionCandidates(String query, List<PlantEntry> entries,
                                             Map<String, Candidate> candidates) {
         for (PlantEntry entry : entries) {
-            if (entry.names().stream().anyMatch(query::contains)) {
+            if (entry.names().stream().anyMatch(name -> hasStandaloneName(query, name))) {
                 candidate(candidates, entry).markDirectMention();
             }
         }
@@ -470,9 +491,14 @@ public class PlantEntityResolver {
                 }
                 catalog = rows.stream().map(row -> {
                     Set<String> names = new LinkedHashSet<>();
+                    Set<String> aliases = new LinkedHashSet<>();
                     addName(names, row.commonName());
                     addName(names, row.scientificName());
-                    return new PlantEntry(row.id(), Set.copyOf(names));
+                    row.aliases().forEach(alias -> {
+                        addName(names, alias);
+                        addName(aliases, alias);
+                    });
+                    return new PlantEntry(row.id(), Set.copyOf(names), Set.copyOf(aliases));
                 }).filter(entry -> !entry.names().isEmpty()).toList();
             }
             return catalog;
@@ -494,7 +520,7 @@ public class PlantEntityResolver {
                 .toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
-    private record PlantEntry(String canonicalPlantId, Set<String> names) { }
+    private record PlantEntry(String canonicalPlantId, Set<String> names, Set<String> aliases) { }
     private record ComparisonMentions(boolean detected, boolean complete, List<PlantEntry> entries) {
         private static ComparisonMentions none() { return new ComparisonMentions(false, false, List.of()); }
     }
@@ -524,7 +550,7 @@ public class PlantEntityResolver {
 
     public enum ResolutionKind { GENERIC, KNOWN, AMBIGUOUS, UNKNOWN, OUT_OF_DOMAIN }
 
-    public enum ResolutionMethod { EXPLICIT_ID, EXACT_NAME, EDIT_DISTANCE, LEXICAL, VECTOR, HYBRID, LLM, NONE }
+    public enum ResolutionMethod { EXPLICIT_ID, EXACT_NAME, ALIAS, EDIT_DISTANCE, LEXICAL, VECTOR, HYBRID, LLM, NONE }
 
     public record Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
                              Set<String> names,

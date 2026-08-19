@@ -4,8 +4,11 @@ package com.green.controller.admin;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.green.common.api.Result;
 import com.green.common.exception.ApiException;
+import com.green.dto.PlantAliasDTO;
 import com.green.dto.PlantDTO;
+import com.green.service.IPlantAliasService;
 import com.green.service.IPlantsService;
+import com.green.vo.PlantAliasVO;
 import com.green.vo.PlantsVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +29,8 @@ public class AdminPlantsController {
     private IPlantsService plantsService;
     @Autowired
     private RedisTemplate redisTemplate;
+    @Autowired
+    private IPlantAliasService plantAliasService;
 
 
     /**
@@ -124,6 +129,30 @@ public class AdminPlantsController {
     public Result<?> deleteByIds(@RequestParam List<String> ids){
         log.info("批量删除植物:{}",ids);
         plantsService.delete(ids);
+        return Result.success();
+    }
+
+    @GetMapping("/{plantId}/aliases")
+    public Result<List<PlantAliasVO>> listAliases(@PathVariable String plantId) {
+        return Result.success(plantAliasService.listByPlantId(plantId));
+    }
+
+    @PostMapping("/{plantId}/aliases")
+    public Result<?> addAlias(@PathVariable String plantId, @RequestBody PlantAliasDTO aliasDTO) {
+        plantAliasService.add(plantId, aliasDTO);
+        return Result.success();
+    }
+
+    @PutMapping("/{plantId}/aliases/{aliasId}")
+    public Result<?> updateAlias(@PathVariable String plantId, @PathVariable String aliasId,
+                                 @RequestBody PlantAliasDTO aliasDTO) {
+        plantAliasService.update(plantId, aliasId, aliasDTO);
+        return Result.success();
+    }
+
+    @DeleteMapping("/{plantId}/aliases/{aliasId}")
+    public Result<?> deleteAlias(@PathVariable String plantId, @PathVariable String aliasId) {
+        plantAliasService.delete(plantId, aliasId);
         return Result.success();
     }
 }

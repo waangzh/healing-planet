@@ -11,6 +11,7 @@ import com.green.entity.Plants;
 import com.green.mapper.PlantCareGuidesMapper;
 import com.green.mapper.PlantsMapper;
 import com.green.service.IPlantCareGuidesService;
+import com.green.service.IPlantAliasService;
 import com.green.service.IPlantsService;
 import com.green.utils.BaiDuUtil;
 import com.green.vo.PlantsVO;
@@ -19,6 +20,7 @@ import org.json.JSONObject;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,6 +36,8 @@ public class IPlantsServiceImpl extends ServiceImpl<PlantsMapper, Plants> implem
     private BaiDuUtil baiDuUtil;
     @Autowired
     private IPlantCareGuidesService plantCareGuidesService;
+    @Autowired
+    private IPlantAliasService plantAliasService;
 
     /**
      * 分页查询植物信息库
@@ -139,7 +143,9 @@ public class IPlantsServiceImpl extends ServiceImpl<PlantsMapper, Plants> implem
      * @param ids
      */
     @Override
+    @Transactional
     public void delete(List<String> ids) {
+        plantAliasService.deleteByPlantIds(ids);
         this.removeByIds(ids);
         plantCareGuidesService.remove(new LambdaQueryWrapper<PlantCareGuides>()
                 .in(PlantCareGuides::getPlantId,ids));

@@ -4,7 +4,10 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Repository
 public class KnowledgeRepository {
@@ -32,12 +35,24 @@ public class KnowledgeRepository {
     }
 
     public List<PlantEntityRow> findPlantEntities() {
+        Map<String, List<String>> aliasesByPlantId = jdbcClient.sql("""
+                select plant_id, alias
+                from plant_aliases
+                where enabled = true
+                order by plant_id, id
+                """).query((rs, rowNum) -> new PlantAliasRow(
+                rs.getString("plant_id"), rs.getString("alias")
+        )).list().stream().collect(Collectors.groupingBy(
+                PlantAliasRow::plantId, LinkedHashMap::new,
+                Collectors.mapping(PlantAliasRow::alias, Collectors.toList())
+        ));
         return jdbcClient.sql("""
                 select p.id, p.scientific_name, p.common_name
                 from plants p
                 order by p.id
                 """).query((rs, rowNum) -> new PlantEntityRow(
-                rs.getString("id"), rs.getString("scientific_name"), rs.getString("common_name")
+                rs.getString("id"), rs.getString("scientific_name"), rs.getString("common_name"),
+                aliasesByPlantId.getOrDefault(rs.getString("id"), List.of())
         )).list();
     }
 
@@ -91,7 +106,17 @@ public class KnowledgeRepository {
                            String fertilizingTips, String detailAdvice) {
     }
 
-    public record PlantEntityRow(String id, String scientificName, String commonName) {
+    public record PlantEntityRow(String id, String scientificName, String commonName, List<String> aliases) {
+        public PlantEntityRow {
+            aliases = aliases == null ? List.of() : List.copyOf(aliases);
+        }
+
+        public PlantEntityRow(String id, String scientificName, String commonName) {
+            this(id, scientificName, commonName, List.of());
+        }
+    }
+
+    private record PlantAliasRow(String plantId, String alias) {
     }
 
     public record PostRow(String id, String title, String content, int likes, int collects,

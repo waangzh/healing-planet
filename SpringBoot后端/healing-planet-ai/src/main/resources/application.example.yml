@@ -71,7 +71,7 @@ app:
       llm-connect-timeout-millis: ${RAG_ENTITY_LLM_CONNECT_TIMEOUT_MILLIS:1000}
       llm-read-timeout-millis: ${RAG_ENTITY_LLM_READ_TIMEOUT_MILLIS:8000}
       circuit-breaker-failure-threshold: ${RAG_ENTITY_CIRCUIT_FAILURE_THRESHOLD:3}
-      circuit-breaker-open-millis: ${RAG_ENTITY_CIRCUIT_OPEN_MILLIS:30000}
+      circuit-breaker-open-millis: ${RAG_ENTITY_CIRCUIT_OPEN_MILLIS:5000}
     reranker:
       enabled: ${RERANKER_ENABLED:true}
       base-url: ${RERANKER_BASE_URL:https://api.siliconflow.cn}

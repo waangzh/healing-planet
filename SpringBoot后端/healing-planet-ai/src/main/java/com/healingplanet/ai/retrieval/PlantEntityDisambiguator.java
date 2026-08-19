@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 @Component
@@ -72,19 +73,19 @@ public class PlantEntityDisambiguator {
             LlmDecision result = timedCall(() -> circuitBreaker.execute(
                     () -> caller.call(SYSTEM_PROMPT, buildUserPrompt(query, mention, limited))));
             if (result == null || result.decision() == null) {
-                return cache(cacheKey, Decision.unknown("llm_empty_response"));
+                return Decision.unknown("llm_empty_response");
             }
             String action = result.decision().trim().toUpperCase(Locale.ROOT);
             if (!"KNOWN".equals(action)) {
-                return cache(cacheKey, Decision.unknown("llm_rejected_or_unknown"));
+                return Decision.unknown("llm_rejected_or_unknown");
             }
             String canonicalPlantId = result.canonicalPlantId() == null ? "" : result.canonicalPlantId().trim();
             double confidence = result.confidence() == null ? 0 : result.confidence();
             if (!allowedIds.contains(canonicalPlantId)) {
-                return cache(cacheKey, Decision.unknown("llm_returned_invalid_candidate"));
+                return Decision.unknown("llm_returned_invalid_candidate");
             }
             if (confidence < properties.getLlmConfidenceThreshold()) {
-                return cache(cacheKey, Decision.unknown("llm_confidence_too_low"));
+                return Decision.unknown("llm_confidence_too_low");
             }
             return cache(cacheKey, Decision.known(canonicalPlantId, confidence));
         } catch (CircuitOpenException ignored) {
@@ -99,6 +100,7 @@ public class PlantEntityDisambiguator {
     }
 
     private Decision cache(String key, Decision value) {
+        if (!value.known()) return value;
         if (cache.size() >= properties.getLlmCacheMaxEntries()) cache.clear();
         cache.putIfAbsent(key, value);
         return value;
@@ -148,12 +150,18 @@ public class PlantEntityDisambiguator {
         private static final long HALF_OPEN = Long.MAX_VALUE;
         private final int failureThreshold;
         private final long openNanos;
+        private final LongSupplier nanoClock;
         private final AtomicInteger failures = new AtomicInteger();
         private final AtomicLong openUntil = new AtomicLong();
 
         FailureCircuitBreaker(int failureThreshold, long openMillis) {
+            this(failureThreshold, openMillis, System::nanoTime);
+        }
+
+        FailureCircuitBreaker(int failureThreshold, long openMillis, LongSupplier nanoClock) {
             this.failureThreshold = Math.max(1, failureThreshold);
             this.openNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(Math.max(1, openMillis));
+            this.nanoClock = nanoClock;
         }
 
         <T> T execute(java.util.function.Supplier<T> operation) {
@@ -166,7 +174,7 @@ public class PlantEntityDisambiguator {
             } catch (RuntimeException exception) {
                 int count = failures.incrementAndGet();
                 if (openUntil.get() == HALF_OPEN || count >= failureThreshold) {
-                    openUntil.set(System.nanoTime() + openNanos);
+                    openUntil.set(nanoClock.getAsLong() + openNanos);
                 }
                 throw exception;
             }
@@ -175,7 +183,7 @@ public class PlantEntityDisambiguator {
         private void acquire() {
             long state = openUntil.get();
             if (state == 0) return;
-            long now = System.nanoTime();
+            long now = nanoClock.getAsLong();
             if (state == HALF_OPEN || now < state || !openUntil.compareAndSet(state, HALF_OPEN)) {
                 throw new CircuitOpenException();
             }
