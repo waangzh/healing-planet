@@ -136,4 +136,28 @@ class QueryRouterTest {
         assertThat(result.state()).isTrue();
         assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION);
     }
+
+    @Test
+    void shouldClassifyGenericPlantQuestionsAsEntityOptional() {
+        var result = router.route(RagQuery.of("适合宿舍养的耐阴植物有哪些？"));
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.OPTIONAL);
+    }
+
+    @Test
+    void shouldRequireEntityForSpecificCareQuestions() {
+        var result = router.route(RagQuery.of("多久浇一次水？"));
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.REQUIRED);
+    }
+
+    @Test
+    void shouldRejectQueriesOutsideThePlantDomainBeforeEntityResolution() {
+        var result = router.route(RagQuery.of("量子纠缠是什么？"));
+
+        assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.OUT_OF_DOMAIN);
+        assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.NONE);
+    }
 }

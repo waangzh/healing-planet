@@ -24,38 +24,71 @@ public class QueryRouter {
     private static final Set<String> PERSONAL_CONTEXT_TERMS = Set.of(
             "我的", "我这盆", "这盆", "当前", "现在", "今天", "实时", "传感器"
     );
+    private static final Set<String> PLANT_DOMAIN_TERMS = Set.of(
+            "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
+            "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",
+            "光照", "阳光", "温度", "湿度", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "耐阴",
+            "喜阴", "弱光", "强光", "直射", "社区", "网友", "花友", "经验", "状态"
+    );
     private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
             Pattern.compile("[？?。；;，,]\\s*社区");
+    private static final Pattern GENERIC_PLANT_QUERY = Pattern.compile(
+            "^(?:请问|想问下|我想问|请|帮我)?(?:"
+                    + "(?:什么|哪种|哪些|哪类|有哪些).*?(?:植物|绿植|盆栽|花卉)|"
+                    + "(?:这种)?(?:植物|绿植|盆栽|花卉)(?:有哪些|推荐|比较好|的|叶|怎么|如何|适合|需要)|"
+                    + "(?:适合|推荐).*(?:宿舍|室内|办公室|卧室|家里).*(?:植物|绿植|盆栽|花卉)|"
+                    + "(?:宿舍|室内|办公室|卧室|家里).*(?:植物|绿植|盆栽|花卉)(?:有哪些|推荐|比较好))");
+    private static final Pattern GENERIC_CARE_CONCEPT_QUERY = Pattern.compile(
+            ".*(?:耐阴|喜阴|弱光|强光|直射|光照|浇水|补水|状态|异常).*(?:等于|区别|一样|相同|是什么意思|什么叫).*");
 
     public RoutingDecision route(RagQuery query) {
+        String text = query.query() == null ? "" : query.query().toLowerCase(Locale.ROOT);
+        RoutingDecision decision;
         if (query.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
-            return new RoutingDecision(false, false, true, QueryIntent.DISEASE_DIAGNOSIS,
+            decision = new RoutingDecision(false, false, true, QueryIntent.DISEASE_DIAGNOSIS,
                     StateEvidenceNeed.STATE_DECISION);
+        } else if (query.intent() == QueryIntent.COMMUNITY_SEARCH) {
+            decision = new RoutingDecision(false, true, false, QueryIntent.COMMUNITY_SEARCH, StateEvidenceNeed.NONE);
+        } else if (query.intent() == QueryIntent.PERSONAL_CARE) {
+            decision = personalCareRoute(text);
+        } else if (query.intent() == QueryIntent.GENERAL_CARE) {
+            decision = new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
+        } else {
+            boolean personalContext = PERSONAL_CONTEXT_TERMS.stream().anyMatch(text::contains);
+            boolean state = STATE_TERMS.stream().anyMatch(term -> !GENERIC_WATERING_STATE_TERMS.contains(term)
+                    && text.contains(term));
+            state = state || personalContext && GENERIC_WATERING_STATE_TERMS.stream().anyMatch(text::contains);
+            boolean community = COMMUNITY_TERMS.stream().anyMatch(text::contains);
+            if (community) {
+                boolean mixed = FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(text::contains)
+                        || COMMUNITY_FOLLOW_UP.matcher(text).find();
+                decision = new RoutingDecision(mixed, true, false, QueryIntent.COMMUNITY_SEARCH,
+                        StateEvidenceNeed.NONE);
+            } else if (state) {
+                decision = personalCareRoute(text);
+            } else {
+                decision = new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE,
+                        StateEvidenceNeed.NONE);
+            }
         }
-        if (query.intent() == QueryIntent.COMMUNITY_SEARCH) {
-            return new RoutingDecision(false, true, false, QueryIntent.COMMUNITY_SEARCH, StateEvidenceNeed.NONE);
-        }
-        if (query.intent() == QueryIntent.PERSONAL_CARE) {
-            return personalCareRoute(query.query());
-        }
-        if (query.intent() == QueryIntent.GENERAL_CARE) {
-            return new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
-        }
+        return withEntityPolicy(decision, text, query.intent() != null);
+    }
 
-        String text = query.query().toLowerCase(Locale.ROOT);
-        boolean personalContext = PERSONAL_CONTEXT_TERMS.stream().anyMatch(text::contains);
-        boolean state = STATE_TERMS.stream().anyMatch(term -> !GENERIC_WATERING_STATE_TERMS.contains(term)
-                && text.contains(term));
-        state = state || personalContext && GENERIC_WATERING_STATE_TERMS.stream().anyMatch(text::contains);
-        boolean community = COMMUNITY_TERMS.stream().anyMatch(text::contains);
-        if (community) {
-            boolean mixed = FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(text::contains)
-                    || COMMUNITY_FOLLOW_UP.matcher(text).find();
-            return new RoutingDecision(mixed, true, false, QueryIntent.COMMUNITY_SEARCH, StateEvidenceNeed.NONE);
-        }
-        if (state) return personalCareRoute(text);
-        return new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
+    private RoutingDecision withEntityPolicy(RoutingDecision decision, String text, boolean explicitIntent) {
+        boolean generic = GENERIC_PLANT_QUERY.matcher(text.replaceAll("\\s+", "")).find()
+                || GENERIC_CARE_CONCEPT_QUERY.matcher(text.replaceAll("\\s+", "")).matches();
+        boolean plantDomain = explicitIntent || generic || isPlantDomainQuery(text);
+        EntityRequirement entityRequirement = !plantDomain ? EntityRequirement.NONE
+                : generic ? EntityRequirement.OPTIONAL : EntityRequirement.REQUIRED;
+        return new RoutingDecision(decision.knowledge(), decision.community(), decision.state(), decision.intent(),
+                decision.stateEvidenceNeed(), plantDomain ? QueryDomain.PLANT : QueryDomain.OUT_OF_DOMAIN,
+                entityRequirement);
+    }
+
+    private boolean isPlantDomainQuery(String text) {
+        return PLANT_DOMAIN_TERMS.stream().anyMatch(text::contains)
+                || text.contains("浇") || text.contains("补") || text.contains("晒") || text.contains("太阳");
     }
 
     private RoutingDecision personalCareRoute(String query) {
@@ -95,11 +128,26 @@ public class QueryRouter {
         STATE_DECISION_WITH_HISTORY
     }
 
+    public enum QueryDomain { PLANT, OUT_OF_DOMAIN }
+
+    public enum EntityRequirement { NONE, OPTIONAL, REQUIRED }
+
     public record RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
-                                  StateEvidenceNeed stateEvidenceNeed) {
+                                  StateEvidenceNeed stateEvidenceNeed, QueryDomain domain,
+                                  EntityRequirement entityRequirement) {
+        public RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
+                               StateEvidenceNeed stateEvidenceNeed) {
+            this(knowledge, community, state, intent, stateEvidenceNeed, QueryDomain.PLANT,
+                    EntityRequirement.REQUIRED);
+        }
+
         public RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent) {
             this(knowledge, community, state, intent,
                     state ? StateEvidenceNeed.STATE_DECISION : StateEvidenceNeed.NONE);
+        }
+
+        public boolean plantDomain() {
+            return domain == QueryDomain.PLANT;
         }
     }
 }
