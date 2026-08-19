@@ -273,7 +273,23 @@ class PlantEntityResolverTest {
                 .isEqualTo("21");
         assertThat(resolver.resolve(RagQuery.of("网友遇到虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
                 .isEqualTo("2");
+        assertThat(resolver.resolve(RagQuery.of("论坛帖里白掌缺水时叶片会有什么表现？")).canonicalPlantId())
+                .isEqualTo("21");
+        assertThat(resolver.resolve(RagQuery.of("花友记录的虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
+                .isEqualTo("2");
         verify(disambiguator, never()).disambiguate(any(), any(), any());
+    }
+
+    @Test
+    void shouldUseAliasCandidateFallbackWhenUnseenContextMissesRegex() {
+        useLlmDecision(PlantEntityDisambiguator.Decision.known("1", 0.95));
+
+        var resolution = resolver.resolve(RagQuery.of("听说黄金葛在北向窗边也能长，冬天还需要补水吗？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantId()).isEqualTo("1");
+        assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
+        verify(disambiguator).disambiguate(any(), org.mockito.ArgumentMatchers.eq("黄金葛"), any());
     }
 
     @Test

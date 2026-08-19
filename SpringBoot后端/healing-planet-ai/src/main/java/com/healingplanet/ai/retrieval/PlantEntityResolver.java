@@ -40,10 +40,7 @@ public class PlantEntityResolver {
     private static final Pattern GENERIC_CARE_CONCEPT_QUERY = Pattern.compile(
             ".*(?:耐阴|喜阴|弱光|强光|直射|光照|浇水|补水|状态|异常).*(?:等于|区别|一样|相同|是什么意思|什么叫).*");
     private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
-            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株|"
-                    + "社区里有没有|社区里有没|社区里是否有|社区里的|社区经验里|社区用户遇到|"
-                    + "社区里|社区中|大家分享的|帮我找一篇网友写的|网友写的|网友分享的|"
-                    + "网友养|网友遇到|网友|这篇社区经验中)+");
+            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株)+");
     private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
             "^(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常)(?:给)?");
     private static final Pattern TRAILING_MENTION_NOISE = Pattern.compile(
@@ -53,6 +50,10 @@ public class PlantEntityResolver {
                     + "出现|处理|频率|日常|状态|异常|判断|情况|里|吗)+$");
     private static final Pattern COMPARISON_SEPARATOR = Pattern.compile("[和与跟]");
     private static final Pattern COMPARISON_TERM = Pattern.compile("和|与|跟|比较|对比|相比|是否相同|一样|相同");
+    private static final Pattern CONTEXTUAL_RIGHT_HINT = Pattern.compile(
+            "^(?:的|浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|"
+                    + "叶片|叶基|叶子|根腐|缺水|晒|太阳|浇|补|建议|官方|经验|社区|出现|处理|"
+                    + "频率|耐阴|喜阴|弱光|强光|直射|状态|异常|判断|表现|检查)");
     private static final Pattern HAN_NAME = Pattern.compile("[\\p{IsHan}]+");
     private static final Set<String> CARE_TERMS = Set.of(
             "光照", "阳光", "浇水", "补水", "温度", "湿度", "施肥", "肥料", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "叶片", "叶子",
@@ -130,6 +131,12 @@ public class PlantEntityResolver {
             return Resolution.known(exactMatches, resolutionMethod(normalizedQuery, exactMatches),
                     1, 0, exactMatches.size());
         }
+        List<MentionMatch> contextualMatches = contextualNameMatches(normalizedQuery, entries);
+        if (contextualMatches.size() == 1) {
+            MentionMatch match = contextualMatches.get(0);
+            return Resolution.known(List.of(match.entry()), resolutionMethod(match.matchedName(), List.of(match.entry())),
+                    1, 0, 1);
+        }
         List<PlantEntry> leadingNameMatches = leadingNameMatches(mentionQuery, entries);
         if (leadingNameMatches.size() == 1) {
             return Resolution.known(leadingNameMatches, resolutionMethod(mentionQuery, leadingNameMatches),
@@ -144,6 +151,7 @@ public class PlantEntityResolver {
 
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         addDirectMentionCandidates(normalizedQuery, entries, candidates);
+        addExactSubstringCandidates(normalizedQuery, entries, candidates);
         addCharacterCandidates(normalizedQuery, entries, candidates);
         if (plantDomain || !candidates.isEmpty()) {
             addSparseCandidates(query.query(), entries, candidates);
@@ -156,7 +164,9 @@ public class PlantEntityResolver {
                 .limit(candidateLimit())
                 .toList();
         recordCandidateCount(ranked.size());
-        Resolution llmResolution = resolveWithLlm(query.query(), namedSubject, ranked, plantDomain);
+        String catalogMention = catalogMention(normalizedQuery, ranked);
+        Resolution llmResolution = resolveWithLlm(query.query(),
+                catalogMention.isBlank() ? namedSubject : catalogMention, ranked, plantDomain);
         if (llmResolution != null) return llmResolution;
 
         if (!plantDomain) return Resolution.outOfDomain();
@@ -214,6 +224,31 @@ public class PlantEntityResolver {
                 .toList();
     }
 
+    private List<MentionMatch> contextualNameMatches(String query, List<PlantEntry> entries) {
+        Map<String, MentionMatch> matches = new LinkedHashMap<>();
+        for (PlantEntry entry : entries) {
+            for (String name : entry.names()) {
+                int from = 0;
+                while (from <= query.length() - name.length()) {
+                    int start = query.indexOf(name, from);
+                    if (start < 0) break;
+                    int end = start + name.length();
+                    if (hasStandaloneBoundary(query, start, end, name) || hasContextualBoundary(query, start, end)) {
+                        MentionMatch candidate = new MentionMatch(entry, name, start, end);
+                        MentionMatch current = matches.get(entry.canonicalPlantId());
+                        if (current == null || candidate.preferredTo(current)) {
+                            matches.put(entry.canonicalPlantId(), candidate);
+                        }
+                    }
+                    from = start + 1;
+                }
+            }
+        }
+        return matches.values().stream()
+                .sorted(Comparator.comparingInt(MentionMatch::start))
+                .toList();
+    }
+
     private ResolutionMethod resolutionMethod(String query, List<PlantEntry> entries) {
         boolean alias = entries.stream().anyMatch(entry -> entry.aliases().stream()
                 .anyMatch(name -> name.equals(query) || hasStandaloneName(query, name) || query.startsWith(name)));
@@ -241,6 +276,24 @@ public class PlantEntityResolver {
         boolean leftBoundary = start == 0 || !isHan(query.charAt(start - 1));
         boolean rightBoundary = end == query.length() || !isHan(query.charAt(end));
         return leftBoundary && rightBoundary;
+    }
+
+    private boolean hasContextualBoundary(String query, int start, int end) {
+        return hasContextualLeftBoundary(query, start) && hasContextualRightBoundary(query, end);
+    }
+
+    private boolean hasContextualLeftBoundary(String query, int start) {
+        if (start == 0) return true;
+        char left = query.charAt(start - 1);
+        if (!isHan(left)) return true;
+        return endsWithAny(query.substring(0, start), "的", "里", "中", "上", "下", "盆", "株", "到", "养", "有", "没", "问", "看");
+    }
+
+    private boolean hasContextualRightBoundary(String query, int end) {
+        if (end >= query.length()) return true;
+        char right = query.charAt(end);
+        if (!isHan(right)) return true;
+        return CONTEXTUAL_RIGHT_HINT.matcher(query.substring(end)).find();
     }
 
     private List<PlantEntry> leadingNameMatches(String query, List<PlantEntry> entries) {
@@ -334,7 +387,7 @@ public class PlantEntityResolver {
     private Resolution resolveWithLlm(String rawQuery, String namedSubject, List<Candidate> ranked,
                                       boolean plantDomain) {
         if (!plantDomain || disambiguator == null || ranked.isEmpty()) return null;
-        if (namedSubject.isBlank() && ranked.stream().noneMatch(Candidate::directMention)) return null;
+        if (namedSubject.isBlank() && ranked.stream().noneMatch(Candidate::hasExactCatalogName)) return null;
         List<PlantEntityDisambiguator.CandidateOption> options = ranked.stream()
                 .map(candidate -> new PlantEntityDisambiguator.CandidateOption(
                         candidate.entry().canonicalPlantId(),
@@ -379,11 +432,28 @@ public class PlantEntityResolver {
 
     private void addDirectMentionCandidates(String query, List<PlantEntry> entries,
                                             Map<String, Candidate> candidates) {
+        for (MentionMatch match : contextualNameMatches(query, entries)) {
+            candidate(candidates, match.entry()).markDirectMention();
+        }
+    }
+
+    private void addExactSubstringCandidates(String query, List<PlantEntry> entries,
+                                             Map<String, Candidate> candidates) {
         for (PlantEntry entry : entries) {
-            if (entry.names().stream().anyMatch(name -> hasStandaloneName(query, name))) {
-                candidate(candidates, entry).markDirectMention();
+            if (entry.names().stream().anyMatch(query::contains)) {
+                candidate(candidates, entry).substringScore(1.0);
             }
         }
+    }
+
+    private String catalogMention(String query, List<Candidate> candidates) {
+        return candidates.stream()
+                .filter(Candidate::hasExactCatalogName)
+                .flatMap(candidate -> candidate.entry().names().stream())
+                .filter(name -> name.length() >= 2 && query.contains(name))
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .findFirst()
+                .orElse("");
     }
 
     private void addSparseCandidates(String query, List<PlantEntry> entries,
@@ -514,6 +584,13 @@ public class PlantEntityResolver {
         if (!normalized.isBlank()) names.add(normalized);
     }
 
+    private boolean endsWithAny(String value, String... suffixes) {
+        for (String suffix : suffixes) {
+            if (value.endsWith(suffix)) return true;
+        }
+        return false;
+    }
+
     private String normalize(String value) {
         if (value == null) return "";
         return Normalizer.normalize(value, Normalizer.Form.NFKC)
@@ -521,12 +598,19 @@ public class PlantEntityResolver {
     }
 
     private record PlantEntry(String canonicalPlantId, Set<String> names, Set<String> aliases) { }
+    private record MentionMatch(PlantEntry entry, String matchedName, int start, int end) {
+        private boolean preferredTo(MentionMatch other) {
+            if (matchedName.length() != other.matchedName.length()) return matchedName.length() > other.matchedName.length();
+            return start < other.start;
+        }
+    }
     private record ComparisonMentions(boolean detected, boolean complete, List<PlantEntry> entries) {
         private static ComparisonMentions none() { return new ComparisonMentions(false, false, List.of()); }
     }
 
     private static final class Candidate {
         private final PlantEntry entry;
+        private double substringScore;
         private double characterScore;
         private double sparseScore;
         private double vectorScore;
@@ -534,17 +618,22 @@ public class PlantEntityResolver {
 
         private Candidate(PlantEntry entry) { this.entry = entry; }
         private PlantEntry entry() { return entry; }
+        private double substringScore() { return substringScore; }
         private double characterScore() { return characterScore; }
         private double sparseScore() { return sparseScore; }
         private double vectorScore() { return vectorScore; }
         private boolean directMention() { return directMention; }
+        private boolean hasExactCatalogName() { return substringScore > 0; }
+        private void substringScore(double value) { substringScore = Math.max(substringScore, value); }
         private void characterScore(double value) { characterScore = Math.max(characterScore, value); }
         private void sparseScore(double value) { sparseScore = Math.max(sparseScore, value); }
         private void vectorScore(double value) { vectorScore = Math.max(vectorScore, value); }
         private void markDirectMention() { directMention = true; }
         private double rankScore() {
-            if (vectorScore > 0) return 0.70 * vectorScore + 0.25 * characterScore + 0.05 * sparseScore;
-            return Math.max(characterScore, 0.80 * sparseScore);
+            if (vectorScore > 0) {
+                return 0.60 * vectorScore + 0.20 * substringScore + 0.15 * characterScore + 0.05 * sparseScore;
+            }
+            return Math.max(Math.max(substringScore, characterScore), 0.80 * sparseScore);
         }
     }
 
