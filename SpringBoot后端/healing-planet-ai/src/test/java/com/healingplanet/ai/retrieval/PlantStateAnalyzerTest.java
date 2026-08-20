@@ -79,6 +79,7 @@ class PlantStateAnalyzerTest {
         var evidence = analyzer.analyze(state);
 
         assertThat(evidence.get(0).content()).contains("已超过30分钟，不能视为实时读数");
-        assertThat(evidence.get(0).metadata()).containsEntry("stale", true);
+        assertThat(evidence.get(0).content()).contains("数据距当前：31 分钟");
+        assertThat(evidence.get(0).metadata()).containsEntry("stale", true).containsEntry("ageMinutes", 31L);
     }
 }

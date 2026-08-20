@@ -28,6 +28,13 @@ class GenerationPromptBuilderTest {
     }
 
     @Test
+    void staleStateMustOverrideImmediateTreatmentDecision() {
+        String prompt = builder.build(decision(true, false, true, QueryIntent.PERSONAL_CARE));
+
+        assertThat(prompt).contains("陈旧性优先于阈值判断", "不得基于该读数输出“现在需要/不需要浇水”");
+    }
+
+    @Test
     void personalCareDecisionWithHistoryShouldRequireCurrentValueAndTrendTogether() {
         String prompt = builder.build(new QueryRouter.RoutingDecision(true, false, true, QueryIntent.PERSONAL_CARE,
                 QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY));

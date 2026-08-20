@@ -19,6 +19,7 @@ import java.util.Map;
 @Component
 public class PlantStateAnalyzer {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final long STALE_AFTER_MINUTES = 30;
     private final Clock clock;
 
     public PlantStateAnalyzer(@Qualifier("ragClock") Clock clock) {
@@ -33,7 +34,11 @@ public class PlantStateAnalyzer {
         put(common, "plantName", state.plantName());
         put(common, "deviceId", state.deviceId());
         put(common, "observedAt", observedAt);
-        if (observedAt != null) common.put("stale", Duration.between(observedAt, clock.instant()).toMinutes() > 30);
+        if (observedAt != null) {
+            long ageMinutes = ageMinutes(observedAt);
+            common.put("ageMinutes", ageMinutes);
+            common.put("stale", ageMinutes > STALE_AFTER_MINUTES);
+        }
 
         List<String> violations = violations(state.current(), state.thresholds());
         Map<String, Object> liveMetadata = new LinkedHashMap<>(common);
@@ -63,8 +68,9 @@ public class PlantStateAnalyzer {
         PlantState.SensorThresholds thresholds = state.thresholds();
         String freshness = state.observedAt() == null ? "未知" : state.observedAt().toString();
         String freshnessStatus = isStale(state.observedAt()) ? "已超过30分钟，不能视为实时读数" : "30分钟内";
-        return "植物：%s\n数据采集时间：%s\n数据时效：%s\n当前温度：%s ℃\n温度配置范围：%s\n当前空气湿度：%s %%\n空气湿度配置范围：%s\n当前土壤湿度：%s %%\n土壤湿度配置范围：%s\n当前光照：%s Lux\n光照配置范围：%s\n当前 CO₂：%s ppm\nCO₂ 配置范围：%s\n阈值判断：%s"
-                .formatted(blank(state.plantName()), freshness, freshnessStatus,
+        String age = state.observedAt() == null ? "未知" : ageMinutes(observedAt(state.observedAt())) + " 分钟";
+        return "植物：%s\n数据采集时间：%s\n数据距当前：%s\n数据时效：%s\n当前温度：%s ℃\n温度配置范围：%s\n当前空气湿度：%s %%\n空气湿度配置范围：%s\n当前土壤湿度：%s %%\n土壤湿度配置范围：%s\n当前光照：%s Lux\n光照配置范围：%s\n当前 CO₂：%s ppm\nCO₂ 配置范围：%s\n阈值判断：%s"
+                .formatted(blank(state.plantName()), freshness, age, freshnessStatus,
                         value(current == null ? null : current.temperature()),
                         thresholdRange(thresholds == null ? null : thresholds.temperatureMin(),
                                 thresholds == null ? null : thresholds.temperatureMax(), "℃"),
@@ -85,7 +91,15 @@ public class PlantStateAnalyzer {
 
     private boolean isStale(java.time.LocalDateTime observedAt) {
         if (observedAt == null) return true;
-        return Duration.between(observedAt.atZone(BUSINESS_ZONE).toInstant(), clock.instant()).toMinutes() > 30;
+        return ageMinutes(observedAt(observedAt)) > STALE_AFTER_MINUTES;
+    }
+
+    private Instant observedAt(java.time.LocalDateTime value) {
+        return value.atZone(BUSINESS_ZONE).toInstant();
+    }
+
+    private long ageMinutes(Instant observedAt) {
+        return Duration.between(observedAt, clock.instant()).toMinutes();
     }
 
     private String historyContent(PlantState state) {

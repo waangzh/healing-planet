@@ -71,4 +71,32 @@ class RagServiceTest {
         assertThat(response.answer()).isEqualTo("植物名称识别服务暂时不可用，请稍后重试。");
         verify(chatClient, never()).prompt();
     }
+
+    @Test
+    void shouldBlockImmediateDecisionWhenLiveStateIsStale() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        PromptContextBuilder contextBuilder = mock(PromptContextBuilder.class);
+        GenerationPromptBuilder promptBuilder = mock(GenerationPromptBuilder.class);
+        ChatClient chatClient = mock(ChatClient.class);
+        QueryRouter queryRouter = mock(QueryRouter.class);
+        RagService service = new RagService(retriever, contextBuilder, promptBuilder, chatClient, queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
+        RagQuery query = new RagQuery("我的绿萝现在需要浇水吗，传感器数据会不会太旧？", 7L, 104L, "1",
+                QueryIntent.PERSONAL_CARE, List.of(), Map.of());
+        when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(false, false, true,
+                QueryIntent.PERSONAL_CARE, QueryRouter.StateEvidenceNeed.STATE_FRESHNESS));
+        when(retriever.retrieveWithDiagnostics(query)).thenReturn(new RetrievalResult(List.of(
+                new Evidence("live", EvidenceType.LIVE_STATE, "state", "SMART_GREEN_PLANT", "植物当前状态",
+                        "数据距当前：31 分钟", 1d, null, 1d, 1d,
+                        Map.of("stale", true, "ageMinutes", 31L), null)
+        ), null));
+
+        var response = service.chat(query);
+
+        assertThat(response.answer())
+                .contains("距当前 31 分钟", "不能把它作为当前是否需要处理的依据")
+                .doesNotContain("需要浇水");
+        assertThat(response.evidence()).hasSize(1);
+        verify(chatClient, never()).prompt();
+    }
 }

@@ -43,7 +43,8 @@ public class PromptContextBuilder {
                 </VISUAL_OBSERVATION>
 
                 <PLANT_STATE_EVIDENCE>
-                状态数据只在其采集时间附近有效；必须结合数据采集时间判断时效性，不得把缺失数据视为正常。
+                状态数据只在其采集时间附近有效；必须结合数据采集时间和“数据距当前”的分钟数判断时效性，不得把缺失数据视为正常。
+                若证据标明已超过30分钟，禁止从该读数得出任何即时处理结论；先说明陈旧性，再要求刷新读数。
                 %s
                 </PLANT_STATE_EVIDENCE>
 

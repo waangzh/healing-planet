@@ -47,6 +47,10 @@ public class RagService {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
                     retrieval.entityResolution(), retrieval.retrievalTrace());
         }
+        String staleStateDecision = staleStateDecisionAnswer(decision, evidence);
+        if (staleStateDecision != null) {
+            return new RagResponse(staleStateDecision, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
+        }
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
@@ -64,6 +68,11 @@ public class RagService {
         if (missingStateEvidence(decision, evidence)) {
             return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
                     Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
+        }
+        String staleStateDecision = staleStateDecisionAnswer(decision, evidence);
+        if (staleStateDecision != null) {
+            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
+                    Flux.just(staleStateDecision));
         }
         if (evidence.isEmpty()) {
             return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
@@ -111,6 +120,28 @@ public class RagService {
         EvidenceType required = decision.stateEvidenceNeed() == QueryRouter.StateEvidenceNeed.STATE_FACT_HISTORY
                 ? EvidenceType.SENSOR_HISTORY : EvidenceType.LIVE_STATE;
         return evidence.stream().noneMatch(item -> item.type() == required);
+    }
+
+    private String staleStateDecisionAnswer(QueryRouter.RoutingDecision decision, List<Evidence> evidence) {
+        if (decision.intent() != com.healingplanet.ai.domain.QueryIntent.PERSONAL_CARE
+                || !requiresImmediateStateDecision(decision.stateEvidenceNeed())) return null;
+        for (int index = 0; index < evidence.size(); index++) {
+            Evidence item = evidence.get(index);
+            if (item.type() != EvidenceType.LIVE_STATE || !Boolean.TRUE.equals(item.metadata().get("stale"))) continue;
+            Object ageMinutes = item.metadata().get("ageMinutes");
+            String age = ageMinutes instanceof Number value
+                    ? "传感器数据距当前 %d 分钟，已超过30分钟".formatted(value.longValue())
+                    : "传感器数据已超过30分钟";
+            return "%s，不能把它作为当前是否需要处理的依据。请刷新设备读数后再判断。[E%d]"
+                    .formatted(age, index + 1);
+        }
+        return null;
+    }
+
+    private boolean requiresImmediateStateDecision(QueryRouter.StateEvidenceNeed need) {
+        return need == QueryRouter.StateEvidenceNeed.STATE_DECISION
+                || need == QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY
+                || need == QueryRouter.StateEvidenceNeed.STATE_FRESHNESS;
     }
 
     public record RagStream(List<Evidence> evidence, EntityResolutionDiagnostics entityResolution,
