@@ -301,7 +301,11 @@ class PlantEntityResolverTest {
 
         assertThat(resolver.resolve(RagQuery.of("虎皮兰需要什么光照？")).canonicalPlantId()).isEqualTo("2");
         assertThat(resolver.resolve(RagQuery.of("黄金葛一周浇几次水？")).canonicalPlantId()).isEqualTo("1");
-        assertThat(resolver.resolve(RagQuery.of("蓬莱蕉适合什么光照？")).canonicalPlantId()).isEqualTo("3");
+        var monsteraAlias = resolver.resolve(RagQuery.of("蓬莱蕉适合什么光照？"));
+        assertThat(monsteraAlias.canonicalPlantId()).isEqualTo("3");
+        assertThat(monsteraAlias.diagnostics().aliasNormalizations()).containsExactly(
+                new com.healingplanet.ai.domain.EntityResolutionDiagnostics.AliasNormalization(
+                        "蓬莱蕉", "3", "龟背竹"));
         verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 

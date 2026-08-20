@@ -51,7 +51,7 @@ public class RagService {
                 retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
                 chatClient.prompt().system(promptBuilder.build(decision))
-                        .user(userPrompt(query.query(), evidence)).call().content());
+                        .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).call().content());
         return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
     }
 
@@ -71,7 +71,7 @@ public class RagService {
         }
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
                 chatClient.prompt().system(promptBuilder.build(decision))
-                        .user(userPrompt(query.query(), evidence)).stream().content());
+                        .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).stream().content());
         return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
     }
 
@@ -79,8 +79,8 @@ public class RagService {
         return retriever.retrieve(query);
     }
 
-    private String userPrompt(String query, List<Evidence> evidence) {
-        return "用户问题：\n" + query + "\n\n可用证据：\n" + contextBuilder.build(evidence);
+    String userPrompt(String query, List<Evidence> evidence, EntityResolutionDiagnostics entityResolution) {
+        return "用户问题：\n" + query + "\n\n可用证据：\n" + contextBuilder.build(evidence, entityResolution);
     }
 
     private String emptyEvidenceAnswer(RetrievalResult retrieval) {

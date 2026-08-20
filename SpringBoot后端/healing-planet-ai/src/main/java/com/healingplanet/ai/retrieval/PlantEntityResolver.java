@@ -93,7 +93,7 @@ public class PlantEntityResolver {
         if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.KNOWN) {
             return Resolution.known(aliasMatch.entries(), aliasMatch.alias()
                             ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
-                    1, 0, aliasMatch.candidateCount());
+                    1, 0, aliasMatch.candidateCount(), aliasMatch.mention());
         }
         if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.CANDIDATES) {
             return resolveAliasCandidates(query.query(), aliasMatch);
@@ -281,7 +281,9 @@ public class PlantEntityResolver {
                         addName(names, alias);
                         addName(aliases, alias);
                     });
-                    return new PlantCatalogEntry(row.id(), Set.copyOf(names), Set.copyOf(aliases));
+                    String canonicalName = row.commonName() == null || row.commonName().isBlank()
+                            ? row.scientificName() : row.commonName();
+                    return new PlantCatalogEntry(row.id(), canonicalName, Set.copyOf(names), Set.copyOf(aliases));
                 }).filter(entry -> !entry.names().isEmpty()).toList();
             }
             return catalog;
@@ -310,11 +312,19 @@ public class PlantEntityResolver {
     public record Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
                              Set<String> names,
                              ResolutionMethod method, double top1Score, double top2Score,
-                             double scoreMargin, int candidateCount, String rejectionReason) {
+                             double scoreMargin, int candidateCount, String rejectionReason,
+                             List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations) {
         public Resolution(ResolutionKind kind, String canonicalPlantId, Set<String> names) {
             this(kind, canonicalPlantId,
                     canonicalPlantId == null || canonicalPlantId.isBlank() ? List.of() : List.of(canonicalPlantId),
-                    names, ResolutionMethod.NONE, 0, 0, 0, 0, "");
+                    names, ResolutionMethod.NONE, 0, 0, 0, 0, "", List.of());
+        }
+
+        public Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
+                          Set<String> names, ResolutionMethod method, double top1Score, double top2Score,
+                          double scoreMargin, int candidateCount, String rejectionReason) {
+            this(kind, canonicalPlantId, canonicalPlantIds, names, method, top1Score, top2Score,
+                    scoreMargin, candidateCount, rejectionReason, List.of());
         }
 
         static Resolution generic() {
@@ -322,25 +332,34 @@ public class PlantEntityResolver {
         }
         static Resolution known(PlantCatalogEntry entry, ResolutionMethod method,
                                 double top1Score, double top2Score, int candidateCount) {
-            return known(List.of(entry), method, top1Score, top2Score, candidateCount);
+            return known(List.of(entry), method, top1Score, top2Score, candidateCount, "");
         }
         static Resolution known(List<PlantCatalogEntry> entries, ResolutionMethod method,
                                 double top1Score, double top2Score, int candidateCount) {
+            return known(entries, method, top1Score, top2Score, candidateCount, "");
+        }
+        static Resolution known(List<PlantCatalogEntry> entries, ResolutionMethod method,
+                                double top1Score, double top2Score, int candidateCount, String matchedAlias) {
             List<String> ids = entries.stream().map(PlantCatalogEntry::canonicalPlantId).distinct().toList();
             Set<String> names = entries.stream().flatMap(entry -> entry.names().stream())
                     .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations = method == ResolutionMethod.ALIAS
+                    && matchedAlias != null && !matchedAlias.isBlank()
+                    ? entries.stream().map(entry -> new EntityResolutionDiagnostics.AliasNormalization(
+                            matchedAlias, entry.canonicalPlantId(), entry.canonicalPlantName())).toList()
+                    : List.of();
             return new Resolution(ResolutionKind.KNOWN, ids.get(0), ids, Set.copyOf(names), method,
-                    top1Score, top2Score, top1Score - top2Score, candidateCount, "");
+                    top1Score, top2Score, top1Score - top2Score, candidateCount, "", aliasNormalizations);
         }
         public static Resolution forCanonicalPlantId(String canonicalPlantId) {
             return new Resolution(ResolutionKind.KNOWN, canonicalPlantId, List.of(canonicalPlantId), Set.of(),
-                    ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1, "");
+                    ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1, "", List.of());
         }
         public EntityResolutionDiagnostics diagnostics() {
             return new EntityResolutionDiagnostics(kind.name(), method.name(),
                     canonicalPlantId == null || canonicalPlantId.isBlank() ? null : canonicalPlantId,
                     canonicalPlantIds,
-                    top1Score, top2Score, scoreMargin, candidateCount, rejectionReason);
+                    top1Score, top2Score, scoreMargin, candidateCount, rejectionReason, aliasNormalizations);
         }
         static Resolution ambiguous(double top1Score, double top2Score, int candidateCount, String reason) {
             return rejected(ResolutionKind.AMBIGUOUS, reason, top1Score, top2Score, candidateCount);
@@ -354,7 +373,7 @@ public class PlantEntityResolver {
         private static Resolution rejected(ResolutionKind kind, String reason,
                                            double top1Score, double top2Score, int candidateCount) {
             return new Resolution(kind, "", List.of(), Set.of(), ResolutionMethod.NONE, top1Score, top2Score,
-                    top1Score - top2Score, candidateCount, reason);
+                    top1Score - top2Score, candidateCount, reason, List.of());
         }
     }
 }
