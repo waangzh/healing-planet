@@ -177,6 +177,27 @@ class PlantEntityDisambiguatorTest {
     }
 
     @Test
+    void shouldRequireFreshFailureThresholdAfterCircuitCooldown() {
+        AtomicLong clock = new AtomicLong();
+        PlantEntityDisambiguator.FailureCircuitBreaker breaker =
+                new PlantEntityDisambiguator.FailureCircuitBreaker(3, 100, clock::get);
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> breaker.execute(() -> {
+                throw new IllegalStateException("boom");
+            })).isInstanceOf(IllegalStateException.class);
+        }
+        assertThatThrownByCircuitOpen(breaker);
+
+        clock.addAndGet(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(101));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> breaker.execute(() -> {
+            throw new IllegalStateException("probe failed");
+        })).isInstanceOf(IllegalStateException.class);
+
+        assertThat(breaker.execute(() -> "next request allowed")).isEqualTo("next request allowed");
+    }
+
+    @Test
     void shouldRetryAfterCircuitCooldownForRealDisambiguator() throws InterruptedException {
         RagProperties properties = new RagProperties();
         properties.getEntityResolution().setCircuitBreakerFailureThreshold(2);

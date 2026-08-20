@@ -180,8 +180,10 @@ public class PlantEntityDisambiguator {
                 return result;
             } catch (RuntimeException exception) {
                 int count = failures.incrementAndGet();
-                if (openUntil.get() == HALF_OPEN || count >= failureThreshold) {
+                if (count >= failureThreshold) {
                     openUntil.set(nanoClock.getAsLong() + openNanos);
+                } else {
+                    openUntil.compareAndSet(HALF_OPEN, 0);
                 }
                 throw exception;
             }
@@ -194,6 +196,7 @@ public class PlantEntityDisambiguator {
             if (state == HALF_OPEN || now < state || !openUntil.compareAndSet(state, HALF_OPEN)) {
                 throw new CircuitOpenException();
             }
+            failures.set(0);
         }
     }
 
