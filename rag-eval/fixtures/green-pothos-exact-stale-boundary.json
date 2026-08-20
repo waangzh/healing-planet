@@ -1,0 +1,11 @@
+{
+  "plantInstanceId": 112,
+  "plantId": "1",
+  "plantName": "绿萝",
+  "deviceId": 17,
+  "observedAt": "2026-08-17T09:30:00",
+  "current": {"soilMoisture": 45.0, "temperature": 26.0, "humidity": 50.0, "lightIntensity": 5000.0, "co2": 420.0},
+  "last24h": {"sampleCount": 24, "average": {"soilMoisture": 45.0, "temperature": 26.0, "humidity": 50.0, "lightIntensity": 5000.0, "co2": 420.0}, "minimum": {}, "maximum": {}, "trends": {"soilMoisture": "STABLE", "temperature": "STABLE", "humidity": "STABLE", "lightIntensity": "STABLE", "co2": "STABLE"}},
+  "last7d": {"sampleCount": 168, "average": {"soilMoisture": 45.0, "temperature": 26.0, "humidity": 50.0, "lightIntensity": 5000.0, "co2": 420.0}, "minimum": {}, "maximum": {}, "trends": {"soilMoisture": "STABLE", "temperature": "STABLE", "humidity": "STABLE", "lightIntensity": "STABLE", "co2": "STABLE"}},
+  "thresholds": {"temperatureMin": 18.0, "temperatureMax": 30.0, "humidityMin": 40.0, "humidityMax": 70.0, "soilMoistureMin": 30.0, "soilMoistureMax": 70.0, "lightIntensityMin": 1000.0, "lightIntensityMax": 10000.0, "co2Min": 300.0, "co2Max": 1000.0}
+}

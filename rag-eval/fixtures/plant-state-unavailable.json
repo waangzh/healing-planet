@@ -1,0 +1,6 @@
+{
+  "plantInstanceId": 999,
+  "userId": 7,
+  "response": null,
+  "purpose": "评测 Stub 对该用户和植物实例组合返回无状态，验证 STATE_UNAVAILABLE。"
+}

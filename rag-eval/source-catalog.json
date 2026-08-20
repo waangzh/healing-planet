@@ -1,0 +1,231 @@
+{
+  "version": 5,
+  "provenance": "只读查询本机 green_community 数据库（2026-08-20）；未保存数据库凭据。source_id 与 KnowledgeRepository 的 plants.id / post.id 一致；绿萝 detail_advice 与新增社区帖已按当前数据库内容复核。",
+  "sources": [
+    {
+      "source_id": "1",
+      "source_type": "PLANT",
+      "plant_name": "绿萝",
+      "scientific_name": "Epipremnum aureum",
+      "knowledge": {
+        "LIGHT": "耐阴",
+        "WATERING": "每周1次",
+        "TEMPERATURE": "18-28℃",
+        "HUMIDITY": ">40%",
+        "FERTILIZING": "修剪枯黄叶片即可",
+        "GENERAL_CARE": "明亮散射光、排水良好、适度浇水、薄肥少施、及时修剪"
+      }
+    },
+    {
+      "source_id": "2",
+      "source_type": "PLANT",
+      "plant_name": "虎尾兰",
+      "scientific_name": "Sansevieria trifasciata",
+      "knowledge": {
+        "LIGHT": "全日照到半阴",
+        "WATERING": "每2周1次",
+        "TEMPERATURE": "15-30℃",
+        "HUMIDITY": "任何湿度",
+        "FERTILIZING": "几乎不需要修剪",
+        "GENERAL_CARE": "每季度施缓释肥1次"
+      }
+    },
+    {
+      "source_id": "3",
+      "source_type": "PLANT",
+      "plant_name": "龟背竹",
+      "scientific_name": "Monstera deliciosa",
+      "knowledge": {
+        "LIGHT": "半阴",
+        "WATERING": "表土干后浇水",
+        "TEMPERATURE": "20-30℃",
+        "HUMIDITY": ">60%",
+        "FERTILIZING": "剪除老化气生根",
+        "GENERAL_CARE": "生长季每2周施平衡肥"
+      }
+    },
+    {
+      "source_id": "10",
+      "source_type": "PLANT",
+      "plant_name": "芦荟",
+      "scientific_name": "Aloe vera",
+      "knowledge": {
+        "LIGHT": "全日照",
+        "WATERING": "每3周1次",
+        "TEMPERATURE": "15-25℃",
+        "HUMIDITY": "干燥",
+        "FERTILIZING": "移除下层老叶",
+        "GENERAL_CARE": "每年春季施1次多肉专用肥"
+      }
+    },
+    {
+      "source_id": "1916825767015108609",
+      "source_type": "PLANT",
+      "plant_name": "空气凤梨",
+      "scientific_name": "Tillandsia",
+      "knowledge": {
+        "LIGHT": "明亮散射光",
+        "WATERING": "每周浸泡2-3小时",
+        "TEMPERATURE": "15-30°C",
+        "HUMIDITY": "高湿度环境",
+        "FERTILIZING": "每月一次水溶性肥料喷雾",
+        "GENERAL_CARE": "无需土壤，浸泡后需倒置晾干"
+      }
+    },
+    {
+      "source_id": "2089267754472366082",
+      "source_type": "PLANT",
+      "plant_name": "红掌",
+      "scientific_name": "Anthurium andraeanum",
+      "knowledge": {
+        "LIGHT": "明亮散射光，避免夏季强烈直射",
+        "WATERING": "盆土接近干燥时再浇透，避免长期积水",
+        "TEMPERATURE": "18-30℃",
+        "HUMIDITY": "较高湿度，空气干燥时适当增湿",
+        "FERTILIZING": "4-10月生长期可每2-4周施一次稀释肥",
+        "GENERAL_CARE": "喜欢温暖、湿润且通风的环境"
+      }
+    },
+    {
+      "source_id": "1916826110432137218",
+      "source_type": "PLANT",
+      "plant_name": "白掌",
+      "scientific_name": "Spathiphyllum wallisii",
+      "knowledge": {
+        "LIGHT": "低至中等光照",
+        "WATERING": "保持土壤湿润",
+        "TEMPERATURE": "18-26°C",
+        "HUMIDITY": ">50%",
+        "FERTILIZING": "每6-8周施平衡肥",
+        "GENERAL_CARE": "开花植物，缺水时叶片会下垂"
+      }
+    },
+    {
+      "source_id": "2089266460688965633",
+      "source_type": "COMMUNITY",
+      "title": "养了绿萝一段时间后，我总结的几个日常养护习惯",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "给绿萝明亮散射光，耐一定弱光",
+        "表层土干后再浇透，避免长期湿透",
+        "耐阴不等于喜阴，长期弱光时节间容易拉长、叶片变小",
+        "状态发生变化时先记录一两天，再结合盆土、叶片和新生长判断"
+      ]
+    },
+    {
+      "source_id": "2090376572413452289",
+      "source_type": "COMMUNITY",
+      "title": "绿萝养护全攻略：黄叶、烂根、不长藤、叶片变小，一篇讲清楚",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "绿萝适合明亮散射光，夏季应避开强烈直射光",
+        "浇水应观察盆土，干到一定程度后一次浇透，避免长期积水",
+        "土壤应疏松透气并保持排水顺畅",
+        "黄叶需要结合浇水、光照、根系和施肥情况排查"
+      ]
+    },
+    {
+      "source_id": "2090376469632032769",
+      "source_type": "COMMUNITY",
+      "title": "绿萝怎么养才会越长越旺？新手记住这几点就够了",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "绿萝盆土表层以下两三厘米干后再浇透，避免频繁浇水",
+        "绿萝耐阴不等于完全不需要光，适合明亮散射光",
+        "适当修剪长藤可促进侧芽并改善株型",
+        "春秋可少量施薄肥，避免浓肥"
+      ]
+    },
+    {
+      "source_id": "2090376512464265218",
+      "source_type": "COMMUNITY",
+      "title": "我养了几盆绿萝之后，终于明白：绿萝最怕的不是忘记浇水，而是太勤快",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "绿萝盆土仍有湿气时应继续等待，干下去几厘米后再浇透",
+        "绿萝适合避开正午强光的明亮自然光环境",
+        "修剪过长藤条和回插带节点枝条可使株型更丰满",
+        "稳定环境和耐心观察比频繁折腾更重要"
+      ]
+    },
+    {
+      "source_id": "2089266151052861442",
+      "source_type": "COMMUNITY",
+      "title": "养了白掌一段时间后，我总结的几个日常养护习惯",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "白掌采用明亮散射光并避免强烈暴晒",
+        "白掌喜欢湿润但不耐长期积水",
+        "白掌缺水时叶片常会明显下垂",
+        "盆土已经很湿时，叶片下垂应优先检查根系和通风"
+      ]
+    },
+    {
+      "source_id": "2089266426287284225",
+      "source_type": "COMMUNITY",
+      "title": "养了空气凤梨一段时间后，我总结的几个日常养护习惯",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "空气凤梨定期充分补水后让叶片和叶心尽快干燥",
+        "空气凤梨保持明亮散射光和良好通风",
+        "无土不代表空气凤梨不需要水",
+        "潮湿但阴暗闷热的环境不适合空气凤梨"
+      ]
+    },
+    {
+      "source_id": "2089266596135624706",
+      "source_type": "COMMUNITY",
+      "title": "养了龟背竹一段时间后，我总结的几个日常养护习惯",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "龟背竹采用明亮散射光并避免长期强烈直晒",
+        "龟背竹表层土干后浇透，保持通风和排水",
+        "开背与成熟度、光照和整体长势有关",
+        "为龟背竹提供攀爬支撑有助于株型发展"
+      ]
+    },
+    {
+      "source_id": "2089266495635906561",
+      "source_type": "COMMUNITY",
+      "title": "养了芦荟一段时间后，我总结的几个日常养护习惯",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "芦荟采用充足光照，长期室内养护后不要突然强晒",
+        "芦荟盆土充分变干后再浇透",
+        "芦荟肉质叶可以储水，短期偏干通常比长期积水更容易恢复"
+      ]
+    },
+    {
+      "source_id": "2089266532591919105",
+      "source_type": "COMMUNITY",
+      "title": "芦荟出现叶片发软和根腐后，我是怎么排查的",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "芦荟叶片发软和根腐时需一起检查光线、通风和盆土",
+        "调整后主要观察芦荟新叶",
+        "芦荟盆土充分变干后再浇透"
+      ]
+    },
+    {
+      "source_id": "2089266564246331393",
+      "source_type": "COMMUNITY",
+      "title": "虎尾兰出现叶基发软和生长缓慢后，我是怎么排查的",
+      "knowledge_type": "COMMUNITY_EXPERIENCE",
+      "tags": [],
+      "claims_used": [
+        "虎尾兰叶基发软和生长缓慢时先看盆土是否过湿和光线是否突然变化",
+        "虎尾兰频繁浇水比短期缺水更容易造成问题",
+        "虎尾兰介质明显干燥后再浇，低温季节更要控水"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "freeze_date": "2026-08-20",
+  "development": {
+    "path": "golden.jsonl",
+    "role": "development-regression",
+    "case_count": 114,
+    "sha256": "828047707f12f3be3d40c9c5f8f6ad4efdf8cb03806ffffd1973c20c46f6682c"
+  },
+  "holdout": {
+    "path": "holdout.jsonl",
+    "role": "frozen-generalization",
+    "case_count": 30,
+    "sha256": "29fe7d0d9200c64bb87e3b26f28fa14a4a44c5c5227e3031c8a0070f335a75d0",
+    "id_format": "1..30 as strings",
+    "usage": "Only use for milestone or pre-release evaluation. Do not tune implementation from individual Case outcomes."
+  },
+  "source_catalog": {
+    "path": "source-catalog.json",
+    "version": 5,
+    "sha256": "8ab9bbc34d206bf7ca886f59728b617cbba847e6ef4dadfa2ba5f1e44b50208e"
+  }
+}

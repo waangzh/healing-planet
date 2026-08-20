@@ -1,0 +1,5 @@
+{
+  "instant": "2026-08-17T10:00:00+08:00",
+  "zone": "Asia/Shanghai",
+  "purpose": "状态类 Golden Case 的固定评测时钟；PlantStateAnalyzer 需要由 eval profile 注入此时钟。"
+}

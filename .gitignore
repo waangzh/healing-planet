@@ -10,4 +10,10 @@ rag-eval/judge.local.json
 # Python 本地环境与缓存
 rag-eval/.venv/
 rag-eval/__pycache__/
+rag-eval/test/__pycache__/
 *.pyc
+
+# RAG 评测运行产物：仅保留各次运行的标准报告
+rag-eval/results/**
+!rag-eval/results/**/
+!rag-eval/results/**/*.md

@@ -1,0 +1,7 @@
+{
+  "url": "https://your-llm-host/v1/chat/completions",
+  "model": "your-judge-model",
+  "api_key_env": "JUDGE_API_KEY",
+  "timeout": 90,
+  "retries": 1
+}
