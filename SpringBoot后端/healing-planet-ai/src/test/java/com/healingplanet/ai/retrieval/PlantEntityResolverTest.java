@@ -60,13 +60,25 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldRecognizeUnknownNamedPlantInsteadOfSearchingAllPlants() {
+    void shouldRejectClosedSetUnknownNamesBeforeLlm() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null,
+                new RagProperties(), null, disambiguator);
         when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
                 entityHit("10", "芦荟", 0.76), entityHit("1", "绿萝", 0.73)
         ));
-        var resolution = resolver.resolve(RagQuery.of("火星苔藓适合什么光照？"));
 
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(List.of(
+                "火星苔藓适合什么光照？",
+                "月球绿萝需要浇水吗？",
+                "水晶蛇尾兰需要什么光照？",
+                "量子虎皮兰的根腐怎么处理？"
+        )).allSatisfy(query -> {
+            var resolution = resolver.resolve(RagQuery.of(query));
+            assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+            assertThat(resolution.rejectionReason()).isEqualTo("entity_not_in_catalog");
+        });
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
     @Test
@@ -85,24 +97,6 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldUseLlmFallbackForUncertainMentionWithConstrainedCandidates() {
-        PlantEntityDisambiguator disambiguator = mock(PlantEntityDisambiguator.class);
-        resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
-        when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
-                entityHit("1", "绿萝", 0.62), entityHit("10", "芦荟", 0.41)
-        ));
-        when(disambiguator.disambiguate(any(), any(), any())).thenReturn(
-                PlantEntityDisambiguator.Decision.known("1", 0.93));
-
-        var resolution = resolver.resolve(RagQuery.of("小绿箩耐阴吗？"));
-
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
-        assertThat(resolution.canonicalPlantId()).isEqualTo("1");
-        assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
-        verify(disambiguator).disambiguate(any(), any(), any());
-    }
-
-    @Test
     void shouldNotMapGenericCategoryWordsToSpecificPlantThroughLlm() {
         useLlmDecision(PlantEntityDisambiguator.Decision.unknown("llm_rejected_or_unknown"));
         when(entityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
@@ -112,7 +106,7 @@ class PlantEntityResolverTest {
         var resolution = resolver.resolve(RagQuery.of("绿植耐阴吗？"));
 
         assertThat(resolution.kind()).isNotEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
-        verify(disambiguator).disambiguate(any(), any(), any());
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
     @Test
@@ -261,25 +255,6 @@ class PlantEntityResolverTest {
         assertThat(resolver.resolve(RagQuery.of("这盆绿萝需要什么光照？")).method())
                 .isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
         verify(disambiguator, never()).disambiguate(any(), any(), any());
-    }
-
-    @Test
-    void shouldRejectKnownNameEmbeddedInUnknownCompoundWhenLlmDoesNotConfirm() {
-        useLlmDecision(PlantEntityDisambiguator.Decision.unknown("llm_rejected_or_unknown"));
-        var compound = resolver.resolve(RagQuery.of("月球绿萝需要浇水吗？"));
-        assertThat(compound.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
-        verify(disambiguator).disambiguate(any(), any(), any());
-    }
-
-    @Test
-    void shouldRejectUnknownCompoundBuiltFromAliasWhenLlmDoesNotConfirm() {
-        useLlmDecision(PlantEntityDisambiguator.Decision.unknown("llm_rejected_or_unknown"));
-
-        var compound = resolver.resolve(RagQuery.of("量子虎皮兰的根腐怎么处理？"));
-
-        assertThat(compound.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
-        assertThat(compound.canonicalPlantId()).isEmpty();
-        verify(disambiguator).disambiguate(any(), any(), any());
     }
 
     @Test

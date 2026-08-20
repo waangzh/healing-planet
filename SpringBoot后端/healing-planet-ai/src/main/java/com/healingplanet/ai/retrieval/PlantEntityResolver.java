@@ -22,7 +22,7 @@ public class PlantEntityResolver {
 
     private static final Pattern CARE_ANCHOR = Pattern.compile(
             "浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|叶片|晒|太阳|浇|补|"
-                    + "出现|处理|频率|耐阴|喜阴|弱光|强光|直射|状态|异常|判断");
+                    + "根腐|出现|处理|频率|耐阴|喜阴|弱光|强光|直射|状态|异常|判断");
     private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
             "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株)+");
     private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
@@ -111,6 +111,15 @@ public class PlantEntityResolver {
             return Resolution.generic();
         }
 
+        // A locally extracted subject is the complete mention span. An unmatched
+        // span must not be reduced to a known suffix by semantic retrieval.
+        if (!namedSubject.isBlank()
+                && (isUnregisteredCompoundMention(namedSubject, entries)
+                || route.entityRequirement() == QueryRouter.EntityRequirement.REQUIRED
+                && isReliableLocalMention(namedSubject, entries))) {
+            return Resolution.unknown("entity_not_in_catalog", 0, 0, 0);
+        }
+
         boolean plantDomain = route.plantDomain() || catalogNameMentioned;
         List<PlantCandidateGenerator.Candidate> ranked = candidateGenerator.generate(
                 query.query(), normalizedQuery, entries, aliasMatcher.contextualEntryIds(normalizedQuery, entries),
@@ -154,6 +163,22 @@ public class PlantEntityResolver {
 
     private String stripLeadingMentionNoise(String query) {
         return LEADING_MENTION_NOISE.matcher(query).replaceFirst("");
+    }
+
+    private boolean isUnregisteredCompoundMention(String mention, List<PlantCatalogEntry> entries) {
+        boolean exact = entries.stream().anyMatch(entry -> entry.names().contains(mention));
+        if (exact) return false;
+        return entries.stream().flatMap(entry -> entry.names().stream())
+                .filter(name -> name.length() >= 2)
+                .anyMatch(mention::endsWith);
+    }
+
+    private boolean isReliableLocalMention(String mention, List<PlantCatalogEntry> entries) {
+        if (!mention.matches("[\\p{IsHan}]{2,}")) return false;
+        int longestCatalogName = entries.stream().flatMap(entry -> entry.names().stream())
+                .filter(name -> name.matches("[\\p{IsHan}]+"))
+                .mapToInt(String::length).max().orElse(4);
+        return mention.length() <= longestCatalogName + 4;
     }
 
     private double topScore(List<PlantCandidateGenerator.Candidate> ranked) {

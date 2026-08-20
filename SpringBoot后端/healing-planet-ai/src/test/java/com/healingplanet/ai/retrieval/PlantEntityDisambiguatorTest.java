@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import org.junit.jupiter.api.Test;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -90,6 +91,21 @@ class PlantEntityDisambiguatorTest {
         assertThat(result.attempted()).isTrue();
         assertThat(result.known()).isFalse();
         assertThat(result.reason()).isEqualTo("llm_disambiguation_failed");
+    }
+
+    @Test
+    void shouldExposeReadTimeoutInsteadOfGenericFailure() {
+        RagProperties properties = new RagProperties();
+        PlantEntityDisambiguator disambiguator = new PlantEntityDisambiguator(properties,
+                (systemPrompt, userPrompt) -> {
+                    throw new IllegalStateException(new SocketTimeoutException("read timed out"));
+                });
+
+        var result = disambiguator.disambiguate("待确认植物需要浇水吗？", "待确认植物", List.of(
+                new PlantEntityDisambiguator.CandidateOption("1", Set.of("绿萝"), 0.44, 0.50)
+        ));
+
+        assertThat(result.reason()).isEqualTo("llm_read_timeout");
     }
 
     @Test

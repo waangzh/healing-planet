@@ -1,9 +1,15 @@
 package com.healingplanet.ai.retrieval;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.healingplanet.ai.config.RagProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -17,6 +23,8 @@ import java.util.stream.Collectors;
 
 @Component
 public class PlantEntityDisambiguator {
+
+    private static final Logger log = LoggerFactory.getLogger(PlantEntityDisambiguator.class);
 
     private static final String SYSTEM_PROMPT = """
             你是植物实体消歧器。你的任务不是回答养护问题，而是判断用户提到的植物是否能安全映射到候选列表中的某一个标准植物。
@@ -97,9 +105,38 @@ public class PlantEntityDisambiguator {
             return cache(cacheKey, Decision.known(canonicalPlantId, confidence));
         } catch (CircuitOpenException ignored) {
             return Decision.unavailable("llm_disambiguation_circuit_open");
-        } catch (RuntimeException ignored) {
-            return Decision.unavailable("llm_disambiguation_failed");
+        } catch (RuntimeException exception) {
+            String reason = classifyFailure(exception);
+            log.warn("Plant entity LLM disambiguation failed: {}", reason, exception);
+            return Decision.unavailable(reason);
         }
+    }
+
+    private String classifyFailure(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String exceptionName = current.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+            if (exceptionName.contains("connecttimeout")) {
+                return "llm_connect_timeout";
+            }
+            if (current instanceof ConnectException) {
+                return "llm_connection_failed";
+            }
+            if (current instanceof SocketTimeoutException
+                    || current instanceof java.util.concurrent.TimeoutException
+                    || exceptionName.contains("timeout")) {
+                return "llm_read_timeout";
+            }
+            if (current instanceof RestClientResponseException responseException) {
+                return responseException.getStatusCode().is5xxServerError()
+                        ? "llm_http_5xx" : "llm_http_4xx";
+            }
+            if (current instanceof JsonProcessingException) {
+                return "llm_invalid_json";
+            }
+            current = current.getCause();
+        }
+        return "llm_disambiguation_failed";
     }
 
     private LlmDecision timedCall(java.util.function.Supplier<LlmDecision> operation) {

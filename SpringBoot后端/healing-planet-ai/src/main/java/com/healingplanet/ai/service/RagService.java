@@ -86,10 +86,17 @@ public class RagService {
     private String emptyEvidenceAnswer(RetrievalResult retrieval) {
         if (retrieval.entityResolution() != null
                 && retrieval.entityResolution().rejectionReason() != null
-                && retrieval.entityResolution().rejectionReason().startsWith("llm_disambiguation_")) {
+                && isEntityResolutionDependencyFailure(retrieval.entityResolution().rejectionReason())) {
             return "植物名称识别服务暂时不可用，请稍后重试。";
         }
         return "当前知识库中没有足够证据回答这个问题。";
+    }
+
+    private boolean isEntityResolutionDependencyFailure(String reason) {
+        return reason.startsWith("llm_disambiguation_")
+                || reason.equals("llm_connect_timeout") || reason.equals("llm_read_timeout")
+                || reason.equals("llm_connection_failed") || reason.startsWith("llm_http_")
+                || reason.equals("llm_invalid_json");
     }
 
     private String validateStateQuery(RagQuery query, QueryRouter.RoutingDecision decision) {
