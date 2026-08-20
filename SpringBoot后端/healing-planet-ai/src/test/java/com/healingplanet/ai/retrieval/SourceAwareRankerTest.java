@@ -68,11 +68,32 @@ class SourceAwareRankerTest {
         assertThat(result).extracting(Evidence::id).containsExactly("guide", "relevant", "irrelevant");
     }
 
+    @Test
+    void disabledSourceAwareRankingShouldPreservePureRrfOrder() {
+        var properties = new com.healingplanet.ai.config.RagProperties();
+        properties.getSourceAwareRanking().setEnabled(false);
+        SourceAwareRanker baselineRanker = new SourceAwareRanker(properties);
+        RetrievalCandidate denseFavored = candidate("dense-favored", 0.99, 0.01);
+        RetrievalCandidate rrfFavored = candidate("rrf-favored", 0.20, 0.03);
+
+        List<Evidence> result = baselineRanker.rank(RagQuery.of("光照"),
+                List.of(rrfFavored, denseFavored), Map.of());
+
+        assertThat(result).extracting(Evidence::id).containsExactly("rrf-favored", "dense-favored");
+    }
+
     private RetrievalCandidate candidate(String id) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
                 "1", "绿萝", "LIGHT", List.of("光照"), 1, false,
                 0, 0, 0, 0, Instant.EPOCH, Map.of());
         return new RetrievalCandidate(document, null, null, 0, 0, 0);
+    }
+
+    private RetrievalCandidate candidate(String id, double denseScore, double fusionScore) {
+        KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
+                "1", "绿萝", "LIGHT", List.of("光照"), 1, false,
+                0, 0, 0, 0, Instant.EPOCH, Map.of());
+        return new RetrievalCandidate(document, denseScore, null, 1, 0, fusionScore);
     }
 
     private RetrievalCandidate communityCandidate(String id) {

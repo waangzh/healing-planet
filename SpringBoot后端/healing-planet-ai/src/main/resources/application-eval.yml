@@ -4,4 +4,4 @@ app:
       fixture-directory: ${RAG_EVAL_FIXTURE_DIRECTORY:../../rag-eval/fixtures}
       clock-instant: ${RAG_EVAL_CLOCK_INSTANT:2026-08-17T02:00:00Z}
       clock-zone: ${RAG_EVAL_CLOCK_ZONE:Asia/Shanghai}
-      retrieval-trace-enabled: true
+      retrieval-trace-enabled: ${RAG_EVAL_RETRIEVAL_TRACE_ENABLED:true}

@@ -35,13 +35,11 @@ public class DiseaseKnowledgeRetriever {
     public List<Evidence> retrieve(DiseaseDetection detection, RagQuery query) {
         if (detection.healthy()) return List.of();
         String searchText = searchText(detection, query);
-        SearchRequest request = SearchRequest.builder().query(searchText)
-                .topK(properties.getDenseTopK()).similarityThreshold(properties.getSimilarityThreshold()).build();
-        List<RrfFusion.DenseHit> dense = store.similaritySearch(request).stream()
-                .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, KnowledgeSource.DISEASE),
-                        document.getScore() == null ? 0d : document.getScore())).toList();
-        List<RetrievalCandidate> candidates = RrfFusion.fuse(dense,
-                sparseIndex.search(KnowledgeSource.DISEASE, searchText, properties.getSparseTopK()));
+        List<RrfFusion.DenseHit> dense = properties.getRetrievalMode().usesDense()
+                ? denseSearch(searchText) : List.of();
+        List<SparseIndexService.SparseHit> sparse = properties.getRetrievalMode().usesSparse()
+                ? sparseIndex.search(KnowledgeSource.DISEASE, searchText, properties.getSparseTopK()) : List.of();
+        List<RetrievalCandidate> candidates = RrfFusion.fuse(dense, sparse, properties.getRrfK());
         Map<String, Double> rerankScores = reranker.rerank(searchText, candidates);
         return candidates.stream().map(candidate -> toEvidence(candidate,
                         rerankScores.get(candidate.document().id()), detection))
@@ -49,10 +47,24 @@ public class DiseaseKnowledgeRetriever {
                 .limit(Math.min(3, properties.getFinalTopK())).toList();
     }
 
+    private List<RrfFusion.DenseHit> denseSearch(String searchText) {
+        SearchRequest request = SearchRequest.builder().query(searchText)
+                .topK(properties.getDenseTopK()).similarityThreshold(properties.getSimilarityThreshold()).build();
+        return store.similaritySearch(request).stream()
+                .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, KnowledgeSource.DISEASE),
+                        document.getScore() == null ? 0d : document.getScore())).toList();
+    }
+
     private Evidence toEvidence(RetrievalCandidate candidate, Double rerank, DiseaseDetection detection) {
         var document = candidate.document();
-        double rrf = Math.min(1d, candidate.fusionScore() * 31d);
-        double retrieval = candidate.denseScore() == null ? rrf : 0.55 * candidate.denseScore() + 0.45 * rrf;
+        var ranking = properties.getSourceAwareRanking();
+        double rrf = Math.min(1d, candidate.fusionScore() * ranking.getRrfNormalizationFactor());
+        double retrieval = switch (properties.getRetrievalMode()) {
+            case DENSE_ONLY -> candidate.denseScore() == null ? rrf : candidate.denseScore();
+            case BM25_ONLY -> rrf;
+            case HYBRID_RRF -> candidate.denseScore() == null ? rrf
+                    : ranking.getDenseWeight() * candidate.denseScore() + ranking.getRrfWeight() * rrf;
+        };
         double semantic = rerank == null ? retrieval : rerank;
         double nameMatch = matches(detection.diseaseName(), document.tags()) ? 1d : 0d;
         double score = clamp(0.65 * semantic + 0.25 * document.trustScore() + 0.10 * nameMatch);

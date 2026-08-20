@@ -19,6 +19,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.springframework.stereotype.Component;
@@ -38,11 +39,15 @@ import java.util.Set;
 public class SparseIndexService {
 
     private final ObjectMapper objectMapper;
-    private final ChineseNgramAnalyzer analyzer = new ChineseNgramAnalyzer();
+    private final ChineseNgramAnalyzer analyzer;
+    private final BM25Similarity similarity;
     private final Map<KnowledgeSource, Directory> directories = new EnumMap<>(KnowledgeSource.class);
 
     public SparseIndexService(RagProperties properties, ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        var bm25 = properties.getBm25();
+        this.analyzer = new ChineseNgramAnalyzer(bm25.getMinNgram(), bm25.getMaxNgram());
+        this.similarity = new BM25Similarity(bm25.getK1(), bm25.getB());
         try {
             Files.createDirectories(properties.getDataDirectory());
             for (KnowledgeSource source : KnowledgeSource.values()) {
@@ -125,6 +130,7 @@ public class SparseIndexService {
             if (!DirectoryReader.indexExists(directories.get(source))) return List.of();
             try (DirectoryReader reader = DirectoryReader.open(directories.get(source))) {
                 var searcher = new IndexSearcher(reader);
+                searcher.setSimilarity(similarity);
                 var parser = new QueryParser("searchText", analyzer);
                 var parsed = parser.parse(QueryParser.escape(query));
                 ScoreDoc[] hits = searcher.search(parsed, topK).scoreDocs;
@@ -140,7 +146,8 @@ public class SparseIndexService {
     }
 
     private IndexWriter writer(KnowledgeSource source) throws IOException {
-        return new IndexWriter(directories.get(source), new IndexWriterConfig(analyzer));
+        return new IndexWriter(directories.get(source),
+                new IndexWriterConfig(analyzer).setSimilarity(similarity));
     }
 
     private Document toLucene(KnowledgeDocument source) {

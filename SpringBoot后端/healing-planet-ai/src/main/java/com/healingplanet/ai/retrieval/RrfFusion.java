@@ -14,6 +14,13 @@ public final class RrfFusion {
 
     public static List<RetrievalCandidate> fuse(List<DenseHit> denseHits,
                                                 List<SparseIndexService.SparseHit> sparseHits) {
+        return fuse(denseHits, sparseHits, RRF_K);
+    }
+
+    public static List<RetrievalCandidate> fuse(List<DenseHit> denseHits,
+                                                List<SparseIndexService.SparseHit> sparseHits,
+                                                int rrfK) {
+        if (rrfK < 0) throw new IllegalArgumentException("rrfK must be >= 0");
         Map<String, MutableCandidate> candidates = new LinkedHashMap<>();
         for (int i = 0; i < denseHits.size(); i++) {
             DenseHit hit = denseHits.get(i);
@@ -21,7 +28,7 @@ public final class RrfFusion {
                     ignored -> new MutableCandidate(hit.document()));
             candidate.denseScore = hit.score();
             candidate.denseRank = i + 1;
-            candidate.fusion += 1d / (RRF_K + i + 1);
+            candidate.fusion += 1d / (rrfK + i + 1);
         }
         for (int i = 0; i < sparseHits.size(); i++) {
             var hit = sparseHits.get(i);
@@ -29,7 +36,7 @@ public final class RrfFusion {
                     ignored -> new MutableCandidate(hit.document()));
             candidate.sparseScore = hit.score();
             candidate.sparseRank = i + 1;
-            candidate.fusion += 1d / (RRF_K + i + 1);
+            candidate.fusion += 1d / (rrfK + i + 1);
         }
         List<RetrievalCandidate> result = new ArrayList<>();
         candidates.values().forEach(candidate -> result.add(candidate.freeze()));

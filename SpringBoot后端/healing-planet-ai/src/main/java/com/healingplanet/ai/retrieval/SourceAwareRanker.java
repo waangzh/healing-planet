@@ -1,11 +1,13 @@
 package com.healingplanet.ai.retrieval;
 
+import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.domain.RagQuery;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +16,17 @@ import java.util.Map;
 
 @Component
 public class SourceAwareRanker {
+    private final RagProperties properties;
+
+    public SourceAwareRanker() {
+        this(new RagProperties());
+    }
+
+    @Autowired
+    public SourceAwareRanker(RagProperties properties) {
+        this.properties = properties;
+    }
+
     public List<Evidence> rank(RagQuery query, List<RetrievalCandidate> candidates,
                                Map<String, Double> rerankScores) {
         // Candidate relevance has already been gated by retrieval. Reranking should
@@ -26,17 +39,26 @@ public class SourceAwareRanker {
 
     private Evidence toEvidence(RagQuery query, RetrievalCandidate candidate, Double rerankScore) {
         KnowledgeDocument document = candidate.document();
-        double rrfNormalized = Math.min(1d, candidate.fusionScore() * 31d);
-        double retrieval = candidate.denseScore() == null ? rrfNormalized
-                : 0.55 * candidate.denseScore() + 0.45 * rrfNormalized;
+        RagProperties.SourceAwareRanking ranking = properties.getSourceAwareRanking();
+        double retrieval = retrievalScore(candidate, ranking);
         double semantic = rerankScore == null ? retrieval : rerankScore;
         double plantMatch = plantMatch(query, document);
         double quality = communityQuality(document);
         double recency = recency(document.createdAt());
-        double finalScore = document.source() == KnowledgeSource.PLANT
-                ? 0.70 * semantic + 0.20 * document.trustScore() + 0.10 * plantMatch
-                : 0.62 * semantic + 0.15 * document.trustScore() + 0.13 * quality
-                    + 0.05 * recency + 0.05 * plantMatch;
+        double finalScore;
+        if (!ranking.isEnabled()) {
+            finalScore = semantic;
+        } else if (document.source() == KnowledgeSource.PLANT) {
+            finalScore = ranking.getPlantSemanticWeight() * semantic
+                    + ranking.getPlantTrustWeight() * document.trustScore()
+                    + ranking.getPlantMatchWeight() * plantMatch;
+        } else {
+            finalScore = ranking.getCommunitySemanticWeight() * semantic
+                    + ranking.getCommunityTrustWeight() * document.trustScore()
+                    + ranking.getCommunityQualityWeight() * quality
+                    + ranking.getCommunityRecencyWeight() * recency
+                    + ranking.getCommunityPlantMatchWeight() * plantMatch;
+        }
         return new Evidence(
                 document.id(), document.source() == KnowledgeSource.PLANT
                     ? EvidenceType.CARE_GUIDE : EvidenceType.COMMUNITY_POST,
@@ -44,6 +66,21 @@ public class SourceAwareRanker {
                 retrieval, rerankScore, document.trustScore(), clamp(finalScore), document.metadata(),
                 document.createdAt()
         );
+    }
+
+    private double retrievalScore(RetrievalCandidate candidate, RagProperties.SourceAwareRanking ranking) {
+        double rrfNormalized = clamp(candidate.fusionScore() * ranking.getRrfNormalizationFactor());
+        if (!ranking.isEnabled()) {
+            return properties.getRetrievalMode() == RagProperties.RetrievalMode.DENSE_ONLY
+                    && candidate.denseScore() != null ? candidate.denseScore() : rrfNormalized;
+        }
+        return switch (properties.getRetrievalMode()) {
+            case DENSE_ONLY -> candidate.denseScore() == null ? rrfNormalized : candidate.denseScore();
+            case BM25_ONLY -> rrfNormalized;
+            case HYBRID_RRF -> candidate.denseScore() == null ? rrfNormalized
+                    : ranking.getDenseWeight() * candidate.denseScore()
+                    + ranking.getRrfWeight() * rrfNormalized;
+        };
     }
 
     private double plantMatch(RagQuery query, KnowledgeDocument document) {
@@ -54,17 +91,21 @@ public class SourceAwareRanker {
         return 0;
     }
 
-    static double communityQuality(KnowledgeDocument document) {
+    double communityQuality(KnowledgeDocument document) {
         if (document.source() != KnowledgeSource.COMMUNITY) return 1;
-        double engagement = Math.log1p(document.likes() + 2d * document.collects()
-                + 1.5d * document.comments() + 0.05d * document.views()) / Math.log(1001);
-        return clamp(0.2 * (document.essence() ? 1 : 0) + 0.8 * engagement);
+        RagProperties.SourceAwareRanking ranking = properties.getSourceAwareRanking();
+        double engagement = Math.log1p(document.likes() + ranking.getCollectWeight() * document.collects()
+                + ranking.getCommentWeight() * document.comments()
+                + ranking.getViewWeight() * document.views())
+                / Math.log1p(Math.max(1, ranking.getEngagementNormalization()));
+        return clamp(ranking.getCommunityEssenceWeight() * (document.essence() ? 1 : 0)
+                + ranking.getCommunityEngagementWeight() * engagement);
     }
 
-    static double recency(Instant createdAt) {
+    double recency(Instant createdAt) {
         if (createdAt == null) return 0;
         long days = Math.max(0, Duration.between(createdAt, Instant.now()).toDays());
-        return Math.exp(-days / 365d);
+        return Math.exp(-days / Math.max(1, properties.getSourceAwareRanking().getRecencyDecayDays()));
     }
 
     private static double clamp(double value) {

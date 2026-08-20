@@ -24,15 +24,19 @@ class HttpReranker implements Reranker {
     @Override
     public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates) {
         if (!properties.getReranker().isEnabled() || candidates.isEmpty()) return Map.of();
-        List<String> documents = candidates.stream().map(candidate -> candidate.document().content()).toList();
+        int configuredTopK = properties.getReranker().getCandidateTopK();
+        List<RetrievalCandidate> rerankCandidates = configuredTopK > 0
+                ? candidates.stream().limit(configuredTopK).toList() : candidates;
+        List<String> documents = rerankCandidates.stream()
+                .map(candidate -> candidate.document().content()).toList();
         RerankResponse response = client.post().uri(properties.getReranker().getPath())
                 .body(new RerankRequest(properties.getReranker().getModel(), query, documents))
                 .retrieve().body(RerankResponse.class);
         if (response == null || response.results() == null) return Map.of();
         Map<String, Double> scores = new HashMap<>();
         response.results().forEach(result -> {
-            if (result.index() >= 0 && result.index() < candidates.size()) {
-                scores.put(candidates.get(result.index()).document().id(), result.score());
+            if (result.index() >= 0 && result.index() < rerankCandidates.size()) {
+                scores.put(rerankCandidates.get(result.index()).document().id(), result.score());
             }
         });
         return scores;

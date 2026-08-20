@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -112,6 +113,12 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                            Map<String, Double> rerankScores,
                                            PlantEntityResolver.Resolution entity) {
         List<Evidence> ranked = ranker.rank(query, candidates, rerankScores);
+        if (!properties.getEvidenceSelector().isEnabled()) {
+            List<Evidence> selected = ranked.stream().limit(properties.getFinalTopK()).toList();
+            Map<String, String> reasons = new LinkedHashMap<>();
+            selected.forEach(evidence -> reasons.put(evidence.id(), "GLOBAL_RANKING"));
+            return new SelectionResult(selected, reasons);
+        }
         EvidenceSelector.Selection selection = evidenceSelector.select(query, ranked, properties.getFinalTopK(),
                 entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
                         ? entity.canonicalPlantIds() : List.of());
@@ -152,19 +159,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private List<RetrievalCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,
                                                     PlantEntityResolver.Resolution entity,
                                                     RetrievalTraceCollector trace) {
-        SearchRequest.Builder requestBuilder = SearchRequest.builder().query(query)
-                .topK(properties.getDenseTopK())
-                .similarityThreshold(properties.getSimilarityThreshold());
-        if (source == KnowledgeSource.PLANT && entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN) {
-            requestBuilder.filterExpression(new FilterExpressionBuilder()
-                    .eq("canonicalPlantId", entity.canonicalPlantId()).build());
-        }
-        SearchRequest request = requestBuilder.build();
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
         String scope = entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
                 ? String.join(",", entity.canonicalPlantIds()) : entity.kind().name();
-        List<org.springframework.ai.document.Document> documents = trace.time("dense_search", sourceTag, scope,
-                () -> metrics.time("embedding", sourceTag, () -> store.similaritySearch(request)));
+        List<org.springframework.ai.document.Document> documents = properties.getRetrievalMode().usesDense()
+                ? denseSearch(query, source, store, entity, trace, sourceTag, scope) : List.of();
         List<RrfFusion.DenseHit> denseRaw = documents.stream()
                 .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, source),
                         document.getScore() == null ? 0d : document.getScore()))
@@ -174,9 +173,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                 () -> denseRaw.stream()
                 .filter(hit -> entityResolver.matches(entity, hit.document()))
                 .toList());
-        List<SparseIndexService.SparseHit> sparseRaw = trace.time("sparse_search", sourceTag, scope,
-                () -> metrics.time("sparse_search", sourceTag,
-                        () -> sparseIndex.search(source, query, properties.getSparseTopK())));
+        List<SparseIndexService.SparseHit> sparseRaw = properties.getRetrievalMode().usesSparse()
+                ? trace.time("sparse_search", sourceTag, scope,
+                    () -> metrics.time("sparse_search", sourceTag,
+                            () -> sparseIndex.search(source, query, properties.getSparseTopK())))
+                : List.of();
         trace.sparse(sparseRaw, scope);
         List<SparseIndexService.SparseHit> sparse = sparseRaw.stream()
                         .filter(hit -> entityResolver.matches(entity, hit.document()))
@@ -184,10 +185,27 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         metrics.recordCandidates("dense", sourceTag, dense.size());
         metrics.recordCandidates("sparse", sourceTag, sparse.size());
         List<RetrievalCandidate> result = trace.time("rrf_fusion", sourceTag, scope,
-                () -> metrics.time("rrf_fusion", sourceTag, () -> RrfFusion.fuse(dense, sparse)));
+                () -> metrics.time("rrf_fusion", sourceTag,
+                        () -> RrfFusion.fuse(dense, sparse, properties.getRrfK())));
         trace.rrf(result, scope);
         metrics.recordCandidates("fused", sourceTag, result.size());
         return result;
+    }
+
+    private List<org.springframework.ai.document.Document> denseSearch(
+            String query, KnowledgeSource source, VectorStore store,
+            PlantEntityResolver.Resolution entity, RetrievalTraceCollector trace,
+            String sourceTag, String scope) {
+        SearchRequest.Builder requestBuilder = SearchRequest.builder().query(query)
+                .topK(properties.getDenseTopK())
+                .similarityThreshold(properties.getSimilarityThreshold());
+        if (source == KnowledgeSource.PLANT && entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN) {
+            requestBuilder.filterExpression(new FilterExpressionBuilder()
+                    .eq("canonicalPlantId", entity.canonicalPlantId()).build());
+        }
+        SearchRequest request = requestBuilder.build();
+        return trace.time("dense_search", sourceTag, scope,
+                () -> metrics.time("embedding", sourceTag, () -> store.similaritySearch(request)));
     }
 
     private record RetrievalPayload(List<Evidence> evidence,

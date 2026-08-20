@@ -1,10 +1,12 @@
 package com.healingplanet.ai.retrieval;
 
+import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,7 +22,16 @@ import java.util.Set;
  */
 @Component
 public class EvidenceSelector {
-    private static final int MIXED_SOURCE_COMMUNITY_LIMIT = 2;
+    private final RagProperties properties;
+
+    public EvidenceSelector() {
+        this(new RagProperties());
+    }
+
+    @Autowired
+    public EvidenceSelector(RagProperties properties) {
+        this.properties = properties;
+    }
 
     public Selection select(RagQuery query, List<Evidence> ranked, int maxEvidenceItems,
                             List<String> canonicalPlantIds) {
@@ -52,7 +63,7 @@ public class EvidenceSelector {
         if (!state.mixedSource()) return;
         ranked.stream().filter(this::isPlant).findFirst()
                 .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
-        int communityLimit = Math.min(MIXED_SOURCE_COMMUNITY_LIMIT, Math.max(0, state.capacity() - 1));
+        int communityLimit = Math.min(mixedSourceCommunityLimit(), Math.max(0, state.capacity() - 1));
         for (Evidence evidence : ranked) {
             if (state.communitySourceCount() >= communityLimit) break;
             if (isCommunity(evidence)) {
@@ -116,6 +127,10 @@ public class EvidenceSelector {
         return value instanceof Boolean bool ? bool : defaultValue;
     }
 
+    private int mixedSourceCommunityLimit() {
+        return Math.max(0, properties.getEvidenceSelector().getMixedSourceCommunityLimit());
+    }
+
     private boolean isPlant(Evidence evidence) {
         return evidence.type() == EvidenceType.CARE_GUIDE;
     }
@@ -160,7 +175,7 @@ public class EvidenceSelector {
             if (logicalGroups.contains(logicalGroup(evidence))) return false;
             return !mixedSource || !isCommunity(evidence)
                     || !communitySourceIds.contains(sourceKey(evidence))
-                    && communitySourceIds.size() < Math.min(MIXED_SOURCE_COMMUNITY_LIMIT, Math.max(0, capacity - 1));
+                    && communitySourceIds.size() < Math.min(mixedSourceCommunityLimit(), Math.max(0, capacity - 1));
         }
 
         private String logicalGroup(Evidence evidence) {

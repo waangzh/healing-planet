@@ -28,7 +28,7 @@ spring:
       chat:
         options:
           model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}
-          temperature: 0.1
+          temperature: ${LLM_TEMPERATURE:0.1}
       embedding:
         base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn}
         api-key: ${EMBEDDING_API_KEY:not-required}
@@ -46,10 +46,22 @@ management:
 
 app:
   rag:
+    # 消融组合：
+    # BM25 Only = BM25_ONLY + reranker/source-aware-ranking/evidence-selector 均关闭
+    # Dense Only = DENSE_ONLY + reranker/source-aware-ranking/evidence-selector 均关闭
+    # Dense + BM25 + RRF = HYBRID_RRF + 上述三个后处理阶段均关闭
+    # 完整方案 = HYBRID_RRF + 上述三个后处理阶段均开启
+    retrieval-mode: ${RAG_RETRIEVAL_MODE:HYBRID_RRF} # BM25_ONLY | DENSE_ONLY | HYBRID_RRF
     dense-top-k: ${RAG_DENSE_TOP_K:30}
     sparse-top-k: ${RAG_SPARSE_TOP_K:30}
     final-top-k: ${RAG_FINAL_TOP_K:6}
     similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.25}
+    rrf-k: ${RAG_RRF_K:60}
+    bm25:
+      k1: ${RAG_BM25_K1:1.2}
+      b: ${RAG_BM25_B:0.75}
+      min-ngram: ${RAG_BM25_MIN_NGRAM:1}
+      max-ngram: ${RAG_BM25_MAX_NGRAM:3}
     data-directory: ${RAG_DATA_DIRECTORY:data/rag}
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     qdrant:
@@ -82,6 +94,30 @@ app:
       path: ${RERANKER_PATH:/v1/rerank}
       api-key: ${RERANKER_API_KEY:}
       model: ${RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
+      candidate-top-k: ${RERANKER_CANDIDATE_TOP_K:0} # 0 表示重排全部融合候选
+    source-aware-ranking:
+      enabled: ${RAG_SOURCE_AWARE_RANKING_ENABLED:true}
+      rrf-normalization-factor: ${RAG_RRF_NORMALIZATION_FACTOR:31}
+      dense-weight: ${RAG_DENSE_WEIGHT:0.55}
+      rrf-weight: ${RAG_RRF_WEIGHT:0.45}
+      plant-semantic-weight: ${RAG_PLANT_SEMANTIC_WEIGHT:0.70}
+      plant-trust-weight: ${RAG_PLANT_TRUST_WEIGHT:0.20}
+      plant-match-weight: ${RAG_PLANT_MATCH_WEIGHT:0.10}
+      community-semantic-weight: ${RAG_COMMUNITY_SEMANTIC_WEIGHT:0.62}
+      community-trust-weight: ${RAG_COMMUNITY_TRUST_WEIGHT:0.15}
+      community-quality-weight: ${RAG_COMMUNITY_QUALITY_WEIGHT:0.13}
+      community-recency-weight: ${RAG_COMMUNITY_RECENCY_WEIGHT:0.05}
+      community-plant-match-weight: ${RAG_COMMUNITY_PLANT_MATCH_WEIGHT:0.05}
+      community-essence-weight: ${RAG_COMMUNITY_ESSENCE_WEIGHT:0.20}
+      community-engagement-weight: ${RAG_COMMUNITY_ENGAGEMENT_WEIGHT:0.80}
+      collect-weight: ${RAG_COMMUNITY_COLLECT_WEIGHT:2.0}
+      comment-weight: ${RAG_COMMUNITY_COMMENT_WEIGHT:1.5}
+      view-weight: ${RAG_COMMUNITY_VIEW_WEIGHT:0.05}
+      engagement-normalization: ${RAG_COMMUNITY_ENGAGEMENT_NORMALIZATION:1000}
+      recency-decay-days: ${RAG_COMMUNITY_RECENCY_DECAY_DAYS:365}
+    evidence-selector:
+      enabled: ${RAG_EVIDENCE_SELECTOR_ENABLED:true}
+      mixed-source-community-limit: ${RAG_MIXED_SOURCE_COMMUNITY_LIMIT:2}
     plant-state:
       base-url: ${PLANT_STATE_BASE_URL:http://localhost:8070}
       api-key: ${PLANT_STATE_API_KEY:}

@@ -285,6 +285,61 @@ class HybridEvidenceRetrieverTest {
         assertThat(result.retrievalTrace().selected()).hasSize(3);
     }
 
+    @Test
+    void bm25OnlyShouldSkipDenseSearch() {
+        RagProperties properties = baselineProperties(RagProperties.RetrievalMode.BM25_ONLY);
+        retriever = retriever(properties);
+        RagQuery query = new RagQuery("绿萝光照", null, null, null,
+                null, List.of(), Map.of("includeCommunity", false));
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+        when(sparseIndex.search(KnowledgeSource.PLANT, query.query(), properties.getSparseTopK()))
+                .thenReturn(List.of(new SparseIndexService.SparseHit(
+                        new KnowledgeDocumentMapper().fromSpring(document("bm25", "LIGHT"), KnowledgeSource.PLANT),
+                        3.2)));
+
+        var result = retriever.retrieve(query);
+
+        assertThat(result).extracting(com.healingplanet.ai.domain.Evidence::id).containsExactly("bm25");
+        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
+    }
+
+    @Test
+    void denseOnlyShouldSkipBm25Search() {
+        RagProperties properties = baselineProperties(RagProperties.RetrievalMode.DENSE_ONLY);
+        retriever = retriever(properties);
+        RagQuery query = new RagQuery("绿萝光照", null, null, null,
+                null, List.of(), Map.of("includeCommunity", false));
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+        when(plantStore.similaritySearch(any(SearchRequest.class)))
+                .thenReturn(List.of(document("dense", "LIGHT")));
+
+        var result = retriever.retrieve(query);
+
+        assertThat(result).extracting(com.healingplanet.ai.domain.Evidence::id).containsExactly("dense");
+        verify(sparseIndex, never()).search(any(), any(), anyInt());
+    }
+
+    private RagProperties baselineProperties(RagProperties.RetrievalMode mode) {
+        RagProperties properties = new RagProperties();
+        properties.setRetrievalMode(mode);
+        properties.getReranker().setEnabled(false);
+        properties.getSourceAwareRanking().setEnabled(false);
+        properties.getEvidenceSelector().setEnabled(false);
+        return properties;
+    }
+
+    private HybridEvidenceRetriever retriever(RagProperties properties) {
+        return new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
+                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(properties), entityResolver,
+                new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+    }
+
     private org.springframework.ai.document.Document document(String id, String knowledgeType) {
         return documentForPlant(id, "1", "绿萝", knowledgeType);
     }
