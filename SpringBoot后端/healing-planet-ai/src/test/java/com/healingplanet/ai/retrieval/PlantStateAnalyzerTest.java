@@ -44,8 +44,29 @@ class PlantStateAnalyzerTest {
         var evidence = analyzer.analyze(state);
 
         assertThat(evidence.get(0).content())
+                .contains("温度配置范围：18.00℃ - 30.00℃")
+                .contains("空气湿度配置范围：40.00% - 70.00%")
                 .contains("土壤湿度配置范围：30.00% - 70.00%")
+                .contains("光照配置范围：1000.00Lux - 10000.00Lux")
+                .contains("CO₂ 配置范围：300.00ppm - 1000.00ppm")
                 .contains("当前读数均未超出已配置阈值");
+    }
+
+    @Test
+    void shouldNotTreatUnconfiguredThresholdsAsNoViolation() {
+        var current = new PlantState.SensorMetrics(26d, 50d, 45d, 5000d, 420d);
+        var thresholds = new PlantState.SensorThresholds(null, null, null, null,
+                null, null, null, null, null, null);
+        var state = new PlantState(110L, "1", "绿萝", 15L, LocalDateTime.of(2026, 8, 17, 9, 59),
+                current, null, null, thresholds);
+
+        var analyzer = new PlantStateAnalyzer(Clock.fixed(Instant.parse("2026-08-17T02:00:00Z"), ZoneOffset.UTC));
+        var evidence = analyzer.analyze(state);
+
+        assertThat(evidence.get(0).content())
+                .contains("温度配置范围：未配置", "光照配置范围：未配置")
+                .contains("当前状态未配置传感器阈值，无法判断读数是否越界")
+                .doesNotContain("当前读数均未超出已配置阈值");
     }
 
     @Test

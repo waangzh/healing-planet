@@ -60,18 +60,27 @@ public class PlantStateAnalyzer {
 
     private String liveContent(PlantState state, List<String> violations) {
         PlantState.SensorMetrics current = state.current();
+        PlantState.SensorThresholds thresholds = state.thresholds();
         String freshness = state.observedAt() == null ? "未知" : state.observedAt().toString();
         String freshnessStatus = isStale(state.observedAt()) ? "已超过30分钟，不能视为实时读数" : "30分钟内";
-        return "植物：%s\n数据采集时间：%s\n数据时效：%s\n当前温度：%s ℃\n当前空气湿度：%s %%\n当前土壤湿度：%s %%\n土壤湿度配置范围：%s\n当前光照：%s Lux\n当前 CO₂：%s ppm\n阈值判断：%s"
+        return "植物：%s\n数据采集时间：%s\n数据时效：%s\n当前温度：%s ℃\n温度配置范围：%s\n当前空气湿度：%s %%\n空气湿度配置范围：%s\n当前土壤湿度：%s %%\n土壤湿度配置范围：%s\n当前光照：%s Lux\n光照配置范围：%s\n当前 CO₂：%s ppm\nCO₂ 配置范围：%s\n阈值判断：%s"
                 .formatted(blank(state.plantName()), freshness, freshnessStatus,
                         value(current == null ? null : current.temperature()),
+                        thresholdRange(thresholds == null ? null : thresholds.temperatureMin(),
+                                thresholds == null ? null : thresholds.temperatureMax(), "℃"),
                         value(current == null ? null : current.humidity()),
+                        thresholdRange(thresholds == null ? null : thresholds.humidityMin(),
+                                thresholds == null ? null : thresholds.humidityMax(), "%"),
                         value(current == null ? null : current.soilMoisture()),
-                        thresholdRange(state.thresholds() == null ? null : state.thresholds().soilMoistureMin(),
-                                state.thresholds() == null ? null : state.thresholds().soilMoistureMax(), "%"),
+                        thresholdRange(thresholds == null ? null : thresholds.soilMoistureMin(),
+                                thresholds == null ? null : thresholds.soilMoistureMax(), "%"),
                         value(current == null ? null : current.lightIntensity()),
+                        thresholdRange(thresholds == null ? null : thresholds.lightIntensityMin(),
+                                thresholds == null ? null : thresholds.lightIntensityMax(), "Lux"),
                         value(current == null ? null : current.co2()),
-                        violations.isEmpty() ? "当前读数均未超出已配置阈值" : String.join("；", violations));
+                        thresholdRange(thresholds == null ? null : thresholds.co2Min(),
+                                thresholds == null ? null : thresholds.co2Max(), "ppm"),
+                        thresholdAssessment(current, thresholds, violations));
     }
 
     private boolean isStale(java.time.LocalDateTime observedAt) {
@@ -111,6 +120,31 @@ public class PlantStateAnalyzer {
         if (value == null) return;
         if (min != null && value < min) result.add(name + "低于阈值（" + value(value) + unit + " < " + value(min) + unit + "）");
         else if (max != null && value > max) result.add(name + "高于阈值（" + value(value) + unit + " > " + value(max) + unit + "）");
+    }
+
+    private String thresholdAssessment(PlantState.SensorMetrics current, PlantState.SensorThresholds thresholds,
+                                       List<String> violations) {
+        if (!hasConfiguredThreshold(thresholds)) return "当前状态未配置传感器阈值，无法判断读数是否越界";
+        if (!violations.isEmpty()) return String.join("；", violations);
+        if (!hasComparableReading(current, thresholds)) return "已配置传感器阈值，但当前没有可比较的读数";
+        return "当前读数均未超出已配置阈值";
+    }
+
+    private boolean hasConfiguredThreshold(PlantState.SensorThresholds value) {
+        return value != null && (value.temperatureMin() != null || value.temperatureMax() != null
+                || value.humidityMin() != null || value.humidityMax() != null
+                || value.soilMoistureMin() != null || value.soilMoistureMax() != null
+                || value.lightIntensityMin() != null || value.lightIntensityMax() != null
+                || value.co2Min() != null || value.co2Max() != null);
+    }
+
+    private boolean hasComparableReading(PlantState.SensorMetrics current, PlantState.SensorThresholds thresholds) {
+        if (current == null || thresholds == null) return false;
+        return current.temperature() != null && (thresholds.temperatureMin() != null || thresholds.temperatureMax() != null)
+                || current.humidity() != null && (thresholds.humidityMin() != null || thresholds.humidityMax() != null)
+                || current.soilMoisture() != null && (thresholds.soilMoistureMin() != null || thresholds.soilMoistureMax() != null)
+                || current.lightIntensity() != null && (thresholds.lightIntensityMin() != null || thresholds.lightIntensityMax() != null)
+                || current.co2() != null && (thresholds.co2Min() != null || thresholds.co2Max() != null);
     }
 
     private int samples(PlantState.SensorWindow value) {
