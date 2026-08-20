@@ -48,7 +48,7 @@ class HybridEvidenceRetrieverTest {
 
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), new RagProperties());
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), new RagProperties());
     }
 
     @Test
@@ -133,7 +133,7 @@ class HybridEvidenceRetrieverTest {
         properties.getEval().setRetrievalTraceEnabled(true);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝光照和社区经验", null, null, null,
@@ -161,7 +161,7 @@ class HybridEvidenceRetrieverTest {
         properties.getEval().setRetrievalTraceEnabled(true);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝需要土壤吗？每周如何补水？", null, null, null,
@@ -190,7 +190,7 @@ class HybridEvidenceRetrieverTest {
         properties.getEval().setRetrievalTraceEnabled(true);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "20", List.of("20", "21"),
                 Set.of("红掌", "白掌"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
@@ -215,7 +215,7 @@ class HybridEvidenceRetrieverTest {
         properties.getEval().setRetrievalTraceEnabled(true);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝需要什么光照？", null, null, null,
@@ -242,7 +242,8 @@ class HybridEvidenceRetrieverTest {
                 .containsExactly("dense-1", "sparse-1");
         assertThat(trace.rerankAfter()).extracting(item -> item.id())
                 .containsExactly("sparse-1", "dense-1");
-        assertThat(trace.selected()).allMatch(item -> item.reason().equals("GLOBAL_RANKING"));
+        assertThat(trace.selected()).extracting(item -> item.reason())
+                .containsExactly("TOPIC_COVERAGE", "GLOBAL_RANKING");
         assertThat(trace.stages()).extracting(item -> item.stage()).contains(
                 "entity_resolve", "dense_search", "sparse_search", "rrf_fusion",
                 "knowledge_type_filter", "rerank", "final_rank", "knowledge_total");
@@ -254,7 +255,7 @@ class HybridEvidenceRetrieverTest {
         properties.getEval().setRetrievalTraceEnabled(true);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1916826110432137218", Set.of("白掌"));
         RagQuery query = new RagQuery("白掌正式浇水要求和社区经验有什么区别？", null, null, null,

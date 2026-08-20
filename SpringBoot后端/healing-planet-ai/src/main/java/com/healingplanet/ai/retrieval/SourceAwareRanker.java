@@ -15,13 +15,12 @@ import java.util.Map;
 @Component
 public class SourceAwareRanker {
     public List<Evidence> rank(RagQuery query, List<RetrievalCandidate> candidates,
-                               Map<String, Double> rerankScores, int limit) {
+                               Map<String, Double> rerankScores) {
         // Candidate relevance has already been gated by retrieval. Reranking should
         // change priority without applying another score-distribution-dependent cutoff.
         return candidates.stream()
                 .map(candidate -> toEvidence(query, candidate, rerankScores.get(candidate.document().id())))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
-                .limit(limit)
                 .toList();
     }
 

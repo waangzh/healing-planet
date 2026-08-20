@@ -17,7 +17,7 @@ class SourceAwareRankerTest {
     private final SourceAwareRanker ranker = new SourceAwareRanker();
 
     @Test
-    void shouldRerankAndFillLimitWithoutRelativeScoreCutoff() {
+    void shouldReturnAllCandidatesInRerankedOrderWithoutApplyingSelectionLimit() {
         List<RetrievalCandidate> candidates = List.of(
                 candidate("strong"), candidate("medium"), candidate("tail"), candidate("last"));
         Map<String, Double> rerankScores = Map.of(
@@ -26,15 +26,15 @@ class SourceAwareRankerTest {
                 "tail", 0.5,
                 "last", 0.2);
 
-        List<Evidence> result = ranker.rank(RagQuery.of("光照"), candidates, rerankScores, 3);
+        List<Evidence> result = ranker.rank(RagQuery.of("光照"), candidates, rerankScores);
 
-        assertThat(result).extracting(Evidence::id).containsExactly("strong", "medium", "tail");
+        assertThat(result).extracting(Evidence::id).containsExactly("strong", "medium", "tail", "last");
     }
 
     @Test
     void shouldKeepBestAvailableEvidenceBelowOldMinimumScore() {
         List<Evidence> result = ranker.rank(RagQuery.of("光照"),
-                List.of(candidate("weak")), Map.of("weak", 0.4), 6);
+                List.of(candidate("weak")), Map.of("weak", 0.4));
 
         assertThat(result).extracting(Evidence::id).containsExactly("weak");
     }
@@ -48,7 +48,7 @@ class SourceAwareRankerTest {
                 "community", 0.8);
 
         List<Evidence> result = ranker.rank(RagQuery.of("绿萝官方建议，社区经验怎么做？"),
-                candidates, rerankScores, 6);
+                candidates, rerankScores);
 
         assertThat(result).extracting(Evidence::id).containsExactly("guide", "community");
     }
@@ -63,7 +63,7 @@ class SourceAwareRankerTest {
                 "irrelevant", 0.4);
 
         List<Evidence> result = ranker.rank(RagQuery.of("绿萝官方建议，社区经验怎么做？"),
-                candidates, rerankScores, 6);
+                candidates, rerankScores);
 
         assertThat(result).extracting(Evidence::id).containsExactly("guide", "relevant", "irrelevant");
     }
