@@ -75,7 +75,9 @@ class GenerationPromptBuilderTest {
         assertThat(prompt)
                 .contains("正式指南与社区经验的混合问题", "分别以“正式指南”和“社区经验”陈述")
                 .contains("两类证据冲突时，以正式指南为准")
-                .contains("保留这条最关键的具体表现");
+                .contains("保留这条最关键的具体表现")
+                .contains("“正式指南”部分只能使用正式养护证据")
+                .contains("不得把社区证据补入或改写成正式指南");
     }
 
     @Test
@@ -85,6 +87,16 @@ class GenerationPromptBuilderTest {
         assertThat(prompt)
                 .contains("15℃低于指南下限18℃")
                 .contains("不得继续推导植物特性、原因、长期影响或处理建议");
+    }
+
+    @Test
+    void allIntentsShouldForbidStrengtheningCausalityAndScope() {
+        String prompt = builder.build(decision(true, false, false, QueryIntent.GENERAL_CARE));
+
+        assertThat(prompt)
+                .contains("严格保持证据原本的语义强度")
+                .contains("不得把“可能、容易、常见、可、有助于、倾向于”等表述改写成“会、必然、直接导致、一定、适用于所有情况”等更强结论")
+                .contains("不得扩大因果和适用范围");
     }
 
     private QueryRouter.RoutingDecision decision(boolean knowledge, boolean community, boolean state,

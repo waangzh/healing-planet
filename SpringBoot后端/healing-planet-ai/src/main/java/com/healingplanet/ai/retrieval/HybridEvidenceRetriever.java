@@ -22,6 +22,7 @@ import java.util.Set;
 
 @Service
 public class HybridEvidenceRetriever implements EvidenceRetriever {
+    private static final int MIXED_SOURCE_COMMUNITY_LIMIT = 2;
 
     private final VectorStore plantStore;
     private final VectorStore communityStore;
@@ -121,7 +122,9 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         global.forEach(evidence -> globalReasons.put(evidence.id(), coverage.sourceRetainedIds().contains(evidence.id())
                 ? "SOURCE_RETENTION" : "GLOBAL_RANKING"));
         if (entity.kind() != PlantEntityResolver.ResolutionKind.KNOWN
-                || entity.canonicalPlantIds().size() < 2) return new SelectionResult(global, globalReasons);
+                || entity.canonicalPlantIds().size() < 2) {
+            return finalizeSelection(query, global, globalReasons, finalTopK);
+        }
 
         int perEntity = Math.max(1, finalTopK / entity.canonicalPlantIds().size());
         Map<String, Evidence> selected = new LinkedHashMap<>();
@@ -136,12 +139,10 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             });
         }
         for (Evidence evidence : global) {
-            if (selected.size() >= finalTopK) break;
             selected.putIfAbsent(evidence.id(), evidence);
             reasons.putIfAbsent(evidence.id(), globalReasons.get(evidence.id()));
         }
-        List<Evidence> result = selected.values().stream().limit(finalTopK).toList();
-        return new SelectionResult(result, reasons);
+        return finalizeSelection(query, List.copyOf(selected.values()), reasons, finalTopK);
     }
 
     private List<RetrievalCandidate> filterKnowledgeType(RagQuery query, List<RetrievalCandidate> candidates) {
@@ -192,6 +193,44 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             if (selected.size() < finalTopK) selected.putIfAbsent(evidence.id(), evidence);
         });
         return new CoverageResult(selected.values().stream().limit(finalTopK).toList(), sourceRetainedIds);
+    }
+
+    private SelectionResult finalizeSelection(RagQuery query, List<Evidence> evidence,
+                                              Map<String, String> reasons, int finalTopK) {
+        if (!isMixedSourceQuery(query)) {
+            return new SelectionResult(evidence.stream().limit(finalTopK).toList(), reasons);
+        }
+        List<Evidence> limited = limitCommunityEvidence(evidence, finalTopK);
+        Map<String, String> limitedReasons = new LinkedHashMap<>();
+        limited.forEach(item -> limitedReasons.put(item.id(),
+                reasons.getOrDefault(item.id(), "GLOBAL_RANKING")));
+        return new SelectionResult(limited, limitedReasons);
+    }
+
+    private boolean isMixedSourceQuery(RagQuery query) {
+        return booleanContext(query, "includePlantKnowledge", query.intent() != QueryIntent.COMMUNITY_SEARCH)
+                && booleanContext(query, "includeCommunity", true);
+    }
+
+    private List<Evidence> limitCommunityEvidence(List<Evidence> evidence, int finalTopK) {
+        int communityLimit = Math.min(MIXED_SOURCE_COMMUNITY_LIMIT, Math.max(0, finalTopK - 1));
+        List<Evidence> result = new ArrayList<>();
+        Set<String> communitySourceIds = new HashSet<>();
+        int communityCount = 0;
+        for (Evidence item : evidence) {
+            if (item.type() != com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST) {
+                result.add(item);
+            } else if (communityCount < communityLimit) {
+                String sourceKey = item.sourceId() == null || item.sourceId().isBlank()
+                        ? item.id() : item.sourceId();
+                if (communitySourceIds.add(sourceKey)) {
+                    result.add(item);
+                    communityCount++;
+                }
+            }
+            if (result.size() >= finalTopK) break;
+        }
+        return result;
     }
 
     private boolean booleanContext(RagQuery query, String key, boolean defaultValue) {

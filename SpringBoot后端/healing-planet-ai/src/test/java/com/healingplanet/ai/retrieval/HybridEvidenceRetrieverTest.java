@@ -2,6 +2,7 @@ package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeSource;
+import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -247,6 +248,42 @@ class HybridEvidenceRetrieverTest {
                 "knowledge_type_filter", "rerank", "final_rank", "knowledge_total");
     }
 
+    @Test
+    void mixedSourceQuestionsShouldKeepAtMostTwoCommunitySources() {
+        RagProperties properties = new RagProperties();
+        properties.getEval().setRetrievalTraceEnabled(true);
+        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
+                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
+                new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.KNOWN, "1916826110432137218", Set.of("白掌"));
+        RagQuery query = new RagQuery("白掌正式浇水要求和社区经验有什么区别？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of(
+                "includePlantKnowledge", true, "includeCommunity", true,
+                "requiredKnowledgeType", "WATERING"));
+        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                documentForPlant("plant-guide", "1916826110432137218", "白掌", "WATERING")));
+        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
+                communityDocument("community-a-1", "source-a"),
+                communityDocument("community-a-2", "source-a"),
+                communityDocument("community-b-1", "source-b"),
+                communityDocument("community-c-1", "source-c")));
+
+        var result = retriever.retrieveWithDiagnostics(query);
+
+        List<com.healingplanet.ai.domain.Evidence> communityEvidence = result.evidence().stream()
+                .filter(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST)
+                .toList();
+        assertThat(communityEvidence).hasSize(2);
+        assertThat(communityEvidence).extracting(com.healingplanet.ai.domain.Evidence::sourceId)
+                .containsExactly("source-a", "source-b");
+        assertThat(result.evidence()).extracting(com.healingplanet.ai.domain.Evidence::type)
+                .contains(com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE);
+        assertThat(result.retrievalTrace().selected()).hasSize(3);
+    }
+
     private org.springframework.ai.document.Document document(String id, String knowledgeType) {
         return documentForPlant(id, "1", "绿萝", knowledgeType);
     }
@@ -267,10 +304,14 @@ class HybridEvidenceRetrieverTest {
     }
 
     private org.springframework.ai.document.Document communityDocument(String id) {
+        return communityDocument(id, id);
+    }
+
+    private org.springframework.ai.document.Document communityDocument(String id, String sourceId) {
         return org.springframework.ai.document.Document.builder().id(id).text(id)
                 .metadata("chunkId", id)
                 .metadata("knowledgeType", "COMMUNITY_EXPERIENCE")
-                .metadata("sourceId", id)
+                .metadata("sourceId", sourceId)
                 .metadata("title", id)
                 .metadata("plantName", "绿萝")
                 .metadata("trustScore", 1d)
