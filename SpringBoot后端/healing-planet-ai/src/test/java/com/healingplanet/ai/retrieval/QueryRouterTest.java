@@ -138,10 +138,109 @@ class QueryRouterTest {
     }
 
     @Test
+    void mixedSourceQuestionShouldUseClauseLevelSourcePlanning() {
+        var result = router.route(RagQuery.of("绿萝怎么养？大家有什么经验？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
+        assertThat(result.state()).isFalse();
+    }
+
+    @Test
+    void commaSeparatedMixedSourceQuestionShouldUseBothSources() {
+        var result = router.route(RagQuery.of("绿萝怎么养，大家有什么经验？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
+    void variedCareAndCommunityClausesShouldUseBothSources() {
+        for (String query : List.of(
+                "绿萝多久浇一次水，大家一般怎么浇？",
+                "白掌黄叶怎么处理，有没有网友遇到过？",
+                "龟背竹湿度要求是多少？大家会开加湿器吗？",
+                "虎尾兰能晒太阳吗？花友一般放哪里？")) {
+            var result = router.route(RagQuery.of(query));
+
+            assertThat(result.knowledge()).as(query).isTrue();
+            assertThat(result.community()).as(query).isTrue();
+        }
+    }
+
+    @Test
+    void pureCommunityQuestionShouldNotAutoUpgradeToFormalKnowledge() {
+        var result = router.route(RagQuery.of("大家养绿萝有什么经验？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
     void negatedCommunityPhraseShouldNotSwitchToCommunityIntent() {
         var result = router.route(RagQuery.of("芦荟多久浇一次水？不要混入虎尾兰的耐旱经验。"));
 
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+    }
+
+    @Test
+    void negatedCommunityFollowUpShouldKeepKnowledgeOnly() {
+        var result = router.route(RagQuery.of("绿萝怎么养？不要参考网友经验。"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+    }
+
+    @Test
+    void communityOnlyPreferenceShouldDisableFormalKnowledge() {
+        var result = router.route(RagQuery.of("只想看看花友经验，不需要官方指南。"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
+    void communityOnlyPreferenceShouldOverrideImplicitCareRequest() {
+        var result = router.route(RagQuery.of("绿萝怎么养？只看花友经验。"));
+
+        assertThat(result.knowledge()).isFalse();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
+    void knowledgeOnlyPreferenceShouldOverrideCommunityRequest() {
+        var result = router.route(RagQuery.of("绿萝怎么养？只看官方指南，不要网友经验。"));
+
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isFalse();
+    }
+
+    @Test
+    void explicitCommunityIntentShouldStillAllowMixedSources() {
+        var query = new RagQuery("绿萝怎么养？大家有什么经验？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var result = router.route(query);
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.knowledge()).isTrue();
+        assertThat(result.community()).isTrue();
+    }
+
+    @Test
+    void explicitCommunityIntentShouldRespectCommunityExclusion() {
+        var query = new RagQuery("绿萝怎么养？不要参考网友经验。", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
+
+        var result = router.route(query);
+
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isFalse();
     }

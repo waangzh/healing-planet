@@ -64,7 +64,28 @@ class EvidenceSelectorTest {
         assertThat(result.evidence()).extracting(Evidence::id)
                 .containsExactly("guide", "post-a-1", "post-b");
         assertThat(result.reasons()).containsEntry("guide", "SOURCE_RETENTION")
-                .containsEntry("post-a-1", "SOURCE_RETENTION");
+                .containsEntry("post-a-1", "SOURCE_RETENTION")
+                .containsEntry("post-b", "SOURCE_RETENTION");
+    }
+
+    @Test
+    void shouldReserveTwoCommunitySourcesBeforeHigherRankedPlantTopicsFillCapacity() {
+        RagQuery query = new RagQuery("绿萝怎么养？大家有什么经验？", null, null, null,
+                QueryIntent.COMMUNITY_SEARCH, List.of(),
+                Map.of("includePlantKnowledge", true, "includeCommunity", true));
+
+        EvidenceSelector.Selection result = selector.select(query, List.of(
+                guide("general", "plant-1", "GENERAL_CARE", 0.99),
+                guide("temperature", "plant-1", "TEMPERATURE", 0.98),
+                guide("light", "plant-1", "LIGHT", 0.97),
+                guide("watering", "plant-1", "WATERING", 0.96),
+                community("post-a", "post-a", 0.80),
+                community("post-b", "post-b", 0.79)), 4, List.of("plant-1"));
+
+        assertThat(result.evidence()).extracting(Evidence::id)
+                .containsExactly("general", "temperature", "post-a", "post-b");
+        assertThat(result.evidence()).filteredOn(evidence -> evidence.type() == EvidenceType.COMMUNITY_POST)
+                .extracting(Evidence::sourceId).containsExactly("post-a", "post-b");
     }
 
     private Evidence guide(String id, String plantId, String knowledgeType, double score) {

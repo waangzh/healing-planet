@@ -52,9 +52,12 @@ public class EvidenceSelector {
         if (!state.mixedSource()) return;
         ranked.stream().filter(this::isPlant).findFirst()
                 .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
-        if (state.capacity() > 1) {
-            ranked.stream().filter(this::isCommunity).findFirst()
-                    .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
+        int communityLimit = Math.min(MIXED_SOURCE_COMMUNITY_LIMIT, Math.max(0, state.capacity() - 1));
+        for (Evidence evidence : ranked) {
+            if (state.communitySourceCount() >= communityLimit) break;
+            if (isCommunity(evidence)) {
+                state.add(evidence, "SOURCE_RETENTION");
+            }
         }
     }
 
@@ -170,6 +173,7 @@ public class EvidenceSelector {
 
         private int capacity() { return capacity; }
         private boolean mixedSource() { return mixedSource; }
+        private int communitySourceCount() { return communitySourceIds.size(); }
         private Map<String, Evidence> items() { return items; }
         private Map<String, String> reasons() { return reasons; }
     }

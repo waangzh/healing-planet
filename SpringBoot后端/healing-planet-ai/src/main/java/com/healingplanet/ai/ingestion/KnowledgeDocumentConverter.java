@@ -21,7 +21,7 @@ public class KnowledgeDocumentConverter {
         addPlantTopic(documents, plant, "TEMPERATURE", "温度", plant.temperaturePreference());
         addPlantTopic(documents, plant, "HUMIDITY", "湿度", plant.humidityPreference());
         addPlantTopic(documents, plant, "FERTILIZING", "施肥", plant.fertilizingTips());
-        for (String chunk : semanticChunks(plant.detailAdvice(), 900)) {
+        for (String chunk : semanticChunks(plant.detailAdvice(), 300)) {
             addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护", chunk);
         }
         return documents;

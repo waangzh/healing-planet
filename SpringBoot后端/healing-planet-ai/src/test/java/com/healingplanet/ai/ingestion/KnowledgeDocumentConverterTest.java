@@ -42,4 +42,22 @@ class KnowledgeDocumentConverterTest {
             assertThat(document.trustScore()).isEqualTo(0.75);
         });
     }
+
+    @Test
+    void shouldSplitLongDetailAdviceIntoGeneralCareChunksOfAtMost300Characters() {
+        String detailAdvice = "第一段综合养护建议。".repeat(20) + "\n\n"
+                + "第二段综合养护建议。".repeat(20) + "\n\n"
+                + "第三段综合养护建议。".repeat(20);
+        var plant = new KnowledgeRepository.PlantRow("plant-1", "Epipremnum aureum", "绿萝",
+                "明亮散射光", "表土干后浇透", "15-30℃", "较高湿度", "生长期薄肥", detailAdvice);
+
+        var generalCare = converter.fromPlant(plant).stream()
+                .filter(document -> document.knowledgeType().equals("GENERAL_CARE"))
+                .toList();
+
+        assertThat(generalCare).hasSize(3).allSatisfy(document -> {
+            assertThat(document.sourceId()).isEqualTo("plant-1");
+            assertThat(document.content()).hasSizeLessThanOrEqualTo(360);
+        });
+    }
 }
