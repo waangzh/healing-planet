@@ -27,6 +27,7 @@ import com.healingplanet.ai.retrieval.PlantEntityDisambiguator;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Clock;
+import java.util.Map;
 
 @Configuration
 public class AiConfiguration {
@@ -98,9 +99,19 @@ public class AiConfiguration {
                 .completionsPath(chatProperties.getCompletionsPath())
                 .restClientBuilder(RestClient.builder().requestFactory(requestFactory))
                 .build();
+        String entityModel = entity.getLlmModel();
+        if (entityModel == null || entityModel.isBlank()) {
+            entityModel = chatProperties.getOptions().getModel();
+        }
+        OpenAiChatOptions entityOptions = OpenAiChatOptions.builder()
+                .model(entityModel)
+                .temperature(entity.getLlmTemperature())
+                .maxTokens(entity.getLlmMaxTokens())
+                .extraBody(Map.of("enable_thinking", entity.isLlmEnableThinking()))
+                .build();
         OpenAiChatModel model = OpenAiChatModel.builder()
                 .openAiApi(api)
-                .defaultOptions(OpenAiChatOptions.fromOptions(chatProperties.getOptions()))
+                .defaultOptions(entityOptions)
                 .retryTemplate(RetryTemplate.builder().maxAttempts(1).noBackoff().build())
                 .observationRegistry(observationRegistry)
                 .build();

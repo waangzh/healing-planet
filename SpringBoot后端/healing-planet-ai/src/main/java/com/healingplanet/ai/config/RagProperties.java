@@ -140,6 +140,10 @@ public class RagProperties {
     public static class EntityResolution {
         private int candidateTopK = 5;
         private boolean llmEnabled = true;
+        private String llmModel = "";
+        private double llmTemperature = 0;
+        private int llmMaxTokens = 160;
+        private boolean llmEnableThinking;
         private int llmMaxCandidates = 5;
         private double llmConfidenceThreshold = 0.90;
         private int llmCacheMaxEntries = 256;
@@ -152,6 +156,14 @@ public class RagProperties {
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
         public boolean isLlmEnabled() { return llmEnabled; }
         public void setLlmEnabled(boolean llmEnabled) { this.llmEnabled = llmEnabled; }
+        public String getLlmModel() { return llmModel; }
+        public void setLlmModel(String value) { this.llmModel = value; }
+        public double getLlmTemperature() { return llmTemperature; }
+        public void setLlmTemperature(double value) { this.llmTemperature = value; }
+        public int getLlmMaxTokens() { return llmMaxTokens; }
+        public void setLlmMaxTokens(int value) { this.llmMaxTokens = value; }
+        public boolean isLlmEnableThinking() { return llmEnableThinking; }
+        public void setLlmEnableThinking(boolean value) { this.llmEnableThinking = value; }
         public int getLlmMaxCandidates() { return llmMaxCandidates; }
         public void setLlmMaxCandidates(int llmMaxCandidates) { this.llmMaxCandidates = llmMaxCandidates; }
         public double getLlmConfidenceThreshold() { return llmConfidenceThreshold; }

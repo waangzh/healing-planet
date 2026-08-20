@@ -159,6 +159,8 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
+| `RAG_ENTITY_LLM_MODEL` / `RAG_ENTITY_LLM_TEMPERATURE` / `RAG_ENTITY_LLM_MAX_TOKENS` | 实体消歧专用模型 / 温度 / 最大输出 token | `Qwen/Qwen3.5-4B` / `0.0` / `160` |
+| `RAG_ENTITY_LLM_ENABLE_THINKING` | 是否启用实体消歧模型的推理模式 | `false` |
 | `RAG_ENTITY_LLM_CONNECT_TIMEOUT_MILLIS` / `RAG_ENTITY_LLM_READ_TIMEOUT_MILLIS` | 实体消歧独立连接 / 读取超时；固定单次尝试 | `1000` / `8000` |
 | `RAG_ENTITY_CIRCUIT_FAILURE_THRESHOLD` / `RAG_ENTITY_CIRCUIT_OPEN_MILLIS` | 实体消歧连续失败阈值 / 熔断时长；冷却结束后重新累计失败次数 | `3` / `5000` |
 | `RERANKER_ENABLED` / `RERANKER_MODEL` | 重排序开关与模型 | `false` / `BAAI/bge-reranker-v2-m3` |

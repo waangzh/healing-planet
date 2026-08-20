@@ -65,6 +65,10 @@ app:
     entity-resolution:
       candidate-top-k: ${RAG_ENTITY_CANDIDATE_TOP_K:5}
       llm-enabled: ${RAG_ENTITY_LLM_ENABLED:true}
+      llm-model: ${RAG_ENTITY_LLM_MODEL:Qwen/Qwen3.5-4B}
+      llm-temperature: ${RAG_ENTITY_LLM_TEMPERATURE:0.0}
+      llm-max-tokens: ${RAG_ENTITY_LLM_MAX_TOKENS:160}
+      llm-enable-thinking: ${RAG_ENTITY_LLM_ENABLE_THINKING:false}
       llm-max-candidates: ${RAG_ENTITY_LLM_MAX_CANDIDATES:5}
       llm-confidence-threshold: ${RAG_ENTITY_LLM_CONFIDENCE_THRESHOLD:0.90}
       llm-cache-max-entries: ${RAG_ENTITY_LLM_CACHE_MAX_ENTRIES:256}
