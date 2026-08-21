@@ -59,7 +59,7 @@ public class RagService {
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(request, evidence))
+                chatClient.prompt().system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).call().content());
         return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
     }
@@ -88,7 +88,7 @@ public class RagService {
                     Flux.just(emptyEvidenceAnswer(retrieval)));
         }
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(request, evidence))
+                chatClient.prompt().system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).stream().content());
         return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
     }
@@ -102,6 +102,15 @@ public class RagService {
     }
 
     private String emptyEvidenceAnswer(RetrievalResult retrieval) {
+        if (retrieval.entityResolution() != null
+                && !retrieval.entityResolution().unresolvedMentions().isEmpty()) {
+            String unresolved = String.join("、", retrieval.entityResolution().unresolvedMentions());
+            if (!retrieval.entityResolution().canonicalPlantIds().isEmpty()) {
+                return "当前知识库未收录" + unresolved
+                        + "的可靠信息，无法确认它是否与已识别植物相同；同时没有检索到足够的已收录植物证据。";
+            }
+            return "当前知识库未收录" + unresolved + "的可靠信息，无法完成这个问题。";
+        }
         if (retrieval.entityResolution() != null
                 && retrieval.entityResolution().rejectionReason() != null
                 && isEntityResolutionDependencyFailure(retrieval.entityResolution().rejectionReason())) {

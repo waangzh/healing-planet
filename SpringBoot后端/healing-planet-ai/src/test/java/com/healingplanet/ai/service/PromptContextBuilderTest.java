@@ -38,6 +38,15 @@ class PromptContextBuilderTest {
         assertThat(context).contains("<ENTITY_RESOLUTION>", "蓬莱蕉", "龟背竹", "不得仅因问题和证据的名称不同而拒答");
     }
 
+    @Test
+    void shouldExposeUnresolvedMentionsWithoutTreatingThemAsNonPlants() {
+        String context = new PromptContextBuilder().build(List.of(evidence("g", EvidenceType.CARE_GUIDE, "绿萝浇水")),
+                new EntityResolutionDiagnostics("PARTIAL", "EXACT_NAME", "1", List.of("1"),
+                        1, 0, 1, 1, "comparison_entity_unresolved", List.of(), List.of("常春藤")));
+
+        assertThat(context).contains("部分完成", "常春藤", "未收录不等于它不是植物");
+    }
+
     private Evidence evidence(String id, EvidenceType type, String content) {
         return new Evidence(id, type, id, type.name(), id, content,
                 0.8, null, 1.0, 0.9, Map.of(), Instant.EPOCH);

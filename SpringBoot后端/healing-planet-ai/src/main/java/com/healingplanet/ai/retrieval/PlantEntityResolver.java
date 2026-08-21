@@ -94,6 +94,11 @@ public class PlantEntityResolver {
                             ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
                     1, 0, aliasMatch.candidateCount(), aliasMatch.mention());
         }
+        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.PARTIAL) {
+            return Resolution.partial(aliasMatch.entries(), aliasMatch.unresolvedMentions(), aliasMatch.alias()
+                            ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
+                    1, 0, aliasMatch.candidateCount());
+        }
         if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.CANDIDATES) {
             return resolveAliasCandidates(query.query(), aliasMatch);
         }
@@ -304,7 +309,7 @@ public class PlantEntityResolver {
                 .toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
-    public enum ResolutionKind { GENERIC, KNOWN, AMBIGUOUS, UNKNOWN, OUT_OF_DOMAIN }
+    public enum ResolutionKind { GENERIC, KNOWN, PARTIAL, AMBIGUOUS, UNKNOWN, OUT_OF_DOMAIN }
 
     public enum ResolutionMethod { EXPLICIT_ID, EXACT_NAME, ALIAS, EDIT_DISTANCE, LEXICAL, VECTOR, HYBRID, LLM, NONE }
 
@@ -312,18 +317,23 @@ public class PlantEntityResolver {
                              Set<String> names,
                              ResolutionMethod method, double top1Score, double top2Score,
                              double scoreMargin, int candidateCount, String rejectionReason,
-                             List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations) {
+                             List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations,
+                             List<String> unresolvedMentions) {
+        public boolean hasResolvedEntities() {
+            return !canonicalPlantIds.isEmpty();
+        }
+
         public Resolution(ResolutionKind kind, String canonicalPlantId, Set<String> names) {
             this(kind, canonicalPlantId,
                     canonicalPlantId == null || canonicalPlantId.isBlank() ? List.of() : List.of(canonicalPlantId),
-                    names, ResolutionMethod.NONE, 0, 0, 0, 0, "", List.of());
+                    names, ResolutionMethod.NONE, 0, 0, 0, 0, "", List.of(), List.of());
         }
 
         public Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
                           Set<String> names, ResolutionMethod method, double top1Score, double top2Score,
                           double scoreMargin, int candidateCount, String rejectionReason) {
             this(kind, canonicalPlantId, canonicalPlantIds, names, method, top1Score, top2Score,
-                    scoreMargin, candidateCount, rejectionReason, List.of());
+                    scoreMargin, candidateCount, rejectionReason, List.of(), List.of());
         }
 
         static Resolution generic() {
@@ -348,17 +358,28 @@ public class PlantEntityResolver {
                             matchedAlias, entry.canonicalPlantId(), entry.canonicalPlantName())).toList()
                     : List.of();
             return new Resolution(ResolutionKind.KNOWN, ids.get(0), ids, Set.copyOf(names), method,
-                    top1Score, top2Score, top1Score - top2Score, candidateCount, "", aliasNormalizations);
+                    top1Score, top2Score, top1Score - top2Score, candidateCount, "", aliasNormalizations, List.of());
+        }
+        static Resolution partial(List<PlantCatalogEntry> entries, List<String> unresolved,
+                                  ResolutionMethod method, double top1Score, double top2Score,
+                                  int candidateCount) {
+            List<String> ids = entries.stream().map(PlantCatalogEntry::canonicalPlantId).distinct().toList();
+            Set<String> names = entries.stream().flatMap(entry -> entry.names().stream())
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            return new Resolution(ResolutionKind.PARTIAL, ids.isEmpty() ? "" : ids.get(0), ids,
+                    Set.copyOf(names), method, top1Score, top2Score, top1Score - top2Score,
+                    candidateCount, "comparison_entity_unresolved", List.of(), unresolved);
         }
         public static Resolution forCanonicalPlantId(String canonicalPlantId) {
             return new Resolution(ResolutionKind.KNOWN, canonicalPlantId, List.of(canonicalPlantId), Set.of(),
-                    ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1, "", List.of());
+                    ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1, "", List.of(), List.of());
         }
         public EntityResolutionDiagnostics diagnostics() {
             return new EntityResolutionDiagnostics(kind.name(), method.name(),
                     canonicalPlantId == null || canonicalPlantId.isBlank() ? null : canonicalPlantId,
                     canonicalPlantIds,
-                    top1Score, top2Score, scoreMargin, candidateCount, rejectionReason, aliasNormalizations);
+                    top1Score, top2Score, scoreMargin, candidateCount, rejectionReason, aliasNormalizations,
+                    unresolvedMentions);
         }
         static Resolution ambiguous(double top1Score, double top2Score, int candidateCount, String reason) {
             return rejected(ResolutionKind.AMBIGUOUS, reason, top1Score, top2Score, candidateCount);
@@ -372,7 +393,7 @@ public class PlantEntityResolver {
         private static Resolution rejected(ResolutionKind kind, String reason,
                                            double top1Score, double top2Score, int candidateCount) {
             return new Resolution(kind, "", List.of(), Set.of(), ResolutionMethod.NONE, top1Score, top2Score,
-                    top1Score - top2Score, candidateCount, reason, List.of());
+                    top1Score - top2Score, candidateCount, reason, List.of(), List.of());
         }
     }
 }

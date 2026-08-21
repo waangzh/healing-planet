@@ -283,11 +283,22 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldFallbackToSingleEntityWhenComparisonPartnerIsNotRecognizedPlant() {
+    void shouldRejectComparisonWhenPartnerIsNotRecognizedPlant() {
         var resolution = resolve(RagQuery.of("绿萝和常春藤的浇水方法相同吗？"));
 
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.PARTIAL);
         assertThat(resolution.canonicalPlantIds()).containsExactly("1");
+        assertThat(resolution.unresolvedMentions()).containsExactly("常春藤");
+        assertThat(resolution.rejectionReason()).isEqualTo("comparison_entity_unresolved");
+    }
+
+    @Test
+    void shouldRejectComparisonWhenNeitherOperandIsKnown() {
+        var resolution = resolve(RagQuery.of("常春藤和吊兰的浇水方法相同吗？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(resolution.canonicalPlantIds()).isEmpty();
+        assertThat(resolution.rejectionReason()).isEqualTo("comparison_entities_unresolved");
     }
 
     @Test

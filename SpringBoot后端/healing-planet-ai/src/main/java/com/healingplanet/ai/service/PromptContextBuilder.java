@@ -56,15 +56,23 @@ public class PromptContextBuilder {
     }
 
     private String entityResolutionContext(EntityResolutionDiagnostics entityResolution) {
-        if (entityResolution == null || entityResolution.aliasNormalizations().isEmpty()) return "";
-        String mappings = entityResolution.aliasNormalizations().stream()
-                .map(mapping -> "- 用户名称“%s” → 规范植物“%s”（canonicalPlantId=%s）"
-                        .formatted(mapping.alias(), mapping.canonicalPlantName(), mapping.canonicalPlantId()))
-                .collect(java.util.stream.Collectors.joining("\n"));
-        return """
-                以下别名归一关系由系统实体解析确认，属于可信上下文，不是需要引用的证据：
-                %s
-                上述名称指向同一植物。可使用规范植物名称的证据回答用户，不得仅因问题和证据的名称不同而拒答。
-                """.formatted(mappings);
+        if (entityResolution == null) return "";
+        StringBuilder context = new StringBuilder();
+        if (!entityResolution.aliasNormalizations().isEmpty()) {
+            String mappings = entityResolution.aliasNormalizations().stream()
+                    .map(mapping -> "- 用户名称“%s” → 规范植物“%s”（canonicalPlantId=%s）"
+                            .formatted(mapping.alias(), mapping.canonicalPlantName(), mapping.canonicalPlantId()))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            context.append("以下别名归一关系由系统实体解析确认，属于可信上下文，不是需要引用的证据：\n")
+                    .append(mappings)
+                    .append("\n上述名称指向同一植物。可使用规范植物名称的证据回答用户，不得仅因问题和证据的名称不同而拒答。\n");
+        }
+        if (!entityResolution.unresolvedMentions().isEmpty()) {
+            context.append("实体解析状态为部分完成。以下用户提及未在当前植物目录中可靠匹配：")
+                    .append(String.join("、", entityResolution.unresolvedMentions()))
+                    .append("。\n")
+                    .append("这些提及可能是未收录对象；未收录不等于它不是植物，也不得猜测其对应目录实体。\n");
+        }
+        return context.toString();
     }
 }

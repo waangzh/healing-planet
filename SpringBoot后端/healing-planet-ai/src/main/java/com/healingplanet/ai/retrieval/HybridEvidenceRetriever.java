@@ -103,8 +103,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         boolean includePlant = request.sourcePlan().includeKnowledge();
         boolean includeCommunity = request.sourcePlan().includeCommunity();
         if (includePlant) {
-            if (entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
-                    && entity.canonicalPlantIds().size() > 1) {
+            if (entity.hasResolvedEntities() && entity.canonicalPlantIds().size() > 1) {
                 for (String canonicalPlantId : entity.canonicalPlantIds()) {
                     fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore,
                             PlantEntityResolver.Resolution.forCanonicalPlantId(canonicalPlantId), trace));
@@ -148,7 +147,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             return new SelectionResult(selected, reasons);
         }
         EvidenceSelector.Selection selection = evidenceSelector.select(request, ranked, properties.getFinalTopK(),
-                entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
+                entity.hasResolvedEntities()
                         ? entity.canonicalPlantIds() : List.of());
         return new SelectionResult(selection.evidence(), selection.reasons());
     }
@@ -167,7 +166,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                                     PlantEntityResolver.Resolution entity,
                                                     RetrievalTraceCollector trace) {
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
-        String scope = entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
+        String scope = entity.hasResolvedEntities()
                 ? String.join(",", entity.canonicalPlantIds()) : entity.kind().name();
         List<org.springframework.ai.document.Document> documents = properties.getRetrievalMode().usesDense()
                 ? denseSearch(query, source, store, entity, trace, sourceTag, scope) : List.of();
@@ -206,7 +205,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         SearchRequest.Builder requestBuilder = SearchRequest.builder().query(query)
                 .topK(properties.getDenseTopK())
                 .similarityThreshold(properties.getSimilarityThreshold());
-        if (source == KnowledgeSource.PLANT && entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN) {
+        if (source == KnowledgeSource.PLANT && entity.hasResolvedEntities()) {
             requestBuilder.filterExpression(new FilterExpressionBuilder()
                     .eq("canonicalPlantId", entity.canonicalPlantId()).build());
         }

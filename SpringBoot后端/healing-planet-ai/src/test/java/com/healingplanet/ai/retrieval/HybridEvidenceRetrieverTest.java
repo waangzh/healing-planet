@@ -102,6 +102,26 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
+    void shouldRetrieveResolvedPlantEvidenceWhileKeepingUnresolvedComparisonOperand() {
+        RagQuery query = RagQuery.of("绿萝和常春藤的浇水方法相同吗？");
+        var entity = new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.PARTIAL, "1", List.of("1"), Set.of("绿萝"),
+                PlantEntityResolver.ResolutionMethod.EXACT_NAME, 1, 0, 1, 1,
+                "comparison_entity_unresolved", List.of(), List.of("常春藤"));
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
+        when(entityResolver.matches(any(), any())).thenReturn(true);
+
+        var result = retriever.retrieveWithDiagnostics(query);
+
+        ArgumentCaptor<SearchRequest> request = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore).similaritySearch(request.capture());
+        assertThat(request.getValue().hasFilterExpression()).isTrue();
+        assertThat(request.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "1");
+        assertThat(result.entityResolution().resolutionKind()).isEqualTo("PARTIAL");
+        assertThat(result.entityResolution().unresolvedMentions()).containsExactly("常春藤");
+    }
+
+    @Test
     void shouldStopBeforeSearchingWhenQueryIsOutsidePlantCareDomain() {
         RagQuery query = RagQuery.of("量子纠缠是什么？");
         when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(

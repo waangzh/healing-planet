@@ -1,6 +1,9 @@
 package com.healingplanet.ai.service;
 
 import com.healingplanet.ai.domain.QueryIntent;
+import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
+import com.healingplanet.ai.retrieval.RetrievalRequest;
+import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.retrieval.QueryRouter;
 import org.junit.jupiter.api.Test;
 
@@ -97,6 +100,17 @@ class GenerationPromptBuilderTest {
                 .contains("严格保持证据原本的语义强度")
                 .contains("不得把“可能、容易、常见、可、有助于、倾向于”等表述改写成“会、必然、直接导致、一定、适用于所有情况”等更强结论")
                 .contains("不得扩大因果和适用范围");
+    }
+
+    @Test
+    void partialEntityResolutionShouldForbidCrossEntityInference() {
+        QueryRouter.RoutingDecision routing = decision(true, false, false, QueryIntent.GENERAL_CARE);
+        RetrievalRequest request = RetrievalRequest.from(RagQuery.of("绿萝和常春藤的浇水方法相同吗？"), routing);
+        String prompt = builder.build(request, java.util.List.of(),
+                new EntityResolutionDiagnostics("PARTIAL", "EXACT_NAME", "1", java.util.List.of("1"),
+                        1, 0, 1, 1, "comparison_entity_unresolved", java.util.List.of(), java.util.List.of("常春藤")));
+
+        assertThat(prompt).contains("未收录提及", "无法完成涉及它们的比较", "不得外推给未收录提及");
     }
 
     private QueryRouter.RoutingDecision decision(boolean knowledge, boolean community, boolean state,

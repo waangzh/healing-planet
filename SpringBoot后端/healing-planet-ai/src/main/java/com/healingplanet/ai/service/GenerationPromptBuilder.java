@@ -36,6 +36,19 @@ public class GenerationPromptBuilder {
         return BASE_PROMPT + "\n" + intentPolicy(request.routing(), request.sourcePlan(), evidence);
     }
 
+    public String build(RetrievalRequest request, List<Evidence> evidence,
+                        com.healingplanet.ai.domain.EntityResolutionDiagnostics entityResolution) {
+        String resolutionPolicy = entityResolution == null || entityResolution.unresolvedMentions().isEmpty()
+                ? "" : """
+                        实体解析存在未收录提及：%s。
+                        - 明确说明这些提及没有当前知识库的可靠资料，因此无法完成涉及它们的比较或并列结论。
+                        - 仍可回答已解析植物的相关问题，但必须把结论限定在已解析植物，不得外推给未收录提及；比较问题应先说明无法确认两者是否相同，再给出已解析植物的证据。
+                        - 未收录只表示当前知识库没有可靠资料，不表示该对象不是植物。
+                        """.formatted(String.join("、", entityResolution.unresolvedMentions()));
+        return BASE_PROMPT + "\n" + resolutionPolicy
+                + intentPolicy(request.routing(), request.sourcePlan(), evidence);
+    }
+
     private String intentPolicy(QueryRouter.RoutingDecision decision, SourcePlan sourcePlan,
                                 List<Evidence> evidence) {
         if (decision.intent() == QueryIntent.PERSONAL_CARE) {
