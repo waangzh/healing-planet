@@ -496,6 +496,13 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void unresolvedDomainShouldRemainAnUnknownEntity() {
+        var resolution = resolve(RagQuery.of("琴叶榕怎么样？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+    }
+
+    @Test
     void shouldMatchCommunityContentWithoutCanonicalPlantId() {
         useLlmDecision(PlantEntityDisambiguator.Decision.known("1", 0.95));
         var resolution = resolve(RagQuery.of("社区里的绿萝养护经验"));

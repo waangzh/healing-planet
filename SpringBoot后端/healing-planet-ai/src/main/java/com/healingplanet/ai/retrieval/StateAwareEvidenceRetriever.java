@@ -84,7 +84,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     }
 
     private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace) {
-        if (!request.routing().plantDomain()) {
+        if (request.routing().outOfDomain()) {
             return new RetrievalPayload(new RetrievalResult(List.of(), null), request);
         }
         QueryRouter.RoutingDecision route = request.routing();

@@ -2,12 +2,15 @@ package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.ingestion.KnowledgeRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class QueryRouterTest {
     private final QueryRouter router = new QueryRouter();
@@ -21,6 +24,7 @@ class QueryRouterTest {
         assertThat(result.community()).isFalse();
         assertThat(result.intent()).isEqualTo(QueryIntent.PERSONAL_CARE);
         assertThat(result.stateEvidenceNeed()).isEqualTo(QueryRouter.StateEvidenceNeed.STATE_DECISION);
+        assertThat(result.sourcePlan().state()).isEqualTo(SourcePlan.SourceRequirement.REQUIRED);
     }
 
     @Test
@@ -91,8 +95,8 @@ class QueryRouterTest {
         assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
-        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.PRIMARY);
-        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.FALLBACK);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.SourceRequirement.OPTIONAL);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.SourceRequirement.OPTIONAL);
     }
 
     @Test
@@ -105,8 +109,8 @@ class QueryRouterTest {
             var result = router.route(RagQuery.of(query));
 
             assertThat(result.intent()).as(query).isEqualTo(QueryIntent.GENERAL_CARE);
-            assertThat(result.sourcePlan().knowledge()).as(query).isEqualTo(SourcePlan.Activation.PRIMARY);
-            assertThat(result.sourcePlan().community()).as(query).isEqualTo(SourcePlan.Activation.FALLBACK);
+            assertThat(result.sourcePlan().knowledge()).as(query).isEqualTo(SourcePlan.SourceRequirement.OPTIONAL);
+            assertThat(result.sourcePlan().community()).as(query).isEqualTo(SourcePlan.SourceRequirement.OPTIONAL);
         }
     }
 
@@ -115,8 +119,8 @@ class QueryRouterTest {
         var result = router.route(RagQuery.of("白掌的湿度要求和花友的光照摆放经验分别是什么？"));
 
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
-        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.REQUIRED);
-        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.REQUIRED);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.SourceRequirement.REQUIRED);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.SourceRequirement.REQUIRED);
     }
 
     @Test
@@ -124,8 +128,8 @@ class QueryRouterTest {
         var result = router.route(RagQuery.of("白掌日常养护时，花友如何平衡湿润与积水？"));
 
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
-        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.OFF);
-        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.REQUIRED);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.SourceRequirement.OFF);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.SourceRequirement.REQUIRED);
     }
 
     @Test
@@ -153,7 +157,7 @@ class QueryRouterTest {
 
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
-        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.FALLBACK);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.SourceRequirement.OPTIONAL);
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
     }
 
@@ -359,5 +363,24 @@ class QueryRouterTest {
 
         assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.OUT_OF_DOMAIN);
         assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.NONE);
+        assertThat(result.sourcePlan()).isEqualTo(SourcePlan.off());
+    }
+
+    @Test
+    void catalogAndCanonicalIdShouldPrecedeTheDomainGate() {
+        var unresolved = router.route(RagQuery.of("琴叶榕怎么样？"));
+        assertThat(unresolved.domain()).isEqualTo(QueryRouter.QueryDomain.UNKNOWN);
+
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        when(repository.findPlantEntities()).thenReturn(List.of(
+                new KnowledgeRepository.PlantEntityRow("30", "Ficus lyrata", "琴叶榕", List.of("琴叶树"))));
+        QueryRouter catalogRouter = new QueryRouter(new PlantCatalogIndex(repository, new PlantAliasMatcher()));
+
+        assertThat(catalogRouter.route(RagQuery.of("琴叶榕怎么样？")).domain())
+                .isEqualTo(QueryRouter.QueryDomain.PLANT);
+        assertThat(catalogRouter.route(RagQuery.of("琴叶树怎么样？")).domain())
+                .isEqualTo(QueryRouter.QueryDomain.PLANT);
+        RagQuery explicit = new RagQuery("怎么样？", null, null, "30", null, List.of(), Map.of());
+        assertThat(router.route(explicit).domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
     }
 }

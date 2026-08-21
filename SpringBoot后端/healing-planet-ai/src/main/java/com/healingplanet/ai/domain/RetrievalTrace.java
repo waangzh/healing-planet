@@ -40,6 +40,7 @@ public record RetrievalTrace(
     }
 
     public record RoutingSnapshot(
+            int schemaVersion,
             boolean includeKnowledge,
             boolean includeCommunity,
             boolean includeState,
@@ -50,9 +51,9 @@ public record RetrievalTrace(
             String stateEvidenceNeed,
             String searchQuery,
             String requiredKnowledgeTypes,
-            String knowledgeActivation,
-            String communityActivation,
-            String stateActivation
+            String knowledgeRequirement,
+            String communityRequirement,
+            String stateRequirement
     ) { }
 
     public record CandidateSnapshot(

@@ -40,8 +40,8 @@
         "WATERING": "表土干后浇水",
         "TEMPERATURE": "20-30℃",
         "HUMIDITY": ">60%",
-        "FERTILIZING": "剪除老化气生根",
-        "GENERAL_CARE": "生长季每2周施平衡肥"
+        "FERTILIZING": "生长季每2周施平衡肥",
+        "GENERAL_CARE": "剪除老化气生根"
       }
     },
     {
@@ -54,8 +54,8 @@
         "WATERING": "每3周1次",
         "TEMPERATURE": "15-25℃",
         "HUMIDITY": "干燥",
-        "FERTILIZING": "移除下层老叶",
-        "GENERAL_CARE": "每年春季施1次多肉专用肥"
+        "FERTILIZING": "每年春季施1次多肉专用肥",
+        "GENERAL_CARE": "移除下层老叶"
       }
     },
     {

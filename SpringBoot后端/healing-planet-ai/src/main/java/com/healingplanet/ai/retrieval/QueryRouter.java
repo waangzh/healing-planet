@@ -2,6 +2,7 @@ package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,6 +12,8 @@ import java.util.regex.Pattern;
 
 @Component
 public class QueryRouter {
+    private final PlantCatalogIndex catalogIndex;
+
     private static final Set<String> STATE_TERMS = Set.of(
             "我的", "我这盆", "这盆", "这株", "这棵", "家里的", "过去一周", "过去7天", "过去24小时", "近24", "近7",
             "最近土壤", "最近温度", "最近湿度", "传感器", "土壤湿度", "温度适合", "环境异常",
@@ -44,10 +47,11 @@ public class QueryRouter {
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
             "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",
             "光照", "阳光", "温度", "湿度", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "耐阴",
-            "喜阴", "弱光", "强光", "直射", "状态",
-            // Catalog-backed common names and aliases are domain signals, not source-routing terms.
-            "绿萝", "黄金葛", "绿箩", "虎尾兰", "虎皮兰", "虎尾蓝", "龟背竹", "蓬莱蕉", "龟背主",
-            "芦荟", "红掌", "白掌", "空气凤梨"
+            "喜阴", "弱光", "强光", "直射", "状态"
+    );
+    private static final Set<String> CLEAR_NON_PLANT_TERMS = Set.of(
+            "计算机", "网络", "tcp", "编程", "算法", "软件", "硬件", "量子", "物理",
+            "股票", "金融", "篮球", "足球"
     );
     private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
@@ -85,12 +89,22 @@ public class QueryRouter {
     private static final Pattern TOPIC_FRAME_CLAUSE = Pattern.compile(
             ".*(?:日常养护|平时养护|平常养护)(?:时|中)?$");
 
+    public QueryRouter() {
+        this(PlantCatalogIndex.empty());
+    }
+
+    @Autowired
+    public QueryRouter(PlantCatalogIndex catalogIndex) {
+        this.catalogIndex = catalogIndex;
+    }
+
     public RoutingDecision route(RagQuery query) {
         String text = query.query() == null ? "" : query.query().toLowerCase(Locale.ROOT);
         RoutingDecision decision;
         if (query.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
-            decision = new RoutingDecision(new SourcePlan(SourcePlan.Activation.OFF, SourcePlan.Activation.OFF,
-                    SourcePlan.Activation.REQUIRED), QueryIntent.DISEASE_DIAGNOSIS,
+            decision = new RoutingDecision(new SourcePlan(SourcePlan.SourceRequirement.OFF,
+                    SourcePlan.SourceRequirement.OFF, SourcePlan.SourceRequirement.REQUIRED),
+                    QueryIntent.DISEASE_DIAGNOSIS,
                     StateEvidenceNeed.STATE_DECISION);
         } else if (query.intent() == QueryIntent.PERSONAL_CARE) {
             decision = personalCareRoute(text);
@@ -107,21 +121,25 @@ public class QueryRouter {
                 decision = new RoutingDecision(sourcePlan, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
             }
         }
-        return withEntityPolicy(decision, text);
+        return withEntityPolicy(decision, text, query.canonicalPlantId());
     }
 
-    private RoutingDecision withEntityPolicy(RoutingDecision decision, String text) {
+    private RoutingDecision withEntityPolicy(RoutingDecision decision, String text, String canonicalPlantId) {
         String compactText = text.replaceAll("\\s+", "");
         boolean genericPlant = GENERIC_PLANT_QUERY.matcher(compactText).find()
                 || GENERIC_CARE_CONCEPT_QUERY.matcher(compactText).matches();
         boolean genericCommunity = decision.community()
                 && GENERIC_COMMUNITY_QUERY.matcher(compactText).matches();
-        boolean plantDomain = genericPlant || isPlantDomainQuery(compactText);
+        boolean catalogBacked = canonicalPlantId != null && !canonicalPlantId.isBlank()
+                || catalogIndex.containsRegisteredMention(compactText);
+        boolean plantDomain = catalogBacked || genericPlant || isPlantDomainQuery(compactText);
+        QueryDomain domain = plantDomain ? QueryDomain.PLANT
+                : isClearlyOutOfDomain(compactText) ? QueryDomain.OUT_OF_DOMAIN : QueryDomain.UNKNOWN;
         boolean generic = genericPlant || genericCommunity;
-        EntityRequirement entityRequirement = !plantDomain ? EntityRequirement.NONE
+        EntityRequirement entityRequirement = domain == QueryDomain.OUT_OF_DOMAIN ? EntityRequirement.NONE
                 : generic ? EntityRequirement.OPTIONAL : EntityRequirement.REQUIRED;
-        return new RoutingDecision(decision.sourcePlan(), decision.intent(),
-                decision.stateEvidenceNeed(), plantDomain ? QueryDomain.PLANT : QueryDomain.OUT_OF_DOMAIN,
+        SourcePlan sourcePlan = domain == QueryDomain.OUT_OF_DOMAIN ? SourcePlan.off() : decision.sourcePlan();
+        return new RoutingDecision(sourcePlan, decision.intent(), decision.stateEvidenceNeed(), domain,
                 entityRequirement);
     }
 
@@ -129,6 +147,10 @@ public class QueryRouter {
         return PLANT_DOMAIN_TERMS.stream().anyMatch(text::contains)
                 || text.contains("浇") || text.contains("补") || text.contains("晒") || text.contains("太阳")
                 || PLANT_CARE_ACTION_QUERY.matcher(text).matches();
+    }
+
+    private boolean isClearlyOutOfDomain(String text) {
+        return CLEAR_NON_PLANT_TERMS.stream().anyMatch(text::contains);
     }
 
     private boolean hasPersonalContext(String text) {
@@ -149,13 +171,14 @@ public class QueryRouter {
         boolean knowledgeOnly = hasKnowledgeOnlyPreference(text);
 
         if (communityOnly) {
-            return new SourcePlan(SourcePlan.Activation.OFF,
-                    communityExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.REQUIRED,
-                    SourcePlan.Activation.OFF);
+            return new SourcePlan(SourcePlan.SourceRequirement.OFF,
+                    communityExcluded ? SourcePlan.SourceRequirement.OFF : SourcePlan.SourceRequirement.REQUIRED,
+                    SourcePlan.SourceRequirement.OFF);
         }
         if (knowledgeOnly) {
-            return new SourcePlan(knowledgeExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.REQUIRED,
-                    SourcePlan.Activation.OFF, SourcePlan.Activation.OFF);
+            return new SourcePlan(knowledgeExcluded ? SourcePlan.SourceRequirement.OFF
+                    : SourcePlan.SourceRequirement.REQUIRED,
+                    SourcePlan.SourceRequirement.OFF, SourcePlan.SourceRequirement.OFF);
         }
 
         boolean careRequested = false;
@@ -178,20 +201,20 @@ public class QueryRouter {
             communityRequested = true;
         }
         if (careRequested && communityRequested) {
-            return new SourcePlan(SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED,
-                    SourcePlan.Activation.OFF);
+            return new SourcePlan(SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.REQUIRED,
+                    SourcePlan.SourceRequirement.OFF);
         }
         if (communityRequested) {
-            return new SourcePlan(SourcePlan.Activation.OFF, SourcePlan.Activation.REQUIRED,
-                    SourcePlan.Activation.OFF);
+            return new SourcePlan(SourcePlan.SourceRequirement.OFF, SourcePlan.SourceRequirement.REQUIRED,
+                    SourcePlan.SourceRequirement.OFF);
         }
         if (formalRequested) {
-            return new SourcePlan(SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF,
-                    SourcePlan.Activation.OFF);
+            return new SourcePlan(SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.OFF,
+                    SourcePlan.SourceRequirement.OFF);
         }
-        return new SourcePlan(SourcePlan.Activation.PRIMARY,
-                communityExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.FALLBACK,
-                SourcePlan.Activation.OFF);
+        return new SourcePlan(SourcePlan.SourceRequirement.OPTIONAL,
+                communityExcluded ? SourcePlan.SourceRequirement.OFF : SourcePlan.SourceRequirement.OPTIONAL,
+                SourcePlan.SourceRequirement.OFF);
     }
 
     private List<String> splitClauses(String text) {
@@ -288,7 +311,7 @@ public class QueryRouter {
         STATE_DECISION_WITH_HISTORY
     }
 
-    public enum QueryDomain { PLANT, OUT_OF_DOMAIN }
+    public enum QueryDomain { PLANT, UNKNOWN, OUT_OF_DOMAIN }
 
     public enum EntityRequirement { NONE, OPTIONAL, REQUIRED }
 
@@ -297,6 +320,12 @@ public class QueryRouter {
                                   EntityRequirement entityRequirement) {
         public RoutingDecision {
             sourcePlan = sourcePlan == null ? SourcePlan.of(false, false, false) : sourcePlan;
+            domain = domain == null ? QueryDomain.UNKNOWN : domain;
+            entityRequirement = entityRequirement == null ? EntityRequirement.REQUIRED : entityRequirement;
+            if (domain == QueryDomain.OUT_OF_DOMAIN) {
+                sourcePlan = SourcePlan.off();
+                entityRequirement = EntityRequirement.NONE;
+            }
         }
 
         public RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
@@ -322,6 +351,10 @@ public class QueryRouter {
 
         public boolean plantDomain() {
             return domain == QueryDomain.PLANT;
+        }
+
+        public boolean outOfDomain() {
+            return domain == QueryDomain.OUT_OF_DOMAIN;
         }
 
         public boolean knowledge() { return sourcePlan.includeKnowledge(); }

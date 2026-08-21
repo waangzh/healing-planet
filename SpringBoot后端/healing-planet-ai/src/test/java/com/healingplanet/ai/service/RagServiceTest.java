@@ -41,6 +41,8 @@ class RagServiceTest {
         assertThat(response.answer()).contains("不属于当前植物养护知识库的可回答范围");
         assertThat(response.retrievalTrace().routing().domain()).isEqualTo("OUT_OF_DOMAIN");
         assertThat(response.retrievalTrace().routing().entityRequirement()).isEqualTo("NONE");
+        assertThat(response.retrievalTrace().routing().knowledgeRequirement()).isEqualTo("OFF");
+        assertThat(response.retrievalTrace().routing().communityRequirement()).isEqualTo("OFF");
         verify(retriever, never()).retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(com.healingplanet.ai.retrieval.RetrievalRequest.class));
     }
 

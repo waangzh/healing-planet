@@ -44,6 +44,7 @@ public record RetrievalRequest(
 
     public RetrievalTrace.RoutingSnapshot routingSnapshot() {
         return new RetrievalTrace.RoutingSnapshot(
+                3,
                 sourcePlan.includeKnowledge(), sourcePlan.includeCommunity(), sourcePlan.includeState(),
                 query.intent() == null ? null : query.intent().name(),
                 routing.intent() == null ? null : routing.intent().name(),

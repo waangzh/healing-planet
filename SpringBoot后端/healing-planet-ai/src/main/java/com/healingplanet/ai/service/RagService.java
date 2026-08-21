@@ -41,7 +41,7 @@ public class RagService {
     public RagResponse chat(RagQuery query) {
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
         RetrievalRequest request = RetrievalRequest.from(query, decision);
-        if (!decision.plantDomain()) {
+        if (decision.outOfDomain()) {
             return new RagResponse(outOfScopeAnswer(), List.of(), null, routingOnlyTrace(request));
         }
         String validation = validateStateQuery(query, decision);
@@ -67,7 +67,7 @@ public class RagService {
     public RagStream stream(RagQuery query) {
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
         RetrievalRequest request = RetrievalRequest.from(query, decision);
-        if (!decision.plantDomain()) {
+        if (decision.outOfDomain()) {
             return new RagStream(List.of(), null, routingOnlyTrace(request), Flux.just(outOfScopeAnswer()));
         }
         String validation = validateStateQuery(query, decision);

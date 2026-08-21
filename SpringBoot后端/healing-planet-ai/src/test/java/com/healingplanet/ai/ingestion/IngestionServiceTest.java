@@ -1,7 +1,7 @@
 package com.healingplanet.ai.ingestion;
 
 import com.healingplanet.ai.domain.KnowledgeSource;
-import com.healingplanet.ai.retrieval.PlantEntityResolver;
+import com.healingplanet.ai.retrieval.PlantCatalogIndex;
 import com.healingplanet.ai.retrieval.SparseIndexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -33,10 +33,10 @@ class IngestionServiceTest {
         VectorStore entityStore = mock(VectorStore.class);
         VectorStore communityStore = mock(VectorStore.class);
         VectorStore diseaseStore = mock(VectorStore.class);
-        PlantEntityResolver resolver = mock(PlantEntityResolver.class);
+        PlantCatalogIndex catalogIndex = mock(PlantCatalogIndex.class);
 
         IngestionService service = new IngestionService(repository, new KnowledgeDocumentConverter(),
-                new PlantEntityDocumentConverter(), resolver, sparseIndex, plantStore, entityStore,
+                new PlantEntityDocumentConverter(), catalogIndex, sparseIndex, plantStore, entityStore,
                 communityStore, diseaseStore, mock(DiseaseKnowledgeRepository.class),
                 mock(DiseaseKnowledgeConverter.class));
 
@@ -44,6 +44,6 @@ class IngestionServiceTest {
 
         verify(entityStore).add(anyList());
         verify(sparseIndex).replaceAll(eq(KnowledgeSource.PLANT_ENTITY), anyList());
-        verify(resolver).refreshCatalog();
+        verify(catalogIndex).refresh();
     }
 }

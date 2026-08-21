@@ -7,12 +7,11 @@ import java.util.Objects;
  * intent: an ordinary care question may consult community material as a
  * supplement without becoming a community-search intent.
  */
-public record SourcePlan(Activation knowledge, Activation community, Activation state) {
+public record SourcePlan(SourceRequirement knowledge, SourceRequirement community, SourceRequirement state) {
 
-    public enum Activation {
+    public enum SourceRequirement {
         OFF,
-        FALLBACK,
-        PRIMARY,
+        OPTIONAL,
         REQUIRED;
 
         public boolean enabled() {
@@ -25,15 +24,19 @@ public record SourcePlan(Activation knowledge, Activation community, Activation 
     }
 
     public SourcePlan {
-        knowledge = Objects.requireNonNullElse(knowledge, Activation.OFF);
-        community = Objects.requireNonNullElse(community, Activation.OFF);
-        state = Objects.requireNonNullElse(state, Activation.OFF);
+        knowledge = Objects.requireNonNullElse(knowledge, SourceRequirement.OFF);
+        community = Objects.requireNonNullElse(community, SourceRequirement.OFF);
+        state = Objects.requireNonNullElse(state, SourceRequirement.OFF);
     }
 
     public static SourcePlan of(boolean knowledge, boolean community, boolean state) {
-        return new SourcePlan(knowledge ? Activation.PRIMARY : Activation.OFF,
-                community ? Activation.PRIMARY : Activation.OFF,
-                state ? Activation.PRIMARY : Activation.OFF);
+        return new SourcePlan(knowledge ? SourceRequirement.OPTIONAL : SourceRequirement.OFF,
+                community ? SourceRequirement.OPTIONAL : SourceRequirement.OFF,
+                state ? SourceRequirement.REQUIRED : SourceRequirement.OFF);
+    }
+
+    public static SourcePlan off() {
+        return new SourcePlan(SourceRequirement.OFF, SourceRequirement.OFF, SourceRequirement.OFF);
     }
 
     public boolean includeKnowledge() {

@@ -39,9 +39,9 @@ SAFE_REFUSAL_OUTCOMES = {
     "OUT_OF_SCOPE",
 }
 ROUTING_TRACE_FIELDS = {
-    "includeKnowledge", "includeCommunity", "includeState", "inputIntent", "resolvedIntent", "domain",
-    "entityRequirement", "stateEvidenceNeed", "searchQuery", "knowledgeActivation",
-    "communityActivation", "stateActivation",
+    "schemaVersion", "includeKnowledge", "includeCommunity", "includeState", "inputIntent", "resolvedIntent", "domain",
+    "entityRequirement", "stateEvidenceNeed", "searchQuery", "knowledgeRequirement",
+    "communityRequirement", "stateRequirement",
 }
 ENTITY_DEPENDENCY_FAILURES = {
     "llm_connect_timeout", "llm_read_timeout", "llm_connection_failed", "llm_invalid_json",
@@ -248,12 +248,14 @@ def validate_routing_trace_contract(raw_rows: list[dict[str, Any]]) -> None:
         missing = sorted(field for field in ROUTING_TRACE_FIELDS if field not in routing)
         if missing:
             invalid.append(f"{raw.get('case_id', '<unknown>')} 缺少 {', '.join(missing)}")
+        elif routing.get("schemaVersion") != 3:
+            invalid.append(f"{raw.get('case_id', '<unknown>')} schemaVersion 不是 3")
     if invalid:
-        raise ValueError("原始结果不满足 Routing Trace v2；请使用新版服务重新执行 run_eval.py：" + "; ".join(invalid))
+        raise ValueError("原始结果不满足 Routing Trace v3；请使用新版服务重新执行 run_eval.py：" + "; ".join(invalid))
 
 
-def expected_source_activation(golden: dict[str, Any]) -> dict[str, str] | None:
-    value = golden.get("expected_source_activation")
+def expected_source_requirement(golden: dict[str, Any]) -> dict[str, str] | None:
+    value = golden.get("expected_source_requirement")
     if not isinstance(value, dict):
         return None
     expected = {name: value.get(name) for name in ("knowledge", "community", "state")}
@@ -714,7 +716,7 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
     route_hits = route_total = 0
     domain_hits = domain_total = 0
     entity_requirement_hits = entity_requirement_total = 0
-    source_activation_hits = source_activation_total = 0
+    source_requirement_hits = source_requirement_total = 0
     propagation_consistency_failures = 0
     request_errors = 0
     dependency_failures = 0
@@ -740,11 +742,11 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         actual_domain = routing.get("domain") if routing else None
         expected_entity_requirement = golden.get("expected_entity_requirement")
         actual_entity_requirement = routing.get("entityRequirement") if routing else None
-        expected_activation = expected_source_activation(golden)
-        actual_activation = {
-            "knowledge": routing.get("knowledgeActivation"),
-            "community": routing.get("communityActivation"),
-            "state": routing.get("stateActivation"),
+        expected_requirement = expected_source_requirement(golden)
+        actual_requirement = {
+            "knowledge": routing.get("knowledgeRequirement"),
+            "community": routing.get("communityRequirement"),
+            "state": routing.get("stateRequirement"),
         } if routing else None
         propagation_consistent = propagation_is_consistent(raw)
         if predicted == "ERROR":
@@ -806,9 +808,9 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         if isinstance(expected_entity_requirement, str) and expected_entity_requirement:
             entity_requirement_total += 1
             entity_requirement_hits += int(actual_entity_requirement == expected_entity_requirement)
-        if expected_activation is not None:
-            source_activation_total += 1
-            source_activation_hits += int(actual_activation == expected_activation)
+        if expected_requirement is not None:
+            source_requirement_total += 1
+            source_requirement_hits += int(actual_requirement == expected_requirement)
         if propagation_consistent is False:
             propagation_consistency_failures += 1
 
@@ -867,9 +869,9 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
             "predicted_entity_requirement": actual_entity_requirement,
             "entity_requirement_match": actual_entity_requirement == expected_entity_requirement
             if expected_entity_requirement else None,
-            "expected_source_activation": expected_activation,
-            "predicted_source_activation": actual_activation,
-            "source_activation_match": actual_activation == expected_activation if expected_activation else None,
+            "expected_source_requirement": expected_requirement,
+            "predicted_source_requirement": actual_requirement,
+            "source_requirement_match": actual_requirement == expected_requirement if expected_requirement else None,
             "route_propagation_consistent": propagation_consistent,
             "dependency_failure": dependency_failure,
             "required_evidence_types": expected_types,
@@ -895,7 +897,7 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
     }
     missing_case_ids = [row["id"] for row in golden_rows if row["id"] not in raw_by_id]
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "coverage": {
             "golden_case_count": len(golden_rows),
             "scored_case_count": len(raw_rows),
@@ -932,8 +934,8 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
                 "domain_match": metric(ratio(domain_hits, domain_total), domain_hits, domain_total),
                 "entity_requirement_match": metric(ratio(entity_requirement_hits, entity_requirement_total),
                                                    entity_requirement_hits, entity_requirement_total),
-                "source_activation_match": metric(ratio(source_activation_hits, source_activation_total),
-                                                    source_activation_hits, source_activation_total),
+                "source_requirement_match": metric(ratio(source_requirement_hits, source_requirement_total),
+                                                     source_requirement_hits, source_requirement_total),
                 "route_propagation_consistency_failure_count": propagation_consistency_failures,
             },
             "answer_availability": metric(ratio(available_answers, answer_cases), available_answers, answer_cases),
@@ -1005,7 +1007,7 @@ def render_report(summary: dict[str, Any]) -> str:
         f"| Route Accuracy | {format_ratio(metrics['route_accuracy']['value'])} ({metrics['route_accuracy']['numerator']}/{metrics['route_accuracy']['denominator']}) |",
         f"| Domain Match（辅助） | {format_ratio(metrics['diagnostics']['domain_match']['value'])} ({metrics['diagnostics']['domain_match']['numerator']}/{metrics['diagnostics']['domain_match']['denominator']}) |",
         f"| Entity Requirement Match（辅助） | {format_ratio(metrics['diagnostics']['entity_requirement_match']['value'])} ({metrics['diagnostics']['entity_requirement_match']['numerator']}/{metrics['diagnostics']['entity_requirement_match']['denominator']}) |",
-        f"| Source Activation Match（辅助） | {format_ratio(metrics['diagnostics']['source_activation_match']['value'])} ({metrics['diagnostics']['source_activation_match']['numerator']}/{metrics['diagnostics']['source_activation_match']['denominator']}) |",
+        f"| Source Requirement Match（辅助） | {format_ratio(metrics['diagnostics']['source_requirement_match']['value'])} ({metrics['diagnostics']['source_requirement_match']['numerator']}/{metrics['diagnostics']['source_requirement_match']['denominator']}) |",
         f"| Route Propagation Consistency Failure（辅助） | {metrics['diagnostics']['route_propagation_consistency_failure_count']} |",
         f"| Required Evidence Type Hit | {format_ratio(metrics['required_evidence_type_hit']['value'])} ({metrics['required_evidence_type_hit']['numerator']}/{metrics['required_evidence_type_hit']['denominator']}) |",
         f"| Selection Constraint Hit | {format_ratio(metrics['selection_constraint_hit']['value'])} ({metrics['selection_constraint_hit']['numerator']}/{metrics['selection_constraint_hit']['denominator']}) |",
@@ -1035,7 +1037,7 @@ def render_report(summary: dict[str, Any]) -> str:
     )
     if coverage["missing_case_ids"]:
         rows.extend(["", "## 覆盖不足", "", "尚未执行的 Case：" + ", ".join(coverage["missing_case_ids"])])
-    rows.extend(["", "Retrieval Recall@10 使用 SourceAwareRanker 之后、EvidenceSelector 之前的统一 preSelectionRanked 快照；Selected Evidence ID Recall@6 仅作为精确 ID 回归诊断。", "", "Context Precision 按最终 Evidence 顺序计算平均精度（Average Precision）；Context Recall 按 gold_claims 的证据支持覆盖率计算。Judge 结果由固定模型、固定提示词和 temperature=0 生成，未覆盖的 Answer Case 不计入 Judge 指标分母。", "", "Domain / Entity Requirement / Source Activation / Route Propagation 为辅助诊断，不改变核心指标口径。Route Accuracy 只比较 expected_intent 与 routing.resolvedIntent；未标注用户意图的域外 Case 不进入其分母。", "", "SAFE_REFUSAL 是结果族标签，可匹配明确的安全拒答子类型；ERROR 和依赖故障不属于正确安全拒答。", ""])
+    rows.extend(["", "Retrieval Recall@10 使用 SourceAwareRanker 之后、EvidenceSelector 之前的统一 preSelectionRanked 快照；Selected Evidence ID Recall@6 仅作为精确 ID 回归诊断。", "", "Context Precision 按最终 Evidence 顺序计算平均精度（Average Precision）；Context Recall 按 gold_claims 的证据支持覆盖率计算。Judge 结果由固定模型、固定提示词和 temperature=0 生成，未覆盖的 Answer Case 不计入 Judge 指标分母。", "", "Domain / Entity Requirement / Source Requirement / Route Propagation 为辅助诊断，不改变核心指标口径。Route Accuracy 只比较 expected_intent 与 routing.resolvedIntent；未标注用户意图的域外 Case 不进入其分母。", "", "SAFE_REFUSAL 是结果族标签，可匹配明确的安全拒答子类型；ERROR 和依赖故障不属于正确安全拒答。", ""])
     return "\n".join(rows)
 
 

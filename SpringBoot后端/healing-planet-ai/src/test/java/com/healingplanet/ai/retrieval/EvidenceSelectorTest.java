@@ -22,7 +22,7 @@ class EvidenceSelectorTest {
                 Map.of("includeCommunity", false, "requiredKnowledgeTypes", List.of("LIGHT", "HUMIDITY")));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF, Set.of("LIGHT", "HUMIDITY")), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.OFF, Set.of("LIGHT", "HUMIDITY")), List.of(
                 guide("light-best", "plant-1", "LIGHT", 0.95),
                 guide("light-duplicate", "plant-1", "LIGHT", 0.90),
                 guide("humidity-best", "plant-1", "HUMIDITY", 0.85)), 6, List.of("plant-1"));
@@ -39,7 +39,7 @@ class EvidenceSelectorTest {
                 Map.of("includeCommunity", false));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF, Set.of()), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.OFF, Set.of()), List.of(
                 guide("general-1", "plant-1", "GENERAL_CARE", 0.99),
                 guide("general-2", "plant-1", "GENERAL_CARE", 0.98),
                 guide("light", "plant-1", "LIGHT", 0.80),
@@ -58,7 +58,7 @@ class EvidenceSelectorTest {
                         "requiredKnowledgeType", "WATERING"));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED, Set.of("WATERING")), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.REQUIRED, Set.of("WATERING")), List.of(
                 guide("guide", "plant-1", "WATERING", 0.99),
                 community("post-a-1", "post-a", 0.98),
                 community("post-a-2", "post-a", 0.97),
@@ -79,7 +79,7 @@ class EvidenceSelectorTest {
                 Map.of("includePlantKnowledge", true, "includeCommunity", true));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED, Set.of()), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.REQUIRED, Set.of()), List.of(
                 guide("general", "plant-1", "GENERAL_CARE", 0.99),
                 guide("temperature", "plant-1", "TEMPERATURE", 0.98),
                 guide("light", "plant-1", "LIGHT", 0.97),
@@ -107,9 +107,9 @@ class EvidenceSelectorTest {
                 Map.of("knowledgeType", knowledgeType, "canonicalPlantId", canonicalPlantId), null);
     }
 
-    private RetrievalRequest request(RagQuery query, SourcePlan.Activation knowledge,
-                                     SourcePlan.Activation community, Set<String> types) {
-        SourcePlan sourcePlan = new SourcePlan(knowledge, community, SourcePlan.Activation.OFF);
+    private RetrievalRequest request(RagQuery query, SourcePlan.SourceRequirement knowledge,
+                                     SourcePlan.SourceRequirement community, Set<String> types) {
+        SourcePlan sourcePlan = new SourcePlan(knowledge, community, SourcePlan.SourceRequirement.OFF);
         QueryRouter.RoutingDecision routing = new QueryRouter.RoutingDecision(sourcePlan,
                 QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE);
         return new RetrievalRequest(query, routing, sourcePlan, query.query(), types);

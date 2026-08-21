@@ -86,7 +86,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     }
 
     private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace) {
-        if (!request.routing().plantDomain()) {
+        if (request.routing().outOfDomain()) {
             metrics.recordCandidates("selected", "all", 0);
             return new RetrievalPayload(List.of(), null);
         }

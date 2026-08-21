@@ -1,9 +1,9 @@
 {
-  "schema_version": 2,
-  "freeze_date": "2026-08-20",
+  "schema_version": 3,
+  "freeze_date": null,
   "annotation_revision": {
     "date": "2026-08-21",
-    "reason": "Semantic correction: community is evaluated as source policy rather than user intent; out-of-domain cases use expected_domain and OUT_OF_SCOPE."
+    "reason": "Routing Trace v3 uses SourceRequirement; out-of-domain cases disable all retrieval sources."
   },
   "development": {
     "path": "golden.jsonl",
@@ -13,15 +13,15 @@
   },
   "holdout": {
     "path": "holdout.jsonl",
-    "role": "frozen-generalization",
+    "role": "evaluation-regression",
     "case_count": 30,
-    "sha256": "96265821ef39daf8b1ff6c006096e0d1bd8b657033dc24e28a5fbddc3180a58d",
+    "sha256": "86a3cdbdbd92b8edbfdfaa62500e87eb1a2d674f870a42d3250534a6af350f56",
     "id_format": "1..30 as strings",
-    "usage": "Only use for milestone or pre-release evaluation. Do not tune implementation from individual Case outcomes."
+    "usage": ""
   },
   "source_catalog": {
     "path": "source-catalog.json",
-    "version": 5,
-    "sha256": "8ab9bbc34d206bf7ca886f59728b617cbba847e6ef4dadfa2ba5f1e44b50208e"
+    "version": 6,
+    "sha256": "85ed2428f62b9660bd5721422f35d66c7397e3dcc5460a16384fc54ee940b4ef"
   }
 }

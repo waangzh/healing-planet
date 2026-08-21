@@ -90,6 +90,7 @@ class StateAwareEvidenceRetrieverTest {
 
         var trace = retriever.retrieveWithDiagnostics(query).retrievalTrace();
 
+        assertThat(trace.routing().schemaVersion()).isEqualTo(3);
         assertThat(trace.routing().includeKnowledge()).isTrue();
         assertThat(trace.routing().includeCommunity()).isFalse();
         assertThat(trace.routing().resolvedIntent()).isEqualTo("GENERAL_CARE");

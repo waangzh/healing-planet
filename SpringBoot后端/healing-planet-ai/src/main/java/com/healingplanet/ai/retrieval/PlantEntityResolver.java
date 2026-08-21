@@ -33,23 +33,22 @@ public class PlantEntityResolver {
                     + "可以不可以|耐不耐|能不能|不能|能|一直|老|该|什么|的|建议|"
                     + "出现|处理|频率|日常|状态|异常|判断|情况|里|吗)+$");
 
-    private final KnowledgeRepository repository;
+    private final PlantCatalogIndex catalogIndex;
     private final PlantAliasMatcher aliasMatcher;
     private final PlantCandidateGenerator candidateGenerator;
     private final PlantEntityDisambiguator disambiguator;
-    private volatile List<PlantCatalogEntry> catalog;
 
     public PlantEntityResolver(KnowledgeRepository repository) {
-        this(repository, new PlantAliasMatcher(),
+        this(new PlantCatalogIndex(repository, new PlantAliasMatcher()), new PlantAliasMatcher(),
                 new PlantCandidateGenerator(null, null, new RagProperties(), null), null);
     }
 
     @Autowired
-    public PlantEntityResolver(KnowledgeRepository repository,
+    public PlantEntityResolver(PlantCatalogIndex catalogIndex,
                                PlantAliasMatcher aliasMatcher,
                                PlantCandidateGenerator candidateGenerator,
                                PlantEntityDisambiguator disambiguator) {
-        this.repository = repository;
+        this.catalogIndex = catalogIndex;
         this.aliasMatcher = aliasMatcher;
         this.candidateGenerator = candidateGenerator;
         this.disambiguator = disambiguator;
@@ -69,13 +68,13 @@ public class PlantEntityResolver {
                         RagProperties ragProperties,
                         RetrievalMetrics metrics,
                         PlantEntityDisambiguator disambiguator) {
-        this(repository, new PlantAliasMatcher(),
+        this(new PlantCatalogIndex(repository, new PlantAliasMatcher()), new PlantAliasMatcher(),
                 new PlantCandidateGenerator(entityStore, sparseIndex, ragProperties, metrics), disambiguator);
     }
 
     public Resolution resolve(RetrievalRequest request) {
         RagQuery query = request.query();
-        List<PlantCatalogEntry> entries = catalog();
+        List<PlantCatalogEntry> entries = catalogIndex.entries();
         if (query.canonicalPlantId() != null && !query.canonicalPlantId().isBlank()) {
             return entries.stream()
                     .filter(entry -> query.canonicalPlantId().equals(entry.canonicalPlantId()))
@@ -124,16 +123,16 @@ public class PlantEntityResolver {
             return Resolution.unknown("entity_not_in_catalog", 0, 0, 0);
         }
 
-        boolean plantDomain = route.plantDomain();
+        boolean entitySearchAllowed = !route.outOfDomain();
         List<PlantCandidateGenerator.Candidate> ranked = candidateGenerator.generate(
                 query.query(), normalizedQuery, entries, aliasMatcher.contextualEntryIds(normalizedQuery, entries),
-                plantDomain);
+                entitySearchAllowed);
         String catalogMention = aliasMatcher.catalogMention(normalizedQuery, ranked);
         Resolution llmResolution = resolveWithLlm(query.query(),
-                catalogMention.isBlank() ? namedSubject : catalogMention, ranked, plantDomain);
+                catalogMention.isBlank() ? namedSubject : catalogMention, ranked, entitySearchAllowed);
         if (llmResolution != null) return llmResolution;
 
-        if (!plantDomain) return Resolution.outOfDomain();
+        if (route.outOfDomain()) return Resolution.outOfDomain();
         String rejectionReason = namedSubject.isBlank()
                 ? "plant_query_without_confirmed_entity"
                 : "no_acceptable_entity_candidate";
@@ -226,8 +225,8 @@ public class PlantEntityResolver {
 
     private Resolution resolveWithLlm(String rawQuery, String namedSubject,
                                       List<PlantCandidateGenerator.Candidate> ranked,
-                                      boolean plantDomain) {
-        if (!plantDomain || disambiguator == null || ranked.isEmpty()) return null;
+                                      boolean entitySearchAllowed) {
+        if (!entitySearchAllowed || disambiguator == null || ranked.isEmpty()) return null;
         if (namedSubject.isBlank()
                 && ranked.stream().noneMatch(PlantCandidateGenerator.Candidate::hasExactCatalogName)) return null;
         List<PlantEntityDisambiguator.CandidateOption> options = ranked.stream()
@@ -263,44 +262,6 @@ public class PlantEntityResolver {
                 .findFirst()
                 .map(candidate -> candidate.vectorScore() > 0 ? candidate.vectorScore() : candidate.characterScore())
                 .orElse(0d);
-    }
-
-    private List<PlantCatalogEntry> catalog() {
-        List<PlantCatalogEntry> value = catalog;
-        if (value != null) return value;
-        synchronized (this) {
-            if (catalog == null) {
-                List<KnowledgeRepository.PlantEntityRow> rows = repository.findPlantEntities();
-                if (rows.isEmpty()) {
-                    rows = repository.findPlants().stream()
-                            .map(row -> new KnowledgeRepository.PlantEntityRow(
-                                    row.id(), row.scientificName(), row.commonName())).toList();
-                }
-                catalog = rows.stream().map(row -> {
-                    Set<String> names = new LinkedHashSet<>();
-                    Set<String> aliases = new LinkedHashSet<>();
-                    addName(names, row.commonName());
-                    addName(names, row.scientificName());
-                    row.aliases().forEach(alias -> {
-                        addName(names, alias);
-                        addName(aliases, alias);
-                    });
-                    String canonicalName = row.commonName() == null || row.commonName().isBlank()
-                            ? row.scientificName() : row.commonName();
-                    return new PlantCatalogEntry(row.id(), canonicalName, Set.copyOf(names), Set.copyOf(aliases));
-                }).filter(entry -> !entry.names().isEmpty()).toList();
-            }
-            return catalog;
-        }
-    }
-
-    public void refreshCatalog() {
-        catalog = null;
-    }
-
-    private void addName(Set<String> names, String value) {
-        String normalized = normalize(value);
-        if (!normalized.isBlank()) names.add(normalized);
     }
 
     private String normalize(String value) {

@@ -4,7 +4,7 @@ import com.healingplanet.ai.domain.IndexReport;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.retrieval.SparseIndexService;
-import com.healingplanet.ai.retrieval.PlantEntityResolver;
+import com.healingplanet.ai.retrieval.PlantCatalogIndex;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,7 +21,7 @@ public class IngestionService {
     private final KnowledgeRepository repository;
     private final KnowledgeDocumentConverter converter;
     private final PlantEntityDocumentConverter entityConverter;
-    private final PlantEntityResolver entityResolver;
+    private final PlantCatalogIndex plantCatalogIndex;
     private final SparseIndexService sparseIndex;
     private final VectorStore plantVectorStore;
     private final VectorStore plantEntityVectorStore;
@@ -32,7 +32,7 @@ public class IngestionService {
 
     public IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
                             PlantEntityDocumentConverter entityConverter,
-                            PlantEntityResolver entityResolver,
+                            PlantCatalogIndex plantCatalogIndex,
                             SparseIndexService sparseIndex,
                             @Qualifier("plantVectorStore") VectorStore plantVectorStore,
                             @Qualifier("plantEntityVectorStore") VectorStore plantEntityVectorStore,
@@ -43,7 +43,7 @@ public class IngestionService {
         this.repository = repository;
         this.converter = converter;
         this.entityConverter = entityConverter;
-        this.entityResolver = entityResolver;
+        this.plantCatalogIndex = plantCatalogIndex;
         this.sparseIndex = sparseIndex;
         this.plantVectorStore = plantVectorStore;
         this.plantEntityVectorStore = plantEntityVectorStore;
@@ -65,7 +65,7 @@ public class IngestionService {
         List<KnowledgeDocument> entities = repository.findPlantEntities().stream()
                 .map(entityConverter::convert).toList();
         replace(KnowledgeSource.PLANT_ENTITY, entities, plantEntityVectorStore);
-        entityResolver.refreshCatalog();
+        plantCatalogIndex.refresh();
 
         List<KnowledgeDocument> documents = repository.findPlants().stream()
                 .flatMap(row -> converter.fromPlant(row).stream()).toList();
