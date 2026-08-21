@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_GOLDEN = ROOT / "golden.jsonl"
+DEFAULT_GOLDEN = ROOT / "holdout.jsonl"
 DEFAULT_RAW = ROOT / "results" / "raw.jsonl"
 DEFAULT_OUTPUT = ROOT / "results" / "score.json"
 DEFAULT_REPORT = ROOT / "results" / "report.md"

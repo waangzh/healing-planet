@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_GOLDEN = Path(__file__).with_name("golden.jsonl")
+DEFAULT_GOLDEN = Path(__file__).with_name("holdout.jsonl")
 DEFAULT_OUTPUT = Path(__file__).with_name("results") / "raw.jsonl"
 DEFAULT_BASE_URL = "http://localhost:8010"
 DEFAULT_TIMEOUT_SECONDS = 180.0
