@@ -12,6 +12,7 @@ public record RetrievalTrace(
         List<CandidateSnapshot> knowledgeTypeFiltered,
         List<CandidateSnapshot> rerankBefore,
         List<CandidateSnapshot> rerankAfter,
+        List<CandidateSnapshot> preSelectionRanked,
         List<SelectionSnapshot> selected,
         List<StageSnapshot> stages
 ) {
@@ -22,6 +23,7 @@ public record RetrievalTrace(
         knowledgeTypeFiltered = copy(knowledgeTypeFiltered);
         rerankBefore = copy(rerankBefore);
         rerankAfter = copy(rerankAfter);
+        preSelectionRanked = copy(preSelectionRanked);
         selected = copy(selected);
         stages = copy(stages);
     }
@@ -30,7 +32,7 @@ public record RetrievalTrace(
         List<StageSnapshot> combined = new ArrayList<>(copy(precedingStages));
         combined.addAll(stages);
         return new RetrievalTrace(value, entityResolution, denseTopK, sparseTopK, rrfCandidates,
-                knowledgeTypeFiltered, rerankBefore, rerankAfter, selected, combined);
+                knowledgeTypeFiltered, rerankBefore, rerankAfter, preSelectionRanked, selected, combined);
     }
 
     private static <T> List<T> copy(List<T> values) {

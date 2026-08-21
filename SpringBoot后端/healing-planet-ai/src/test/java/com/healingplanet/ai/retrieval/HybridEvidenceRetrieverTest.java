@@ -242,6 +242,9 @@ class HybridEvidenceRetrieverTest {
                 .containsExactly("dense-1", "sparse-1");
         assertThat(trace.rerankAfter()).extracting(item -> item.id())
                 .containsExactly("sparse-1", "dense-1");
+        assertThat(trace.preSelectionRanked()).extracting(item -> item.id())
+                .containsExactly("sparse-1", "dense-1");
+        assertThat(trace.preSelectionRanked()).allMatch(item -> item.finalScore() != null);
         assertThat(trace.selected()).extracting(item -> item.reason())
                 .containsExactly("TOPIC_COVERAGE", "GLOBAL_RANKING");
         assertThat(trace.stages()).extracting(item -> item.stage()).contains(

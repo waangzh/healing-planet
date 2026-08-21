@@ -32,7 +32,14 @@ DEFAULT_JUDGE_CONFIG = ROOT / "judge.local.json"
 PROMPTS = ROOT / "prompts"
 KNOWLEDGE_TYPES = {"PLANT_KNOWLEDGE", "CARE_GUIDE", "COMMUNITY_POST", "DISEASE_KNOWLEDGE"}
 KNOWLEDGE_TOP_K = 6
+RETRIEVAL_TOP_K = 10
 CITATION_PATTERN = re.compile(r"\[E(\d+)\]")
+SAFE_REFUSAL_OUTCOMES = {
+    "INSUFFICIENT_KNOWLEDGE", "STATE_UNAVAILABLE", "REQUIRE_USER_ID", "REQUIRE_PLANT_INSTANCE",
+}
+ENTITY_DEPENDENCY_FAILURES = {
+    "llm_connect_timeout", "llm_read_timeout", "llm_connection_failed", "llm_invalid_json",
+}
 LOG = logging.getLogger("rag_eval.score")
 
 
@@ -143,7 +150,9 @@ def entity_rejection_reason(raw: dict[str, Any]) -> str:
 def predict_outcome(raw: dict[str, Any]) -> str:
     if raw.get("error") or not isinstance(raw.get("answer"), str):
         return "ERROR"
-    if entity_rejection_reason(raw).startswith("llm_disambiguation_"):
+    rejection_reason = entity_rejection_reason(raw)
+    if rejection_reason.startswith(("llm_disambiguation_", "llm_http_")) \
+            or rejection_reason in ENTITY_DEPENDENCY_FAILURES:
         return "ENTITY_RESOLUTION_UNAVAILABLE"
     answer = normalized_text(raw["answer"])
     if "个体化状态分析需要userid" in answer:
@@ -189,6 +198,59 @@ def reference_matches(gold: tuple[str, str | None], actual: tuple[str, str | Non
 
 def knowledge_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [item for item in evidence if str(item.get("type", "")) in KNOWLEDGE_TYPES][:KNOWLEDGE_TOP_K]
+
+
+def retrieval_trace(raw: dict[str, Any]) -> dict[str, Any]:
+    trace = raw.get("retrieval_trace")
+    if isinstance(trace, dict):
+        return trace
+    response = raw.get("response")
+    nested = response.get("retrievalTrace") if isinstance(response, dict) else None
+    return nested if isinstance(nested, dict) else {}
+
+
+def pre_selection_candidates(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates = retrieval_trace(raw).get("preSelectionRanked")
+    if not isinstance(candidates, list):
+        return []
+    return [item for item in candidates[:RETRIEVAL_TOP_K] if isinstance(item, dict)]
+
+
+def predicted_route(raw: dict[str, Any]) -> str | None:
+    trace = retrieval_trace(raw)
+    diagnostics = trace.get("entityResolution")
+    if isinstance(diagnostics, dict) and diagnostics.get("resolutionKind") == "OUT_OF_DOMAIN":
+        return "OUT_OF_SCOPE"
+    routing = trace.get("routing")
+    intent = routing.get("intent") if isinstance(routing, dict) else None
+    return intent if isinstance(intent, str) and intent else None
+
+
+def outcome_matches(expected: str, predicted: str) -> bool:
+    return predicted in SAFE_REFUSAL_OUTCOMES if expected == "SAFE_REFUSAL" else predicted == expected
+
+
+def retrieval_latency(raw: dict[str, Any]) -> float | None:
+    stages = retrieval_trace(raw).get("stages")
+    if not isinstance(stages, list):
+        return None
+    durations = [
+        float(item["durationMs"])
+        for item in stages
+        if isinstance(item, dict) and item.get("stage") == "retrieve_total"
+        and item.get("status") == "ok" and isinstance(item.get("durationMs"), (int, float))
+    ]
+    return round(max(durations), 3) if durations else None
+
+
+def average_precision(relevance: list[bool]) -> float:
+    relevant = 0
+    precision_sum = 0.0
+    for rank, is_relevant in enumerate(relevance, start=1):
+        if is_relevant:
+            relevant += 1
+            precision_sum += relevant / rank
+    return 0.0 if relevant == 0 else precision_sum / relevant
 
 
 def evidence_type_matches(required: str, evidence: dict[str, Any]) -> bool:
@@ -299,6 +361,12 @@ def format_claims(claims: Any) -> str:
     if not isinstance(claims, list) or not claims:
         return "无"
     return "\n".join(f"- {claim}" for claim in claims)
+
+
+def format_indexed_claims(claims: Any) -> str:
+    if not isinstance(claims, list) or not claims:
+        return "无"
+    return "\n".join(f"[C{index}] {claim}" for index, claim in enumerate(claims, start=1))
 
 
 def format_evidence(evidence: list[dict[str, Any]]) -> str:
@@ -416,14 +484,49 @@ def validate_faithfulness(value: dict[str, Any]) -> dict[str, Any]:
     return {"claims": normalized}
 
 
+def validate_context_quality(value: dict[str, Any], evidence_count: int,
+                             claim_count: int) -> dict[str, Any]:
+    contexts = value.get("contexts")
+    reference_claims = value.get("reference_claims")
+    if not isinstance(contexts, list) or not isinstance(reference_claims, list):
+        raise ValueError("Context Judge 必须返回 contexts 和 reference_claims 数组")
+    expected_evidence_ids = [f"E{index}" for index in range(1, evidence_count + 1)]
+    actual_evidence_ids = [item.get("evidence_id") for item in contexts if isinstance(item, dict)]
+    if actual_evidence_ids != expected_evidence_ids:
+        raise ValueError("Context Judge 必须按顺序逐条返回全部 Evidence")
+    normalized_contexts: list[dict[str, Any]] = []
+    for item in contexts:
+        if not isinstance(item.get("relevant"), bool):
+            raise ValueError("Context Judge 的每条 context 必须包含布尔值 relevant")
+        normalized_contexts.append({"evidence_id": item["evidence_id"], "relevant": item["relevant"]})
+
+    expected_claim_indexes = list(range(1, claim_count + 1))
+    actual_claim_indexes = [item.get("claim_index") for item in reference_claims if isinstance(item, dict)]
+    if actual_claim_indexes != expected_claim_indexes:
+        raise ValueError("Context Judge 必须按顺序逐条返回全部 Gold Claim")
+    normalized_claims: list[dict[str, Any]] = []
+    for item in reference_claims:
+        if not isinstance(item.get("supported"), bool):
+            raise ValueError("Context Judge 的每条 reference claim 必须包含布尔值 supported")
+        evidence_ids = item.get("evidence_ids")
+        normalized_claims.append({
+            "claim_index": item["claim_index"],
+            "supported": item["supported"],
+            "evidence_ids": evidence_ids if isinstance(evidence_ids, list) else [],
+        })
+    return {"contexts": normalized_contexts, "reference_claims": normalized_claims}
+
+
 def judge_input_fingerprint(case: dict[str, Any], raw: dict[str, Any], settings: JudgeSettings,
-                            correctness_prompt: str, faithfulness_prompt: str) -> str:
+                            correctness_prompt: str, faithfulness_prompt: str,
+                            context_prompt: str) -> str:
     return fingerprint({
         "source": source_fingerprint(case, raw),
         "judge": {
             "model": settings.model, "temperature": settings.temperature,
             "correctness_prompt": fingerprint(correctness_prompt),
             "faithfulness_prompt": fingerprint(faithfulness_prompt),
+            "context_prompt": fingerprint(context_prompt),
         },
     })
 
@@ -449,6 +552,7 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
                on_case_complete: Callable[[list[dict[str, Any]]], None] | None = None) -> tuple[list[dict[str, Any]], int]:
     correctness_prompt = prompt_text("correctness-judge.txt")
     faithfulness_prompt = prompt_text("faithfulness-judge.txt")
+    context_prompt = prompt_text("context-judge.txt")
     golden_by_id = {case["id"]: case for case in golden_rows}
     cached = {(item.get("case_id"), item.get("input_fingerprint")): item for item in existing
               if item.get("status") == "ok"}
@@ -461,14 +565,15 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
 
     for raw in candidates:
         case = golden_by_id[raw["case_id"]]
-        input_fingerprint = judge_input_fingerprint(case, raw, settings, correctness_prompt, faithfulness_prompt)
+        input_fingerprint = judge_input_fingerprint(
+            case, raw, settings, correctness_prompt, faithfulness_prompt, context_prompt)
         cached_row = cached.get((case["id"], input_fingerprint))
         if cached_row and not refresh:
             LOG.info("case=%s Judge 缓存命中", case["id"])
             updated.append(cached_row)
             continue
 
-        correctness = faithfulness = None
+        correctness = faithfulness = context_quality = None
         errors: dict[str, str] = {}
         try:
             LOG.info("case=%s 调用 Correctness Judge", case["id"])
@@ -494,11 +599,26 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
         except (RuntimeError, ValueError) as exc:
             errors["faithfulness"] = str(exc)
             LOG.warning("case=%s Faithfulness Judge 失败: %s", case["id"], exc)
+        try:
+            claims = case.get("gold_claims") if isinstance(case.get("gold_claims"), list) else []
+            evidence = evidence_list(raw)
+            LOG.info("case=%s 调用 Context Judge evidence=%s claims=%s", case["id"], len(evidence), len(claims))
+            context_quality = validate_context_quality(call_judge(render_prompt(context_prompt, {
+                "QUESTION": str(case.get("query", "")),
+                "REFERENCE_ANSWER": str(case.get("reference_answer", "")),
+                "GOLD_CLAIMS": format_indexed_claims(claims),
+                "EVIDENCE": format_evidence(evidence),
+            }), settings), len(evidence), len(claims))
+            LOG.info("case=%s Context Judge 完成 contexts=%s claims=%s", case["id"],
+                     len(context_quality["contexts"]), len(context_quality["reference_claims"]))
+        except (RuntimeError, ValueError) as exc:
+            errors["context_quality"] = str(exc)
+            LOG.warning("case=%s Context Judge 失败: %s", case["id"], exc)
 
         if errors:
             failures += len(errors)
         updated.append({
-            "schema_version": 1,
+            "schema_version": 2,
             "case_id": case["id"],
             "source_fingerprint": source_fingerprint(case, raw),
             "input_fingerprint": input_fingerprint,
@@ -507,6 +627,7 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
             "judge": {"model": settings.model, "temperature": settings.temperature},
             "correctness": correctness,
             "faithfulness": faithfulness,
+            "context_quality": context_quality,
             "errors": errors,
         })
         if on_case_complete:
@@ -520,7 +641,7 @@ def judgment_index(golden_by_id: dict[str, dict[str, Any]], raw_by_id: dict[str,
                    judgments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
         item["case_id"]: item for item in judgments
-        if item.get("status") == "ok" and item.get("case_id") in raw_by_id
+        if item.get("status") in {"ok", "partial_error"} and item.get("case_id") in raw_by_id
         and item.get("source_fingerprint") == source_fingerprint(golden_by_id[item["case_id"]], raw_by_id[item["case_id"]])
     }
 
@@ -539,20 +660,23 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         raise ValueError(f"原始结果包含 Golden Set 中不存在的 Case：{', '.join(unknown_ids)}")
 
     details: list[dict[str, Any]] = []
-    recall_hits = recall_total = 0
-    precision_hits = precision_total = precision_case_count = 0
+    retrieval_recall_hits = retrieval_recall_total = 0
+    selected_recall_hits = selected_recall_total = 0
     evidence_type_hits = evidence_type_total = 0
     per_type_hits: Counter[str] = Counter()
     per_type_total: Counter[str] = Counter()
     citation_valid = citation_total = 0
     safe_hits = safe_total = 0
-    false_refusal = 0
+    route_hits = route_total = 0
     request_errors = 0
     dependency_failures = 0
     available_answers = answer_cases = 0
     latencies: list[float] = []
+    retrieval_latencies: list[float] = []
     correctness_score = correctness_count = correctness_eligible = 0
     faithful_claims = all_judged_claims = faithfulness_count = faithfulness_eligible = 0
+    context_precision_total = context_precision_count = context_precision_eligible = 0
+    context_recall_hits = context_recall_total = context_recall_count = context_recall_eligible = 0
     selection_constraint_hits = selection_constraint_total = 0
     judged_by_case = judgment_index(golden_by_id, raw_by_id, judgments or [])
 
@@ -561,6 +685,8 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         evidence = evidence_list(raw)
         predicted = predict_outcome(raw)
         expected = golden.get("expected_outcome", "ANSWER")
+        expected_route = golden.get("expected_intent")
+        actual_route = predicted_route(raw)
         if predicted == "ERROR":
             request_errors += 1
         dependency_failure = predicted == "ENTITY_RESOLUTION_UNAVAILABLE"
@@ -583,18 +709,18 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
                                                         for item in evidence))
 
         gold_refs = [item for item in (gold_ref(ref) for ref in golden.get("gold_evidence_refs", [])) if item]
-        actual_refs = [evidence_ref(item) for item in knowledge_evidence(evidence)]
-        matched_refs = [ref for ref in gold_refs if any(reference_matches(ref, actual) for actual in actual_refs)]
-        recall_hits += len(matched_refs)
-        recall_total += len(gold_refs)
-        if gold_refs:
-            matched_actual_refs = {
-                actual for actual in actual_refs
-                if any(reference_matches(gold, actual) for gold in gold_refs)
-            }
-            precision_hits += len(matched_actual_refs)
-            precision_total += KNOWLEDGE_TOP_K
-            precision_case_count += 1
+        selected_refs = [evidence_ref(item) for item in knowledge_evidence(evidence)]
+        matched_selected_refs = [
+            ref for ref in gold_refs if any(reference_matches(ref, actual) for actual in selected_refs)
+        ]
+        ranked_refs = [evidence_ref(item) for item in pre_selection_candidates(raw)]
+        matched_retrieval_refs = [
+            ref for ref in gold_refs if any(reference_matches(ref, actual) for actual in ranked_refs)
+        ]
+        retrieval_recall_hits += len(matched_retrieval_refs)
+        retrieval_recall_total += len(gold_refs)
+        selected_recall_hits += len(matched_selected_refs)
+        selected_recall_total += len(gold_refs)
 
         selection_constraints = selection_constraint_result(golden, raw, evidence)
         if selection_constraints is not None:
@@ -607,23 +733,30 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         citation_valid += valid_citations
         citation_total += len(citations)
 
-        safe_match = predicted == expected
+        safe_match = outcome_matches(expected, predicted)
         if expected != "ANSWER":
             safe_total += 1
             safe_hits += int(safe_match)
-        elif predicted != "ANSWER":
-            false_refusal += 1
+        if isinstance(expected_route, str) and expected_route:
+            route_total += 1
+            route_hits += int(actual_route == expected_route)
 
         latency = raw.get("latency_ms")
         if isinstance(latency, (int, float)) and latency >= 0:
             latencies.append(float(latency))
+        retrieval_latency_ms = retrieval_latency(raw)
+        if retrieval_latency_ms is not None:
+            retrieval_latencies.append(retrieval_latency_ms)
 
         judgment = judged_by_case.get(case_id)
         correctness = judgment.get("correctness") if isinstance(judgment, dict) else None
         faithfulness = judgment.get("faithfulness") if isinstance(judgment, dict) else None
+        context_quality = judgment.get("context_quality") if isinstance(judgment, dict) else None
         if expected == "ANSWER":
             correctness_eligible += 1
             faithfulness_eligible += 1
+            context_precision_eligible += 1
+            context_recall_eligible += 1
         if isinstance(correctness, dict) and isinstance(correctness.get("score"), int):
             correctness_score += correctness["score"]
             correctness_count += 1
@@ -633,6 +766,19 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
             faithfulness_count += 1
             all_judged_claims += len(claims)
             faithful_claims += sum(1 for claim in claims if isinstance(claim, dict) and claim.get("supported") is True)
+        if isinstance(context_quality, dict):
+            contexts = context_quality.get("contexts")
+            reference_claims = context_quality.get("reference_claims")
+            if isinstance(contexts, list):
+                relevance = [item.get("relevant") is True for item in contexts if isinstance(item, dict)]
+                context_precision_total += average_precision(relevance)
+                context_precision_count += 1
+            if isinstance(reference_claims, list):
+                context_recall_count += 1
+                context_recall_total += len(reference_claims)
+                context_recall_hits += sum(
+                    1 for claim in reference_claims
+                    if isinstance(claim, dict) and claim.get("supported") is True)
 
         details.append({
             "case_id": case_id,
@@ -640,20 +786,25 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
             "expected_outcome": expected,
             "predicted_outcome": predicted,
             "safe_outcome_match": safe_match,
+            "expected_route": expected_route,
+            "predicted_route": actual_route,
+            "route_match": actual_route == expected_route if expected_route else None,
             "dependency_failure": dependency_failure,
             "required_evidence_types": expected_types,
             "actual_evidence_types": sorted(actual_types),
             "required_evidence_type_hit": type_hit if expected_types else None,
             "gold_evidence_count": len(gold_refs),
-            "matched_gold_evidence_count": len(matched_refs),
-            "matched_precision_evidence_count": len(matched_actual_refs) if gold_refs else None,
+            "matched_retrieval_evidence_count": len(matched_retrieval_refs),
+            "matched_selected_evidence_count": len(matched_selected_refs),
             "selection_constraints": selection_constraints,
             "citation_count": len(citations),
             "valid_citation_count": valid_citations,
             "latency_ms": latency,
+            "retrieval_latency_ms": retrieval_latency_ms,
             "error": raw.get("error"),
             "correctness_judge": correctness,
             "faithfulness_judge": faithfulness,
+            "context_quality_judge": context_quality,
         })
 
     per_type = {
@@ -662,18 +813,31 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
     }
     missing_case_ids = [row["id"] for row in golden_rows if row["id"] not in raw_by_id]
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "coverage": {
             "golden_case_count": len(golden_rows),
             "scored_case_count": len(raw_rows),
             "missing_case_ids": missing_case_ids,
         },
         "metrics": {
-            "knowledge_recall_at_6": metric(ratio(recall_hits, recall_total), recall_hits, recall_total),
-            "precision_at_6": {
-                **metric(ratio(precision_hits, precision_total), precision_hits, precision_total),
-                "eligible_case_count": precision_case_count,
+            "retrieval_recall_at_10": metric(
+                ratio(retrieval_recall_hits, retrieval_recall_total),
+                retrieval_recall_hits, retrieval_recall_total),
+            "context_precision": {
+                "value": ratio(context_precision_total, context_precision_count),
+                "score_total": round(context_precision_total, 6),
+                "judged_case_count": context_precision_count,
+                "eligible_case_count": context_precision_eligible,
             },
+            "context_recall": {
+                **metric(ratio(context_recall_hits, context_recall_total),
+                         context_recall_hits, context_recall_total),
+                "judged_case_count": context_recall_count,
+                "eligible_case_count": context_recall_eligible,
+            },
+            "selected_evidence_id_recall_at_6": metric(
+                ratio(selected_recall_hits, selected_recall_total),
+                selected_recall_hits, selected_recall_total),
             "required_evidence_type_hit": metric(ratio(evidence_type_hits, evidence_type_total), evidence_type_hits, evidence_type_total),
             "required_evidence_type_hit_by_type": per_type,
             "selection_constraint_hit": metric(
@@ -681,11 +845,11 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
                 selection_constraint_hits, selection_constraint_total),
             "citation_index_validity": metric(ratio(citation_valid, citation_total), citation_valid, citation_total),
             "safe_outcome_accuracy": metric(ratio(safe_hits, safe_total), safe_hits, safe_total),
+            "route_accuracy": metric(ratio(route_hits, route_total), route_hits, route_total),
             "answer_availability": metric(ratio(available_answers, answer_cases), available_answers, answer_cases),
-            "dependency_failure_count": dependency_failures,
-            "false_refusal_count": false_refusal,
+            "entity_resolution_dependency_failure_count": dependency_failures,
             "request_error_count": request_errors,
-            "answer_correctness": {
+            "llm_judge_answer_correctness": {
                 "value": ratio(correctness_score, 2 * correctness_count),
                 "score_total": correctness_score,
                 "judged_case_count": correctness_count,
@@ -698,12 +862,15 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
                 "judged_case_count": faithfulness_count,
                 "eligible_case_count": faithfulness_eligible,
             },
-            "hallucination_rate": None if not all_judged_claims else round(1 - faithful_claims / all_judged_claims, 6),
             "latency_ms": {
                 "sample_count": len(latencies),
                 "p50": percentile(latencies, 0.5),
                 "p95": percentile(latencies, 0.95),
                 "max": round(max(latencies), 2) if latencies else None,
+            },
+            "retrieval_latency_ms": {
+                "sample_count": len(retrieval_latencies),
+                "p95": percentile(retrieval_latencies, 0.95),
             },
         },
         "case_results": details,
@@ -722,22 +889,36 @@ def render_report(summary: dict[str, Any]) -> str:
         "",
         f"本次评分覆盖 {coverage['scored_case_count']}/{coverage['golden_case_count']} 条 Golden Case。",
         "",
+        "## Core RAG Quality",
+        "",
         "| 指标 | 结果 |",
         "|---|---:|",
-        f"| Knowledge Recall@6 | {format_ratio(metrics['knowledge_recall_at_6']['value'])} ({metrics['knowledge_recall_at_6']['numerator']}/{metrics['knowledge_recall_at_6']['denominator']}) |",
-        f"| Precision@6 | {format_ratio(metrics['precision_at_6']['value'])} ({metrics['precision_at_6']['numerator']}/{metrics['precision_at_6']['denominator']}，覆盖 {metrics['precision_at_6']['eligible_case_count']} 个有 gold_evidence_refs 的 Case) |",
-        f"| Required Evidence Type Hit | {format_ratio(metrics['required_evidence_type_hit']['value'])} ({metrics['required_evidence_type_hit']['numerator']}/{metrics['required_evidence_type_hit']['denominator']}) |",
-        f"| Selection Constraint Hit | {format_ratio(metrics['selection_constraint_hit']['value'])} ({metrics['selection_constraint_hit']['numerator']}/{metrics['selection_constraint_hit']['denominator']}) |",
-        f"| Citation Index Validity | {format_ratio(metrics['citation_index_validity']['value'])} ({metrics['citation_index_validity']['numerator']}/{metrics['citation_index_validity']['denominator']}) |",
+        f"| Retrieval Recall@10 | {format_ratio(metrics['retrieval_recall_at_10']['value'])} ({metrics['retrieval_recall_at_10']['numerator']}/{metrics['retrieval_recall_at_10']['denominator']}) |",
+        f"| Context Precision | {format_ratio(metrics['context_precision']['value'])}（Judge 覆盖 {metrics['context_precision']['judged_case_count']}/{metrics['context_precision']['eligible_case_count']}） |",
+        f"| Context Recall | {format_ratio(metrics['context_recall']['value'])} ({metrics['context_recall']['numerator']}/{metrics['context_recall']['denominator']}，Judge 覆盖 {metrics['context_recall']['judged_case_count']}/{metrics['context_recall']['eligible_case_count']}) |",
+        f"| Faithfulness | {format_ratio(metrics['faithfulness']['value'])} ({metrics['faithfulness']['supported_claim_count']}/{metrics['faithfulness']['claim_count']}，Judge 覆盖 {metrics['faithfulness']['judged_case_count']}/{metrics['faithfulness']['eligible_case_count']}) |",
+        f"| LLM-Judge Answer Correctness | {format_ratio(metrics['llm_judge_answer_correctness']['value'])} ({metrics['llm_judge_answer_correctness']['score_total']}/{2 * metrics['llm_judge_answer_correctness']['judged_case_count']}，Judge 覆盖 {metrics['llm_judge_answer_correctness']['judged_case_count']}/{metrics['llm_judge_answer_correctness']['eligible_case_count']}) |",
+        "",
+        "## Safety & Reliability",
+        "",
+        "| 指标 | 结果 |",
+        "|---|---:|",
         f"| Safe Outcome Accuracy | {format_ratio(metrics['safe_outcome_accuracy']['value'])} ({metrics['safe_outcome_accuracy']['numerator']}/{metrics['safe_outcome_accuracy']['denominator']}) |",
         f"| Answer Availability | {format_ratio(metrics['answer_availability']['value'])} ({metrics['answer_availability']['numerator']}/{metrics['answer_availability']['denominator']}) |",
-        f"| Dependency Failure | {metrics['dependency_failure_count']} |",
-        f"| Answer Correctness | {format_ratio(metrics['answer_correctness']['value'])} ({metrics['answer_correctness']['score_total']}/{2 * metrics['answer_correctness']['judged_case_count']}，Judge 覆盖 {metrics['answer_correctness']['judged_case_count']}/{metrics['answer_correctness']['eligible_case_count']}) |",
-        f"| Faithfulness | {format_ratio(metrics['faithfulness']['value'])} ({metrics['faithfulness']['supported_claim_count']}/{metrics['faithfulness']['claim_count']}，Judge 覆盖 {metrics['faithfulness']['judged_case_count']}/{metrics['faithfulness']['eligible_case_count']}) |",
-        f"| Hallucination Rate | {format_ratio(metrics['hallucination_rate'])} |",
-        f"| False Refusal | {metrics['false_refusal_count']} |",
+        f"| P95 End-to-End Latency | {metrics['latency_ms']['p95']} ms |",
+        f"| P95 Retrieval Latency | {metrics['retrieval_latency_ms']['p95']} ms（{metrics['retrieval_latency_ms']['sample_count']} 个样本） |",
+        "",
+        "## Regression Diagnostics",
+        "",
+        "| 指标 | 结果 |",
+        "|---|---:|",
+        f"| Route Accuracy | {format_ratio(metrics['route_accuracy']['value'])} ({metrics['route_accuracy']['numerator']}/{metrics['route_accuracy']['denominator']}) |",
+        f"| Required Evidence Type Hit | {format_ratio(metrics['required_evidence_type_hit']['value'])} ({metrics['required_evidence_type_hit']['numerator']}/{metrics['required_evidence_type_hit']['denominator']}) |",
+        f"| Selection Constraint Hit | {format_ratio(metrics['selection_constraint_hit']['value'])} ({metrics['selection_constraint_hit']['numerator']}/{metrics['selection_constraint_hit']['denominator']}) |",
+        f"| Selected Evidence ID Recall@6 | {format_ratio(metrics['selected_evidence_id_recall_at_6']['value'])} ({metrics['selected_evidence_id_recall_at_6']['numerator']}/{metrics['selected_evidence_id_recall_at_6']['denominator']}) |",
+        f"| Citation Index Validity | {format_ratio(metrics['citation_index_validity']['value'])} ({metrics['citation_index_validity']['numerator']}/{metrics['citation_index_validity']['denominator']}) |",
+        f"| Entity Resolution Dependency Failure | {metrics['entity_resolution_dependency_failure_count']} |",
         f"| Runner 请求错误 | {metrics['request_error_count']} |",
-        f"| P50 / P95 / Max Latency | {metrics['latency_ms']['p50']} / {metrics['latency_ms']['p95']} / {metrics['latency_ms']['max']} ms |",
         "",
         "## 按证据类型",
         "",
@@ -748,10 +929,11 @@ def render_report(summary: dict[str, Any]) -> str:
         f"| {name} | {format_ratio(item['value'])} ({item['numerator']}/{item['denominator']}) |"
         for name, item in metrics["required_evidence_type_hit_by_type"].items()
     )
-    rows.extend(["", "## Case 明细", "", "| Case | 预期行为 | 实际行为 | Recall 命中 | 选择约束 | 证据类型 | 引用 |", "|---|---|---|---:|---|---|---:|"])
+    rows.extend(["", "## Case 明细", "", "| Case | 路由 | 预期行为 | 实际行为 | Retrieval Recall@10 | Selected ID Recall@6 | 选择约束 | 证据类型 | 引用 |", "|---|---|---|---|---:|---:|---|---|---:|"])
     rows.extend(
-        f"| {item['case_id']} | {item['expected_outcome']} | {item['predicted_outcome']} | "
-        f"{item['matched_gold_evidence_count']}/{item['gold_evidence_count']} | "
+        f"| {item['case_id']} | {item['predicted_route'] or 'N/A'} | {item['expected_outcome']} | {item['predicted_outcome']} | "
+        f"{item['matched_retrieval_evidence_count']}/{item['gold_evidence_count']} | "
+        f"{item['matched_selected_evidence_count']}/{item['gold_evidence_count']} | "
         f"{'通过' if item['selection_constraints'] and item['selection_constraints']['passed'] else ('N/A' if item['selection_constraints'] is None else '未通过')} | "
         f"{'命中' if item['required_evidence_type_hit'] else ('N/A' if item['required_evidence_type_hit'] is None else '未命中')} | "
         f"{item['valid_citation_count']}/{item['citation_count']} |"
@@ -759,7 +941,7 @@ def render_report(summary: dict[str, Any]) -> str:
     )
     if coverage["missing_case_ids"]:
         rows.extend(["", "## 覆盖不足", "", "尚未执行的 Case：" + ", ".join(coverage["missing_case_ids"])])
-    rows.extend(["", "依赖故障根据结构化 rejectionReason 分类，并作为未命中计入固定 Golden Set 的 Recall 与 Evidence Type Hit 分母；Answer Availability 同样计入失败。", "", "Judge 结果由固定模型、固定提示词和 temperature=0 生成；未覆盖的 Answer Case 不计入 Judge 指标分母。", ""])
+    rows.extend(["", "Retrieval Recall@10 使用 SourceAwareRanker 之后、EvidenceSelector 之前的统一 preSelectionRanked 快照；Selected Evidence ID Recall@6 仅作为精确 ID 回归诊断。", "", "Context Precision 按最终 Evidence 顺序计算平均精度（Average Precision）；Context Recall 按 gold_claims 的证据支持覆盖率计算。Judge 结果由固定模型、固定提示词和 temperature=0 生成，未覆盖的 Answer Case 不计入 Judge 指标分母。", "", "SAFE_REFUSAL 是结果族标签，可匹配明确的安全拒答子类型；ERROR 和依赖故障不属于正确安全拒答。", ""])
     return "\n".join(rows)
 
 
@@ -832,11 +1014,12 @@ def main() -> int:
     args.report.write_text(render_report(summary), encoding="utf-8", newline="\n")
     metrics = summary["metrics"]
     print(f"已评分 {summary['coverage']['scored_case_count']} 条 Case。")
-    print(f"Knowledge Recall@6: {format_ratio(metrics['knowledge_recall_at_6']['value'])}")
-    print(f"Precision@6: {format_ratio(metrics['precision_at_6']['value'])}")
+    print(f"Retrieval Recall@10: {format_ratio(metrics['retrieval_recall_at_10']['value'])}")
+    print(f"Context Precision: {format_ratio(metrics['context_precision']['value'])}")
+    print(f"Context Recall: {format_ratio(metrics['context_recall']['value'])}")
     print(f"Required Evidence Type Hit: {format_ratio(metrics['required_evidence_type_hit']['value'])}")
     print(f"Safe Outcome Accuracy: {format_ratio(metrics['safe_outcome_accuracy']['value'])}")
-    print(f"Answer Correctness: {format_ratio(metrics['answer_correctness']['value'])}")
+    print(f"LLM-Judge Answer Correctness: {format_ratio(metrics['llm_judge_answer_correctness']['value'])}")
     print(f"Faithfulness: {format_ratio(metrics['faithfulness']['value'])}")
     print(f"结果已写入：{args.output} 和 {args.report}")
     if args.judge:

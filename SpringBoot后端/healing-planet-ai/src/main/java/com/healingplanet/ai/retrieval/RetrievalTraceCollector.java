@@ -22,6 +22,7 @@ final class RetrievalTraceCollector {
     private final List<RetrievalTrace.CandidateSnapshot> filtered = new ArrayList<>();
     private final List<RetrievalTrace.CandidateSnapshot> rerankBefore = new ArrayList<>();
     private final List<RetrievalTrace.CandidateSnapshot> rerankAfter = new ArrayList<>();
+    private final List<RetrievalTrace.CandidateSnapshot> preSelectionRanked = new ArrayList<>();
     private final List<RetrievalTrace.SelectionSnapshot> selected = new ArrayList<>();
     private final List<RetrievalTrace.StageSnapshot> stages = new ArrayList<>();
 
@@ -77,6 +78,14 @@ final class RetrievalTraceCollector {
         addCandidates(rerankAfter, after, "all", scores, false);
     }
 
+    void preSelectionRanked(List<Evidence> evidence) {
+        if (!enabled) return;
+        for (int i = 0; i < evidence.size(); i++) {
+            Evidence item = evidence.get(i);
+            preSelectionRanked.add(candidate(item, i + 1));
+        }
+    }
+
     void selected(List<Evidence> evidence, java.util.Map<String, String> reasons) {
         if (!enabled) return;
         for (int i = 0; i < evidence.size(); i++) {
@@ -93,7 +102,7 @@ final class RetrievalTraceCollector {
     RetrievalTrace build(EntityResolutionDiagnostics entityResolution) {
         if (!enabled) return null;
         return new RetrievalTrace(null, entityResolution, dense, sparse, rrf, filtered,
-                rerankBefore, rerankAfter, selected, stages);
+                rerankBefore, rerankAfter, preSelectionRanked, selected, stages);
     }
 
     private void addCandidates(List<RetrievalTrace.CandidateSnapshot> target,
@@ -120,6 +129,15 @@ final class RetrievalTraceCollector {
         return new RetrievalTrace.CandidateSnapshot(document.id(), document.sourceId(), document.source().name(),
                 document.title(), document.content(), document.canonicalPlantId(), document.knowledgeType(), scope,
                 rank, denseScore, sparseScore, denseRank, sparseRank, rrfScore, rerankScore, finalScore);
+    }
+
+    private RetrievalTrace.CandidateSnapshot candidate(Evidence evidence, int rank) {
+        Object canonicalPlantId = evidence.metadata().get("canonicalPlantId");
+        Object knowledgeType = evidence.metadata().get("knowledgeType");
+        return new RetrievalTrace.CandidateSnapshot(evidence.id(), evidence.sourceId(), evidence.sourceType(),
+                evidence.title(), evidence.content(), canonicalPlantId == null ? null : canonicalPlantId.toString(),
+                knowledgeType == null ? null : knowledgeType.toString(), "all", rank,
+                evidence.retrievalScore(), null, null, null, null, evidence.rerankScore(), evidence.finalScore());
     }
 
     private RetrievalTrace.StageSnapshot stage(String stage, String source, String scope, long started,

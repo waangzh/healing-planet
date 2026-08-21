@@ -103,7 +103,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         trace.rerank(filtered, reranked, rerankScores);
         SelectionResult selection = trace.time("final_rank", "all", "all",
                 () -> metrics.time("final_rank", "all",
-                        () -> selectEvidence(query, filtered, rerankScores, entity)));
+                        () -> selectEvidence(query, filtered, rerankScores, entity, trace)));
         trace.selected(selection.evidence(), selection.reasons());
         metrics.recordCandidates("selected", "all", selection.evidence().size());
         return new RetrievalPayload(selection.evidence(), entity.diagnostics());
@@ -111,8 +111,10 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
 
     private SelectionResult selectEvidence(RagQuery query, List<RetrievalCandidate> candidates,
                                            Map<String, Double> rerankScores,
-                                           PlantEntityResolver.Resolution entity) {
+                                           PlantEntityResolver.Resolution entity,
+                                           RetrievalTraceCollector trace) {
         List<Evidence> ranked = ranker.rank(query, candidates, rerankScores);
+        trace.preSelectionRanked(ranked);
         if (!properties.getEvidenceSelector().isEnabled()) {
             List<Evidence> selected = ranked.stream().limit(properties.getFinalTopK()).toList();
             Map<String, String> reasons = new LinkedHashMap<>();

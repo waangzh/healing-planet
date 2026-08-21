@@ -55,7 +55,7 @@ class RagControllerTest {
     void streamEmitsRetrievalTraceBeforeTokens() {
         RagService ragService = mock(RagService.class);
         var trace = new RetrievalTrace(null, null, List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
         when(ragService.stream(any())).thenReturn(new RagService.RagStream(List.of(), null, trace,
                 Flux.just("回答")));
 

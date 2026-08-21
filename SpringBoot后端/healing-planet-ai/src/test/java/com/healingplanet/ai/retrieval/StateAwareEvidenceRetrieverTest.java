@@ -94,7 +94,7 @@ class StateAwareEvidenceRetrieverTest {
         assertThat(trace.routing().community()).isFalse();
         assertThat(trace.routing().intent()).isEqualTo("GENERAL_CARE");
         assertThat(trace.routing().requiredKnowledgeType()).isEqualTo("LIGHT");
-        assertThat(trace.stages()).extracting(item -> item.stage()).contains("query_route");
+        assertThat(trace.stages()).extracting(item -> item.stage()).contains("query_route", "retrieve_total");
     }
 
     private StateAwareEvidenceRetriever retriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,

@@ -50,13 +50,14 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
-        RetrievalPayload payload = metrics.time("retrieve_total", "all", () -> retrieveTimed(query, trace));
+        RetrievalPayload payload = trace.time("retrieve_total", "all", "all",
+                () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(query, trace)));
         RetrievalResult result = payload.result();
         RetrievalTrace retrievalTrace = result.retrievalTrace();
         if (properties.getEval().isRetrievalTraceEnabled()) {
             if (retrievalTrace == null) {
                 retrievalTrace = new RetrievalTrace(null, result.entityResolution(), List.of(), List.of(),
-                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
             }
             retrievalTrace = retrievalTrace.withRouting(routingSnapshot(payload.route(), payload.routed()),
                     trace.stages());
