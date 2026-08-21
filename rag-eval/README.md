@@ -64,6 +64,8 @@ python .\score.py --judge
 ```
 
 Judge 结果支持断点续评；提示词或输入变化会自动失效对应缓存。需要全部重评时追加 `--refresh-judges`。
+三个 Judge 按 metric 级缓存并在全局有界线程池中执行，默认最多同时发出 3 个请求；可通过
+`--judge-max-concurrent` 或 `judge.local.json` 中的 `max_concurrent` 调整。
 
 ## 当前指标
 

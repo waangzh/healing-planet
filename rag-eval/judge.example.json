@@ -3,5 +3,6 @@
   "model": "your-judge-model",
   "api_key_env": "JUDGE_API_KEY",
   "timeout": 90,
-  "retries": 1
+  "retries": 1,
+  "max_concurrent": 3
 }

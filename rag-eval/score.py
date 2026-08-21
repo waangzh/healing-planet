@@ -4,17 +4,21 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 from http.client import IncompleteRead, RemoteDisconnected
 import json
 import logging
 import math
 import os
+import random
 import re
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
@@ -47,6 +51,12 @@ ENTITY_DEPENDENCY_FAILURES = {
     "llm_connect_timeout", "llm_read_timeout", "llm_connection_failed", "llm_invalid_json",
 }
 LOG = logging.getLogger("rag_eval.score")
+JUDGE_RESPONSE_CONTRACTS = {
+    "correctness": "correctness/v1",
+    "faithfulness": "faithfulness/v1",
+    "context_quality": "context_quality/v1",
+}
+RETRY_BACKOFF_MAX_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,17 @@ class JudgeSettings:
     timeout: float
     retries: int
     temperature: float = 0.0
+    max_concurrent: int = 3
+
+
+@dataclass(frozen=True)
+class JudgeTask:
+    case_id: str
+    metric: str
+    prompt: str
+    validate: Callable[[dict[str, Any]], dict[str, Any]]
+    content_fingerprint: str
+    input_fingerprint: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT,
                         help=f"Markdown 报告输出路径（默认：{DEFAULT_REPORT}）")
     parser.add_argument("--judge", action="store_true",
-                        help="调用两个 LLM Judge，并将结果缓存到 --judgments")
+                        help="调用三个 LLM Judge，并将结果缓存到 --judgments")
     parser.add_argument("--judgments", type=Path, default=DEFAULT_JUDGMENTS,
                         help=f"Judge 结果 JSONL 路径（默认：{DEFAULT_JUDGMENTS}）")
     parser.add_argument("--refresh-judges", action="store_true",
@@ -87,6 +108,8 @@ def parse_args() -> argparse.Namespace:
                         help="单次 Judge 请求超时秒数，优先级高于本地配置")
     parser.add_argument("--judge-retries", type=int,
                         help="单个 Judge 失败后的重试次数，优先级高于本地配置")
+    parser.add_argument("--judge-max-concurrent", type=int,
+                        help="Judge 全局最大并发请求数，优先级高于本地配置（默认：3）")
     return parser.parse_args()
 
 
@@ -121,6 +144,20 @@ def load_judgments(path: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"Judge 结果 {path}:{line_number} 不是有效 JSON：{exc}") from exc
             if not isinstance(row, dict) or not row.get("case_id"):
                 raise ValueError(f"Judge 结果 {path}:{line_number} 必须包含非空 case_id")
+            if row.get("schema_version") == 3:
+                metric_name = row.get("metric")
+                status = row.get("status")
+                if metric_name not in JUDGE_RESPONSE_CONTRACTS:
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 metric 无效")
+                if not isinstance(row.get("content_fingerprint"), str) \
+                        or not isinstance(row.get("input_fingerprint"), str):
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 fingerprint 无效")
+                if status not in {"ok", "error"}:
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 status 无效")
+                if status == "ok" and not isinstance(row.get("result"), dict):
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 result 无效")
+                if status == "error" and not isinstance(row.get("error"), str):
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 error 无效")
             rows.append(row)
     return rows
 
@@ -470,30 +507,57 @@ def extract_message_content(response: dict[str, Any]) -> str:
     raise ValueError("Judge API 返回的 message.content 不是文本")
 
 
+def retry_delay(error: HTTPError | None, attempt: int) -> float:
+    retry_after = error.headers.get("Retry-After") if error is not None and error.headers else None
+    if retry_after:
+        try:
+            return min(RETRY_BACKOFF_MAX_SECONDS, max(0.0, float(retry_after)))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(retry_after)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return min(RETRY_BACKOFF_MAX_SECONDS,
+                           max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds()))
+            except (TypeError, ValueError, OverflowError):
+                pass
+    exponential = min(RETRY_BACKOFF_MAX_SECONDS, float(2 ** (attempt - 1)))
+    return min(RETRY_BACKOFF_MAX_SECONDS, exponential + random.uniform(0.0, min(1.0, exponential * 0.25)))
+
+
 def call_judge(prompt: str, settings: JudgeSettings) -> dict[str, Any]:
     payload = json.dumps({
         "model": settings.model,
         "temperature": settings.temperature,
         "messages": [{"role": "user", "content": prompt}],
     }, ensure_ascii=False).encode("utf-8")
-    request = Request(settings.url, data=payload, headers={
-        "Authorization": "Bearer " + settings.api_key,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }, method="POST")
     last_error: Exception | None = None
     for attempt in range(1, settings.retries + 2):
+        request = Request(settings.url, data=payload, headers={
+            "Authorization": "Bearer " + settings.api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }, method="POST")
         try:
             with urlopen(request, timeout=settings.timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
             return parse_json_content(extract_message_content(body))
+        except HTTPError as exc:
+            last_error = exc
+            retryable = exc.code == 429 or 500 <= exc.code < 600
+            if not retryable or attempt > settings.retries:
+                raise RuntimeError(f"Judge 调用失败：HTTP {exc.code} {exc.reason}") from exc
+            delay = retry_delay(exc, attempt)
         # Judge 可能以 chunked 响应返回；上游在响应体结束前断开时，
         # http.client 会抛出 IncompleteRead/RemoteDisconnected，应按可重试网络错误处理。
-        except (HTTPError, URLError, OSError, IncompleteRead, RemoteDisconnected,
-                ValueError, json.JSONDecodeError) as exc:
+        except (URLError, OSError, IncompleteRead, RemoteDisconnected, ValueError) as exc:
             last_error = exc
-            LOG.warning("Judge 请求失败 attempt=%s/%s type=%s message=%s", attempt, settings.retries + 1,
-                        type(exc).__name__, str(exc))
+            if attempt > settings.retries:
+                break
+            delay = retry_delay(None, attempt)
+        LOG.warning("Judge 请求失败 attempt=%s/%s type=%s message=%s retry_in=%.2fs", attempt,
+                    settings.retries + 1, type(last_error).__name__, str(last_error), delay)
+        time.sleep(delay)
     raise RuntimeError(f"Judge 调用失败：{last_error}")
 
 
@@ -563,9 +627,9 @@ def validate_context_quality(value: dict[str, Any], evidence_count: int,
     return {"contexts": normalized_contexts, "reference_claims": normalized_claims}
 
 
-def judge_input_fingerprint(case: dict[str, Any], raw: dict[str, Any], settings: JudgeSettings,
-                            correctness_prompt: str, faithfulness_prompt: str,
-                            context_prompt: str) -> str:
+def legacy_judge_input_fingerprint(case: dict[str, Any], raw: dict[str, Any], settings: JudgeSettings,
+                                   correctness_prompt: str, faithfulness_prompt: str,
+                                   context_prompt: str) -> str:
     return fingerprint({
         "source": source_fingerprint(case, raw),
         "judge": {
@@ -575,6 +639,74 @@ def judge_input_fingerprint(case: dict[str, Any], raw: dict[str, Any], settings:
             "context_prompt": fingerprint(context_prompt),
         },
     })
+
+
+def make_judge_task(case_id: str, metric_name: str, prompt: str,
+                    validate: Callable[[dict[str, Any]], dict[str, Any]],
+                    settings: JudgeSettings | None) -> JudgeTask:
+    response_contract = JUDGE_RESPONSE_CONTRACTS[metric_name]
+    content_fingerprint = fingerprint({
+        "metric": metric_name,
+        "prompt": prompt,
+        "response_contract": response_contract,
+    })
+    input_fingerprint = "" if settings is None else fingerprint({
+        "endpoint_fingerprint": fingerprint(settings.url),
+        "request": {
+            "model": settings.model,
+            "temperature": settings.temperature,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        "response_contract": response_contract,
+    })
+    return JudgeTask(case_id, metric_name, prompt, validate, content_fingerprint, input_fingerprint)
+
+
+def render_correctness_judge_task(case: dict[str, Any], raw: dict[str, Any], template: str,
+                                  settings: JudgeSettings | None = None) -> JudgeTask:
+    prompt = render_prompt(template, {
+        "QUESTION": str(case.get("query", "")),
+        "GOLD_CLAIMS": format_claims(case.get("gold_claims")),
+        "REFERENCE_ANSWER": str(case.get("reference_answer", "")),
+        "GENERATED_ANSWER": str(raw.get("answer", "")),
+    })
+    return make_judge_task(case["id"], "correctness", prompt, validate_correctness, settings)
+
+
+def render_faithfulness_judge_task(case: dict[str, Any], raw: dict[str, Any], template: str,
+                                   settings: JudgeSettings | None = None) -> JudgeTask:
+    prompt = render_prompt(template, {
+        "QUESTION": str(case.get("query", "")),
+        "SYSTEM_POLICY": system_policy_context(case, raw),
+        "EVIDENCE": format_evidence(evidence_list(raw)),
+        "GENERATED_ANSWER": str(raw.get("answer", "")),
+    })
+    return make_judge_task(case["id"], "faithfulness", prompt, validate_faithfulness, settings)
+
+
+def render_context_judge_task(case: dict[str, Any], raw: dict[str, Any], template: str,
+                              settings: JudgeSettings | None = None) -> JudgeTask:
+    claims = case.get("gold_claims") if isinstance(case.get("gold_claims"), list) else []
+    evidence = evidence_list(raw)
+    prompt = render_prompt(template, {
+        "QUESTION": str(case.get("query", "")),
+        "REFERENCE_ANSWER": str(case.get("reference_answer", "")),
+        "GOLD_CLAIMS": format_indexed_claims(claims),
+        "EVIDENCE": format_evidence(evidence),
+    })
+    return make_judge_task(
+        case["id"], "context_quality", prompt,
+        lambda value: validate_context_quality(value, len(evidence), len(claims)), settings)
+
+
+def render_judge_tasks(case: dict[str, Any], raw: dict[str, Any], settings: JudgeSettings | None,
+                       correctness_prompt: str, faithfulness_prompt: str,
+                       context_prompt: str) -> tuple[JudgeTask, JudgeTask, JudgeTask]:
+    return (
+        render_correctness_judge_task(case, raw, correctness_prompt, settings),
+        render_faithfulness_judge_task(case, raw, faithfulness_prompt, settings),
+        render_context_judge_task(case, raw, context_prompt, settings),
+    )
 
 
 def source_fingerprint(case: dict[str, Any], raw: dict[str, Any]) -> str:
@@ -587,109 +719,147 @@ def source_fingerprint(case: dict[str, Any], raw: dict[str, Any]) -> str:
     })
 
 
+def judgment_cache_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    if item.get("schema_version") == 3:
+        return 3, item.get("case_id"), item.get("metric"), item.get("input_fingerprint")
+    return item.get("schema_version"), item.get("case_id"), item.get("input_fingerprint")
+
+
 def merge_judgments(existing: list[dict[str, Any]], updated: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    updated_keys = {(item["case_id"], item.get("input_fingerprint")) for item in updated}
-    retained = [item for item in existing if (item.get("case_id"), item.get("input_fingerprint")) not in updated_keys]
+    updated_keys = {judgment_cache_key(item) for item in updated}
+    retained = [item for item in existing if judgment_cache_key(item) not in updated_keys]
     return retained + updated
+
+
+def judgment_row(task: JudgeTask, settings: JudgeSettings, result: dict[str, Any] | None,
+                 error: str | None) -> dict[str, Any]:
+    return {
+        "schema_version": 3,
+        "case_id": task.case_id,
+        "metric": task.metric,
+        "content_fingerprint": task.content_fingerprint,
+        "input_fingerprint": task.input_fingerprint,
+        "judged_at": datetime.now(timezone.utc).isoformat(),
+        "status": "ok" if error is None else "error",
+        "judge": {
+            "endpoint": safe_endpoint(settings.url),
+            "model": settings.model,
+            "temperature": settings.temperature,
+        },
+        "result": result,
+        "error": error,
+    }
+
+
+def execute_judge_task(task: JudgeTask, settings: JudgeSettings) -> dict[str, Any]:
+    if not task.input_fingerprint:
+        raise ValueError("JudgeTask 缺少 input_fingerprint")
+    return task.validate(call_judge(task.prompt, settings))
 
 
 def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]], settings: JudgeSettings,
                existing: list[dict[str, Any]], refresh: bool,
-               on_case_complete: Callable[[list[dict[str, Any]]], None] | None = None) -> tuple[list[dict[str, Any]], int]:
+               on_task_complete: Callable[[list[dict[str, Any]]], None] | None = None) -> tuple[list[dict[str, Any]], int]:
     correctness_prompt = prompt_text("correctness-judge.txt")
     faithfulness_prompt = prompt_text("faithfulness-judge.txt")
     context_prompt = prompt_text("context-judge.txt")
     golden_by_id = {case["id"]: case for case in golden_rows}
-    cached = {(item.get("case_id"), item.get("input_fingerprint")): item for item in existing
-              if item.get("status") == "ok"}
+    existing_v3 = [item for item in existing if item.get("schema_version") == 3]
+    cached = {
+        (item.get("case_id"), item.get("metric"), item.get("input_fingerprint")): item
+        for item in existing_v3 if item.get("status") == "ok"
+    }
     updated: list[dict[str, Any]] = []
     failures = 0
+    pending: list[JudgeTask] = []
     candidates = [raw for raw in raw_rows if golden_by_id[raw["case_id"]].get("expected_outcome", "ANSWER") == "ANSWER"
                   and predict_outcome(raw) == "ANSWER"]
-    LOG.info("Judge 启动 candidates=%s existing_cache=%s refresh=%s model=%s endpoint=%s", len(candidates),
-             len(existing), refresh, settings.model, safe_endpoint(settings.url))
+    LOG.info("Judge 启动 candidates=%s existing_cache=%s refresh=%s max_concurrent=%s model=%s endpoint=%s",
+             len(candidates), len(existing_v3), refresh, settings.max_concurrent, settings.model,
+             safe_endpoint(settings.url))
 
     for raw in candidates:
         case = golden_by_id[raw["case_id"]]
-        input_fingerprint = judge_input_fingerprint(
-            case, raw, settings, correctness_prompt, faithfulness_prompt, context_prompt)
-        cached_row = cached.get((case["id"], input_fingerprint))
-        if cached_row and not refresh:
-            LOG.info("case=%s Judge 缓存命中", case["id"])
-            updated.append(cached_row)
-            continue
+        for task in render_judge_tasks(
+                case, raw, settings, correctness_prompt, faithfulness_prompt, context_prompt):
+            cache_key = (task.case_id, task.metric, task.input_fingerprint)
+            if not refresh and cache_key in cached:
+                LOG.info("case=%s metric=%s Judge 缓存命中", task.case_id, task.metric)
+                continue
+            pending.append(task)
 
-        correctness = faithfulness = context_quality = None
-        errors: dict[str, str] = {}
-        try:
-            LOG.info("case=%s 调用 Correctness Judge", case["id"])
-            correctness = validate_correctness(call_judge(render_prompt(correctness_prompt, {
-                "QUESTION": str(case.get("query", "")),
-                "GOLD_CLAIMS": format_claims(case.get("gold_claims")),
-                "REFERENCE_ANSWER": str(case.get("reference_answer", "")),
-                "GENERATED_ANSWER": str(raw.get("answer", "")),
-            }), settings))
-            LOG.info("case=%s Correctness Judge 完成 score=%s", case["id"], correctness["score"])
-        except (RuntimeError, ValueError) as exc:
-            errors["correctness"] = str(exc)
-            LOG.warning("case=%s Correctness Judge 失败: %s", case["id"], exc)
-        try:
-            LOG.info("case=%s 调用 Faithfulness Judge evidence=%s", case["id"], len(evidence_list(raw)))
-            faithfulness = validate_faithfulness(call_judge(render_prompt(faithfulness_prompt, {
-                "QUESTION": str(case.get("query", "")),
-                "SYSTEM_POLICY": system_policy_context(case, raw),
-                "EVIDENCE": format_evidence(evidence_list(raw)),
-                "GENERATED_ANSWER": str(raw.get("answer", "")),
-            }), settings))
-            LOG.info("case=%s Faithfulness Judge 完成 claims=%s", case["id"], len(faithfulness["claims"]))
-        except (RuntimeError, ValueError) as exc:
-            errors["faithfulness"] = str(exc)
-            LOG.warning("case=%s Faithfulness Judge 失败: %s", case["id"], exc)
-        try:
-            claims = case.get("gold_claims") if isinstance(case.get("gold_claims"), list) else []
-            evidence = evidence_list(raw)
-            LOG.info("case=%s 调用 Context Judge evidence=%s claims=%s", case["id"], len(evidence), len(claims))
-            context_quality = validate_context_quality(call_judge(render_prompt(context_prompt, {
-                "QUESTION": str(case.get("query", "")),
-                "REFERENCE_ANSWER": str(case.get("reference_answer", "")),
-                "GOLD_CLAIMS": format_indexed_claims(claims),
-                "EVIDENCE": format_evidence(evidence),
-            }), settings), len(evidence), len(claims))
-            LOG.info("case=%s Context Judge 完成 contexts=%s claims=%s", case["id"],
-                     len(context_quality["contexts"]), len(context_quality["reference_claims"]))
-        except (RuntimeError, ValueError) as exc:
-            errors["context_quality"] = str(exc)
-            LOG.warning("case=%s Context Judge 失败: %s", case["id"], exc)
+    LOG.info("Judge 待执行 tasks=%s", len(pending))
+    with ThreadPoolExecutor(max_workers=settings.max_concurrent, thread_name_prefix="rag-judge") as executor:
+        future_to_task = {executor.submit(execute_judge_task, task, settings): task for task in pending}
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+            try:
+                result = future.result()
+                row = judgment_row(task, settings, result, None)
+                LOG.info("case=%s metric=%s Judge 完成", task.case_id, task.metric)
+            except (RuntimeError, ValueError) as exc:
+                failures += 1
+                row = judgment_row(task, settings, None, str(exc))
+                LOG.warning("case=%s metric=%s Judge 失败: %s", task.case_id, task.metric, exc)
+            updated.append(row)
+            if on_task_complete:
+                # 运行中保留旧行；全部任务完成后再由最终写入统一为 v3，避免中断时损失旧结果。
+                on_task_complete(merge_judgments(existing, updated))
 
-        if errors:
-            failures += len(errors)
-        updated.append({
-            "schema_version": 2,
-            "case_id": case["id"],
-            "source_fingerprint": source_fingerprint(case, raw),
-            "input_fingerprint": input_fingerprint,
-            "judged_at": datetime.now(timezone.utc).isoformat(),
-            "status": "ok" if not errors else "partial_error",
-            "judge": {"model": settings.model, "temperature": settings.temperature},
-            "correctness": correctness,
-            "faithfulness": faithfulness,
-            "context_quality": context_quality,
-            "errors": errors,
-        })
-        if on_case_complete:
-            on_case_complete(merge_judgments(existing, updated))
-
-    LOG.info("Judge 完成 records=%s failures=%s", len(updated), failures)
-    return merge_judgments(existing, updated), failures
+    judgments = merge_judgments(existing_v3, updated)
+    LOG.info("Judge 完成 records=%s failures=%s", len(judgments), failures)
+    return judgments, failures
 
 
 def judgment_index(golden_by_id: dict[str, dict[str, Any]], raw_by_id: dict[str, dict[str, Any]],
                    judgments: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {
-        item["case_id"]: item for item in judgments
-        if item.get("status") in {"ok", "partial_error"} and item.get("case_id") in raw_by_id
-        and item.get("source_fingerprint") == source_fingerprint(golden_by_id[item["case_id"]], raw_by_id[item["case_id"]])
-    }
+    correctness_prompt = prompt_text("correctness-judge.txt")
+    faithfulness_prompt = prompt_text("faithfulness-judge.txt")
+    context_prompt = prompt_text("context-judge.txt")
+    expected_content: dict[tuple[str, str], str] = {}
+    for case_id, raw in raw_by_id.items():
+        case = golden_by_id[case_id]
+        if case.get("expected_outcome", "ANSWER") != "ANSWER" or predict_outcome(raw) != "ANSWER":
+            continue
+        for task in render_judge_tasks(
+                case, raw, None, correctness_prompt, faithfulness_prompt, context_prompt):
+            expected_content[(case_id, task.metric)] = task.content_fingerprint
+
+    indexed: dict[str, dict[str, Any]] = {}
+    for item in judgments:
+        case_id = item.get("case_id")
+        metric_name = item.get("metric")
+        if item.get("schema_version") != 3 or item.get("status") != "ok" \
+                or not isinstance(case_id, str) or case_id not in raw_by_id \
+                or metric_name not in JUDGE_RESPONSE_CONTRACTS \
+                or item.get("content_fingerprint") != expected_content.get((case_id, metric_name)) \
+                or not isinstance(item.get("result"), dict):
+            continue
+        indexed.setdefault(case_id, {"case_id": case_id})[metric_name] = item["result"]
+
+    # v2 仅用于未启用 --judge 时的只读兼容；只填补没有 v3 结果的 metric。
+    for item in judgments:
+        case_id = item.get("case_id")
+        if item.get("schema_version") == 3 or item.get("status") not in {"ok", "partial_error"} \
+                or not isinstance(case_id, str) or case_id not in raw_by_id \
+                or item.get("source_fingerprint") != source_fingerprint(golden_by_id[case_id], raw_by_id[case_id]):
+            continue
+        judge = item.get("judge")
+        model = judge.get("model") if isinstance(judge, dict) else None
+        temperature = judge.get("temperature") if isinstance(judge, dict) else None
+        if not isinstance(model, str) or not isinstance(temperature, (int, float)):
+            continue
+        legacy_settings = JudgeSettings("", "", model, 1.0, 0, float(temperature), 1)
+        expected_legacy_fingerprint = legacy_judge_input_fingerprint(
+            golden_by_id[case_id], raw_by_id[case_id], legacy_settings,
+            correctness_prompt, faithfulness_prompt, context_prompt)
+        if item.get("input_fingerprint") != expected_legacy_fingerprint:
+            continue
+        target = indexed.setdefault(case_id, {"case_id": case_id})
+        for metric_name in JUDGE_RESPONSE_CONTRACTS:
+            if metric_name not in target and isinstance(item.get(metric_name), dict):
+                target[metric_name] = item[metric_name]
+    return indexed
 
 
 def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]],
@@ -1067,18 +1237,21 @@ def judge_settings(args: argparse.Namespace) -> JudgeSettings:
     api_key_env = args.judge_api_key_env or config.get("api_key_env") or "JUDGE_API_KEY"
     timeout = args.judge_timeout if args.judge_timeout is not None else config.get("timeout", 90.0)
     retries = args.judge_retries if args.judge_retries is not None else config.get("retries", 1)
+    max_concurrent = (args.judge_max_concurrent if args.judge_max_concurrent is not None
+                      else config.get("max_concurrent", 3))
     if not isinstance(url, str) or not url.strip() or not isinstance(model, str) or not model.strip():
         raise ValueError("启用 --judge 时必须提供 --judge-url/JUDGE_URL 和 --judge-model/JUDGE_MODEL")
     if not isinstance(api_key_env, str) or not api_key_env.strip():
         raise ValueError("Judge 的 api_key_env 必须是非空环境变量名")
-    if not isinstance(timeout, (int, float)) or not isinstance(retries, int):
-        raise ValueError("Judge 配置中的 timeout 必须是数字，retries 必须是整数")
+    if not isinstance(timeout, (int, float)) or type(retries) is not int or type(max_concurrent) is not int:
+        raise ValueError("Judge 配置中的 timeout 必须是数字，retries 和 max_concurrent 必须是整数")
     api_key = os.getenv(api_key_env)
     if not api_key:
         raise ValueError(f"启用 --judge 时必须设置 API Key 环境变量 {api_key_env}")
-    if timeout <= 0 or retries < 0:
-        raise ValueError("--judge-timeout 必须大于 0，--judge-retries 不能小于 0")
-    return JudgeSettings(url.strip(), api_key, model.strip(), float(timeout), retries)
+    if timeout <= 0 or retries < 0 or max_concurrent <= 0:
+        raise ValueError("--judge-timeout 必须大于 0，--judge-retries 不能小于 0，--judge-max-concurrent 必须大于 0")
+    return JudgeSettings(url.strip(), api_key, model.strip(), float(timeout), retries,
+                         max_concurrent=max_concurrent)
 
 
 def main() -> int:
@@ -1095,11 +1268,11 @@ def main() -> int:
         judge_failures = 0
         if args.judge:
             settings = judge_settings(args)
-            LOG.info("Judge 配置 model=%s endpoint=%s config=%s", settings.model, safe_endpoint(settings.url),
-                     args.judge_config)
+            LOG.info("Judge 配置 model=%s endpoint=%s max_concurrent=%s config=%s", settings.model,
+                     safe_endpoint(settings.url), settings.max_concurrent, args.judge_config)
             judgments, judge_failures = run_judges(
                 golden_rows, raw_rows, settings, judgments, args.refresh_judges,
-                on_case_complete=lambda rows: write_jsonl(args.judgments, rows),
+                on_task_complete=lambda rows: write_jsonl(args.judgments, rows),
             )
             write_jsonl(args.judgments, judgments)
         summary = score_cases(golden_rows, raw_rows, judgments)
