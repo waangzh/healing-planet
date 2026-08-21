@@ -17,22 +17,14 @@ public class PlantAliasMatcher {
     private static final Pattern CARE_ANCHOR = Pattern.compile(
             "浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|叶片|"
                     + "晒|太阳|浇|补|出现|处理|频率|耐阴|喜阴|弱光|强光|直射|状态|异常|判断");
-    private static final Pattern COMPARISON_SEPARATOR = Pattern.compile("[和与跟]");
-    private static final Pattern COMPARISON_TERM = Pattern.compile("和|与|跟|比较|对比|相比|是否相同|一样|相同");
     private static final Pattern CONTEXTUAL_RIGHT_HINT = Pattern.compile(
             "^(?:的|浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|"
                     + "叶片|叶基|叶子|根腐|缺水|晒|太阳|浇|补|出现|处理|频率|耐阴|喜阴|弱光|"
                     + "强光|直射|状态|异常|判断|表现|检查)");
     private static final Pattern HAN_NAME = Pattern.compile("[\\p{IsHan}]+");
-    private static final Set<String> NON_ENTITY_TERMS = Set.of(
-            "植物", "绿植", "盆栽", "花卉", "光照", "阳光", "浇水", "补水", "温度", "湿度", "施肥",
-            "肥料", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "叶片", "叶子", "耐阴", "喜阴",
-            "弱光", "强光", "直射", "状态", "异常", "判断", "处理"
-    );
-
     MatchResult match(String query, String mentionQuery, String namedSubject, List<PlantCatalogEntry> entries) {
-        MatchResult comparison = comparisonMatch(query, entries);
-        if (comparison.status() != MatchStatus.NONE) return comparison;
+        MatchResult entityChain = entityChainMatch(query, entries);
+        if (entityChain.status() != MatchStatus.NONE) return entityChain;
 
         MatchResult subject = uniqueMatch(exactMatches(namedSubject, entries), namedSubject,
                 "multiple_exact_entity_matches");
@@ -148,57 +140,79 @@ public class PlantAliasMatcher {
         return matches;
     }
 
-    private MatchResult comparisonMatch(String query, List<PlantCatalogEntry> entries) {
-        if (!COMPARISON_TERM.matcher(query).find()) return MatchResult.none();
-        Matcher separator = COMPARISON_SEPARATOR.matcher(query);
-        if (!separator.find()) return MatchResult.none();
+    private MatchResult entityChainMatch(String query, List<PlantCatalogEntry> entries) {
+        List<NameMatch> mentions = entityChainMentions(query, entries);
+        if (mentions.size() < 2) return MatchResult.none();
 
-        String left = comparisonSubject(query.substring(0, separator.start()), false);
-        String right = comparisonSubject(query.substring(separator.end()), true);
-        NameMatch leftMatch = comparisonEntry(left, entries);
-        NameMatch rightMatch = comparisonEntry(right, entries);
-        boolean leftKnown = leftMatch != null;
-        boolean rightKnown = rightMatch != null;
-        boolean detected = (leftKnown || rightKnown)
-                && (leftKnown || looksLikeUnknownMention(left, false))
-                && (rightKnown || looksLikeUnknownMention(right, true));
-        if (!detected) return MatchResult.none();
-        if (!leftKnown || !rightKnown) return MatchResult.unknown("comparison_entity_unresolved");
-        boolean alias = leftMatch.entry().aliases().contains(leftMatch.matchedName())
-                || rightMatch.entry().aliases().contains(rightMatch.matchedName());
-        return MatchResult.known(List.of(leftMatch.entry(), rightMatch.entry()), alias, "");
-    }
-
-    private String comparisonSubject(String value, boolean rightSide) {
-        String subject = value.replaceFirst("^(请问|想问下|我想问|比较|对比)", "");
-        if (rightSide) {
-            int possessive = subject.indexOf('的');
-            if (possessive > 0) subject = subject.substring(0, possessive);
+        List<NameMatch> chain = new ArrayList<>();
+        for (NameMatch mention : mentions) {
+            if (chain.isEmpty()) {
+                chain.add(mention);
+            } else if (isWeakEntityLink(query.substring(chain.get(chain.size() - 1).end(), mention.start()))) {
+                chain.add(mention);
+            } else if (chain.size() < 2) {
+                chain.clear();
+                chain.add(mention);
+            } else {
+                break;
+            }
         }
-        return subject.replaceAll("[？?。，,;；]", "");
+        if (chain.size() < 2) return MatchResult.none();
+
+        List<PlantCatalogEntry> matchedEntries = chain.stream().map(NameMatch::entry).distinct().toList();
+        boolean alias = chain.stream().anyMatch(match -> match.entry().aliases().contains(match.matchedName()));
+        return MatchResult.known(matchedEntries, alias, "");
     }
 
-    private NameMatch comparisonEntry(String mention, List<PlantCatalogEntry> entries) {
+    private List<NameMatch> entityChainMentions(String query, List<PlantCatalogEntry> entries) {
+        List<NameMatch> matches = new ArrayList<>();
         for (PlantCatalogEntry entry : entries) {
             for (String name : entry.names()) {
-                if (name.equals(mention) || mention.startsWith(name) && isComparisonSuffix(mention.substring(name.length()))) {
-                    return new NameMatch(entry, name, 0);
+                int from = 0;
+                while (from <= query.length() - name.length()) {
+                    int start = query.indexOf(name, from);
+                    if (start < 0) break;
+                    int end = start + name.length();
+                    if (hasStandaloneBoundary(query, start, end, name)
+                            || hasContextualBoundary(query, start, end)
+                            || isComparisonSuffix(query.substring(end))) {
+                        matches.add(new NameMatch(entry, name, start));
+                    }
+                    from = start + 1;
                 }
             }
         }
-        return null;
+        return matches.stream()
+                .sorted(Comparator.comparingInt(NameMatch::start)
+                        .thenComparing(match -> match.matchedName().length(), Comparator.reverseOrder()))
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toMap(NameMatch::start, match -> match,
+                                (left, right) -> left, LinkedHashMap::new),
+                        matchesByStart -> List.copyOf(matchesByStart.values())));
+    }
+
+    private boolean isWeakEntityLink(String value) {
+        if (value.isBlank()) return false;
+        return value.codePoints().allMatch(codePoint -> Character.isWhitespace(codePoint)
+                || codePoint == '和' || codePoint == '与' || codePoint == '跟'
+                || isPunctuation(codePoint));
+    }
+
+    private boolean isPunctuation(int codePoint) {
+        int type = Character.getType(codePoint);
+        return type == Character.CONNECTOR_PUNCTUATION
+                || type == Character.DASH_PUNCTUATION
+                || type == Character.START_PUNCTUATION
+                || type == Character.END_PUNCTUATION
+                || type == Character.INITIAL_QUOTE_PUNCTUATION
+                || type == Character.FINAL_QUOTE_PUNCTUATION
+                || type == Character.OTHER_PUNCTUATION;
     }
 
     private boolean isComparisonSuffix(String suffix) {
         return suffix.isBlank() || suffix.startsWith("的") || suffix.startsWith("适宜")
                 || suffix.startsWith("需要") || suffix.startsWith("应该") || suffix.startsWith("是否")
                 || CARE_ANCHOR.matcher(suffix).find();
-    }
-
-    private boolean looksLikeUnknownMention(String text, boolean rightSide) {
-        String candidate = comparisonSubject(text, rightSide);
-        if (candidate.isBlank() || NON_ENTITY_TERMS.contains(candidate)) return false;
-        return candidate.length() >= 2 && candidate.length() <= 30 && HAN_NAME.matcher(candidate).matches();
     }
 
     private boolean hasStandaloneName(String query, String name) {
@@ -270,6 +284,10 @@ public class PlantAliasMatcher {
     }
 
     private record NameMatch(PlantCatalogEntry entry, String matchedName, int start) {
+        private int end() {
+            return start + matchedName.length();
+        }
+
         private boolean preferredTo(NameMatch other) {
             if (matchedName.length() != other.matchedName.length()) return matchedName.length() > other.matchedName.length();
             return start < other.start;

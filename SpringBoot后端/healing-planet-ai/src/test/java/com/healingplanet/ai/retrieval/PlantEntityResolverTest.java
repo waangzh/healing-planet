@@ -238,11 +238,44 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldRejectComparisonWhenAnyMentionIsUnknown() {
+    void shouldResolveAllPlantsInPunctuationAndConjunctionSeparatedEntityChain() {
+        var resolution = resolver.resolve(RagQuery.of("绿萝/白掌，红掌；虎尾兰的光照要求分别是什么？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantIds()).containsExactlyInAnyOrder("1", "2", "20", "21");
+    }
+
+    @Test
+    void shouldResolveScientificNamesInEntityChain() {
+        var resolution = resolver.resolve(RagQuery.of(
+                "Epipremnum aureum / Spathiphyllum wallisii，Anthurium andraeanum 的湿度要求分别是什么？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantIds()).containsExactlyInAnyOrder("1", "20", "21");
+    }
+
+    @Test
+    void shouldFallbackToSingleEntityWhenComparisonPartnerIsNotRecognizedPlant() {
         var resolution = resolver.resolve(RagQuery.of("绿萝和常春藤的浇水方法相同吗？"));
 
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
-        assertThat(resolution.rejectionReason()).isEqualTo("comparison_entity_unresolved");
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantIds()).containsExactly("1");
+    }
+
+    @Test
+    void shouldTreatCareAndSourceClausesJoinedByConjunctionAsSinglePlantQueries() {
+        Map<String, String> queries = Map.of(
+                "白掌日常养护时，花友如何平衡湿润与积水？", "21",
+                "白掌的湿度要求和花友的光照摆放经验分别是什么？", "21",
+                "虎尾兰指南的浇水频率和花友避免浇多的建议怎么结合？", "2",
+                "绿萝指南的温度范围与花友对弱光的提醒分别是什么？", "1"
+        );
+
+        queries.forEach((query, expectedPlantId) -> {
+            var resolution = resolver.resolve(RagQuery.of(query));
+            assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+            assertThat(resolution.canonicalPlantIds()).containsExactly(expectedPlantId);
+        });
     }
 
     @Test
