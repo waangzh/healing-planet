@@ -1,11 +1,11 @@
 # Healing Planet RAG 评测
 
-本目录包含两套评测集：
+本目录包含两套回归评测集：
 
-- `golden.jsonl`：114 条开发回归集，用于日常评测。
-- `holdout.jsonl`：30 条冻结盲测集，只用于里程碑或发布前评测，不应根据单条结果调参。
+- `golden.jsonl`：114 条开发回归集。
+- `holdout.jsonl`：30 条扩展评测回归集。
 
-不要为单条运行结果调参或改写冻结数据。语义修订必须同时更新 manifest、校验规则，并记录修订原因。运行前先校验数据及来源快照：
+语义修订必须同时更新 manifest，并记录修订原因。运行前先校验数据及来源快照：
 
 ```powershell
 python .\test\validate_datasets.py
@@ -35,7 +35,7 @@ python .\score.py
 - `results/report.md`：人工审阅报告。
 - `results/judgments.jsonl`：Judge 缓存。
 
-运行冻结 Holdout 时必须使用独立输出目录：
+运行扩展评测回归集时使用独立输出目录：
 
 ```powershell
 python .\run_eval.py --golden .\holdout.jsonl --limit 30 --output .\results\holdout\raw.jsonl

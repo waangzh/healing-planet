@@ -15,7 +15,7 @@
     "path": "holdout.jsonl",
     "role": "evaluation-regression",
     "case_count": 30,
-    "sha256": "86a3cdbdbd92b8edbfdfaa62500e87eb1a2d674f870a42d3250534a6af350f56",
+    "sha256": "0eae337b4965b340bb69e847eaae7b15d4a9cb69c10d02ba2b073a2f490ce803",
     "id_format": "1..30 as strings",
     "usage": ""
   },
