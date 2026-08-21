@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,14 +21,15 @@ class EvidenceSelectorTest {
         RagQuery query = new RagQuery("绿萝的光照和湿度要求", null, null, null, null, List.of(),
                 Map.of("includeCommunity", false, "requiredKnowledgeTypes", List.of("LIGHT", "HUMIDITY")));
 
-        EvidenceSelector.Selection result = selector.select(query, List.of(
+        EvidenceSelector.Selection result = selector.select(request(query,
+                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF, Set.of("LIGHT", "HUMIDITY")), List.of(
                 guide("light-best", "plant-1", "LIGHT", 0.95),
                 guide("light-duplicate", "plant-1", "LIGHT", 0.90),
                 guide("humidity-best", "plant-1", "HUMIDITY", 0.85)), 6, List.of("plant-1"));
 
         assertThat(result.evidence()).extracting(Evidence::id)
                 .containsExactly("light-best", "humidity-best");
-        assertThat(result.reasons()).containsEntry("light-best", "TOPIC_COVERAGE")
+        assertThat(result.reasons()).containsEntry("light-best", "SOURCE_RETENTION")
                 .containsEntry("humidity-best", "TOPIC_COVERAGE");
     }
 
@@ -36,7 +38,8 @@ class EvidenceSelectorTest {
         RagQuery query = new RagQuery("绿萝怎么养？", null, null, null, QueryIntent.GENERAL_CARE, List.of(),
                 Map.of("includeCommunity", false));
 
-        EvidenceSelector.Selection result = selector.select(query, List.of(
+        EvidenceSelector.Selection result = selector.select(request(query,
+                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF, Set.of()), List.of(
                 guide("general-1", "plant-1", "GENERAL_CARE", 0.99),
                 guide("general-2", "plant-1", "GENERAL_CARE", 0.98),
                 guide("light", "plant-1", "LIGHT", 0.80),
@@ -44,7 +47,7 @@ class EvidenceSelectorTest {
 
         assertThat(result.evidence()).extracting(Evidence::id)
                 .containsExactly("general-1", "light", "watering");
-        assertThat(result.reasons()).containsEntry("general-1", "BROAD_CARE_COVERAGE")
+        assertThat(result.reasons()).containsEntry("general-1", "SOURCE_RETENTION")
                 .containsEntry("light", "BROAD_CARE_COVERAGE");
     }
 
@@ -54,7 +57,8 @@ class EvidenceSelectorTest {
                 Map.of("includePlantKnowledge", true, "includeCommunity", true,
                         "requiredKnowledgeType", "WATERING"));
 
-        EvidenceSelector.Selection result = selector.select(query, List.of(
+        EvidenceSelector.Selection result = selector.select(request(query,
+                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED, Set.of("WATERING")), List.of(
                 guide("guide", "plant-1", "WATERING", 0.99),
                 community("post-a-1", "post-a", 0.98),
                 community("post-a-2", "post-a", 0.97),
@@ -71,10 +75,11 @@ class EvidenceSelectorTest {
     @Test
     void shouldReserveTwoCommunitySourcesBeforeHigherRankedPlantTopicsFillCapacity() {
         RagQuery query = new RagQuery("绿萝怎么养？大家有什么经验？", null, null, null,
-                QueryIntent.COMMUNITY_SEARCH, List.of(),
+                QueryIntent.GENERAL_CARE, List.of(),
                 Map.of("includePlantKnowledge", true, "includeCommunity", true));
 
-        EvidenceSelector.Selection result = selector.select(query, List.of(
+        EvidenceSelector.Selection result = selector.select(request(query,
+                SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED, Set.of()), List.of(
                 guide("general", "plant-1", "GENERAL_CARE", 0.99),
                 guide("temperature", "plant-1", "TEMPERATURE", 0.98),
                 guide("light", "plant-1", "LIGHT", 0.97),
@@ -100,5 +105,13 @@ class EvidenceSelectorTest {
                               double score, String canonicalPlantId) {
         return new Evidence(id, type, sourceId, type.name(), id, id, score, score, 1d, score,
                 Map.of("knowledgeType", knowledgeType, "canonicalPlantId", canonicalPlantId), null);
+    }
+
+    private RetrievalRequest request(RagQuery query, SourcePlan.Activation knowledge,
+                                     SourcePlan.Activation community, Set<String> types) {
+        SourcePlan sourcePlan = new SourcePlan(knowledge, community, SourcePlan.Activation.OFF);
+        QueryRouter.RoutingDecision routing = new QueryRouter.RoutingDecision(sourcePlan,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE);
+        return new RetrievalRequest(query, routing, sourcePlan, query.query(), types);
     }
 }

@@ -3,16 +3,15 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.KnowledgeSource;
-import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,14 +27,17 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private final SourceAwareRanker ranker;
     private final EvidenceSelector evidenceSelector;
     private final PlantEntityResolver entityResolver;
+    private final QueryRouter router;
     private final RetrievalMetrics metrics;
     private final RagProperties properties;
 
+    @Autowired
     public HybridEvidenceRetriever(@Qualifier("plantVectorStore") VectorStore plantStore,
                                    @Qualifier("communityVectorStore") VectorStore communityStore,
                                    SparseIndexService sparseIndex, KnowledgeDocumentMapper documentMapper,
                                    Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
-                                   EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties) {
+                                   EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties,
+                                   QueryRouter router) {
         this.plantStore = plantStore;
         this.communityStore = communityStore;
         this.sparseIndex = sparseIndex;
@@ -44,8 +46,17 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         this.ranker = ranker;
         this.evidenceSelector = evidenceSelector;
         this.entityResolver = entityResolver;
+        this.router = router;
         this.metrics = metrics;
         this.properties = properties;
+    }
+
+    HybridEvidenceRetriever(VectorStore plantStore, VectorStore communityStore,
+                            SparseIndexService sparseIndex, KnowledgeDocumentMapper documentMapper,
+                            Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
+                            EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties) {
+        this(plantStore, communityStore, sparseIndex, documentMapper, reranker, ranker, entityResolver,
+                evidenceSelector, metrics, properties, new QueryRouter());
     }
 
     @Override
@@ -55,17 +66,32 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
+        RetrievalRequest request = RetrievalRequest.from(query, router.route(query));
+        return retrieveWithDiagnostics(request);
+    }
+
+    @Override
+    public List<Evidence> retrieve(RetrievalRequest request) {
+        return retrieveWithDiagnostics(request).evidence();
+    }
+
+    @Override
+    public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
         RetrievalPayload payload = trace.time("knowledge_total", "all", "all",
-                () -> metrics.time("knowledge_total", "all", () -> retrieveTimed(query, trace)));
+                () -> metrics.time("knowledge_total", "all", () -> retrieveTimed(request, trace)));
         return new RetrievalResult(payload.evidence(), payload.entityResolution(),
                 trace.build(payload.entityResolution()));
     }
 
-    private RetrievalPayload retrieveTimed(RagQuery query, RetrievalTraceCollector trace) {
+    private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace) {
+        if (!request.routing().plantDomain()) {
+            metrics.recordCandidates("selected", "all", 0);
+            return new RetrievalPayload(List.of(), null);
+        }
         PlantEntityResolver.Resolution entity = trace.time("entity_resolve", "all", "all",
-                () -> metrics.time("entity_resolve", "all", () -> entityResolver.resolve(query)));
+                () -> metrics.time("entity_resolve", "all", () -> entityResolver.resolve(request)));
         if (entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
                 || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
                 || entity.kind() == PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN) {
@@ -74,28 +100,28 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         }
 
         List<RetrievalCandidate> fused = new java.util.ArrayList<>();
-        boolean includePlant = booleanContext(query, "includePlantKnowledge", query.intent() != QueryIntent.COMMUNITY_SEARCH);
-        boolean includeCommunity = booleanContext(query, "includeCommunity", true);
+        boolean includePlant = request.sourcePlan().includeKnowledge();
+        boolean includeCommunity = request.sourcePlan().includeCommunity();
         if (includePlant) {
             if (entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
                     && entity.canonicalPlantIds().size() > 1) {
                 for (String canonicalPlantId : entity.canonicalPlantIds()) {
-                    fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore,
+                    fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore,
                             PlantEntityResolver.Resolution.forCanonicalPlantId(canonicalPlantId), trace));
                 }
             } else {
-                fused.addAll(retrieveSource(query.query(), KnowledgeSource.PLANT, plantStore, entity, trace));
+                fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore, entity, trace));
             }
         }
         if (includeCommunity) {
-            fused.addAll(retrieveSource(query.query(), KnowledgeSource.COMMUNITY, communityStore, entity, trace));
+            fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.COMMUNITY, communityStore, entity, trace));
         }
         metrics.recordCandidates("fused", "all", fused.size());
         List<RetrievalCandidate> filtered = trace.time("knowledge_type_filter", "all", "all",
-                () -> filterKnowledgeType(query, fused));
+                () -> filterKnowledgeType(request, fused));
         trace.filtered(filtered);
         Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
-                () -> metrics.time("rerank", "all", () -> reranker.rerank(query.query(), filtered)));
+                () -> metrics.time("rerank", "all", () -> reranker.rerank(request.searchQuery(), filtered)));
         List<RetrievalCandidate> reranked = filtered.stream()
                 .sorted(Comparator.comparingDouble((RetrievalCandidate candidate) -> rerankScores
                         .getOrDefault(candidate.document().id(), Double.NEGATIVE_INFINITY)).reversed())
@@ -103,17 +129,17 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         trace.rerank(filtered, reranked, rerankScores);
         SelectionResult selection = trace.time("final_rank", "all", "all",
                 () -> metrics.time("final_rank", "all",
-                        () -> selectEvidence(query, filtered, rerankScores, entity, trace)));
+                        () -> selectEvidence(request, filtered, rerankScores, entity, trace)));
         trace.selected(selection.evidence(), selection.reasons());
         metrics.recordCandidates("selected", "all", selection.evidence().size());
         return new RetrievalPayload(selection.evidence(), entity.diagnostics());
     }
 
-    private SelectionResult selectEvidence(RagQuery query, List<RetrievalCandidate> candidates,
+    private SelectionResult selectEvidence(RetrievalRequest request, List<RetrievalCandidate> candidates,
                                            Map<String, Double> rerankScores,
                                            PlantEntityResolver.Resolution entity,
                                            RetrievalTraceCollector trace) {
-        List<Evidence> ranked = ranker.rank(query, candidates, rerankScores);
+        List<Evidence> ranked = ranker.rank(request.query(), candidates, rerankScores);
         trace.preSelectionRanked(ranked);
         if (!properties.getEvidenceSelector().isEnabled()) {
             List<Evidence> selected = ranked.stream().limit(properties.getFinalTopK()).toList();
@@ -121,41 +147,20 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             selected.forEach(evidence -> reasons.put(evidence.id(), "GLOBAL_RANKING"));
             return new SelectionResult(selected, reasons);
         }
-        EvidenceSelector.Selection selection = evidenceSelector.select(query, ranked, properties.getFinalTopK(),
+        EvidenceSelector.Selection selection = evidenceSelector.select(request, ranked, properties.getFinalTopK(),
                 entity.kind() == PlantEntityResolver.ResolutionKind.KNOWN
                         ? entity.canonicalPlantIds() : List.of());
         return new SelectionResult(selection.evidence(), selection.reasons());
     }
 
-    private List<RetrievalCandidate> filterKnowledgeType(RagQuery query, List<RetrievalCandidate> candidates) {
-        Set<String> types = requiredKnowledgeTypes(query);
+    private List<RetrievalCandidate> filterKnowledgeType(RetrievalRequest request, List<RetrievalCandidate> candidates) {
+        Set<String> types = request.requiredKnowledgeTypes();
         if (types.isEmpty()) return candidates;
         return candidates.stream()
                 .filter(candidate -> candidate.document().source() != KnowledgeSource.PLANT
                         || candidate.document().knowledgeType() != null
                         && types.contains(candidate.document().knowledgeType().toUpperCase(java.util.Locale.ROOT)))
                 .toList();
-    }
-
-    private Set<String> requiredKnowledgeTypes(RagQuery query) {
-        Object required = query.context().get("requiredKnowledgeType");
-        if (required instanceof String type && !type.isBlank()) {
-            return Set.of(type.toUpperCase(java.util.Locale.ROOT));
-        }
-        Object multi = query.context().get("requiredKnowledgeTypes");
-        if (!(multi instanceof Iterable<?> values)) return Set.of();
-        Set<String> result = new HashSet<>();
-        for (Object value : values) {
-            if (value instanceof String type && !type.isBlank()) {
-                result.add(type.toUpperCase(java.util.Locale.ROOT));
-            }
-        }
-        return result;
-    }
-
-    private boolean booleanContext(RagQuery query, String key, boolean defaultValue) {
-        Object value = query.context().get(key);
-        return value instanceof Boolean bool ? bool : defaultValue;
     }
 
     private List<RetrievalCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,

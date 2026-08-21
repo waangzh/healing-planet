@@ -48,9 +48,10 @@ class StateAwareEvidenceRetrieverTest {
 
         List<Evidence> result = retriever(router, knowledgeRetriever, stateRetriever).retrieve(query);
 
-        ArgumentCaptor<RagQuery> routed = ArgumentCaptor.forClass(RagQuery.class);
+        ArgumentCaptor<RetrievalRequest> routed = ArgumentCaptor.forClass(RetrievalRequest.class);
         verify(knowledgeRetriever).retrieve(routed.capture());
-        assertThat(routed.getValue().context()).containsEntry("requiredKnowledgeType", "WATERING");
+        assertThat(routed.getValue().requiredKnowledgeTypes()).containsExactly("WATERING");
+        assertThat(routed.getValue().query().intent()).isNull();
         assertThat(result).extracting(Evidence::type).containsExactly(EvidenceType.LIVE_STATE);
     }
 
@@ -65,11 +66,10 @@ class StateAwareEvidenceRetrieverTest {
 
         retriever(router, knowledgeRetriever, stateRetriever).retrieve(query);
 
-        ArgumentCaptor<RagQuery> routed = ArgumentCaptor.forClass(RagQuery.class);
+        ArgumentCaptor<RetrievalRequest> routed = ArgumentCaptor.forClass(RetrievalRequest.class);
         verify(knowledgeRetriever).retrieve(routed.capture());
-        assertThat(routed.getValue().context().get("requiredKnowledgeType")).isNull();
-        assertThat(routed.getValue().context().get("requiredKnowledgeTypes"))
-                .isEqualTo(java.util.Set.of("WATERING", "GENERAL_CARE"));
+        assertThat(routed.getValue().requiredKnowledgeTypes())
+                .containsExactlyInAnyOrder("WATERING", "GENERAL_CARE");
     }
 
     @Test
@@ -81,7 +81,7 @@ class StateAwareEvidenceRetrieverTest {
         var route = new QueryRouter.RoutingDecision(true, false, false,
                 QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE);
         when(router.route(query)).thenReturn(route);
-        when(knowledgeRetriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any()))
+        when(knowledgeRetriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
                 .thenReturn(new RetrievalResult(List.of(), null));
         RagProperties properties = new RagProperties();
         properties.getEval().setRetrievalTraceEnabled(true);
@@ -90,10 +90,12 @@ class StateAwareEvidenceRetrieverTest {
 
         var trace = retriever.retrieveWithDiagnostics(query).retrievalTrace();
 
-        assertThat(trace.routing().knowledge()).isTrue();
-        assertThat(trace.routing().community()).isFalse();
-        assertThat(trace.routing().intent()).isEqualTo("GENERAL_CARE");
-        assertThat(trace.routing().requiredKnowledgeType()).isEqualTo("LIGHT");
+        assertThat(trace.routing().includeKnowledge()).isTrue();
+        assertThat(trace.routing().includeCommunity()).isFalse();
+        assertThat(trace.routing().resolvedIntent()).isEqualTo("GENERAL_CARE");
+        assertThat(trace.routing().domain()).isEqualTo("PLANT");
+        assertThat(trace.routing().entityRequirement()).isEqualTo("REQUIRED");
+        assertThat(trace.routing().requiredKnowledgeTypes()).isEqualTo("LIGHT");
         assertThat(trace.stages()).extracting(item -> item.stage()).contains("query_route", "retrieve_total");
     }
 

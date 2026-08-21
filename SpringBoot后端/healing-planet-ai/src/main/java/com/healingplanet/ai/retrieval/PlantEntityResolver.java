@@ -34,24 +34,22 @@ public class PlantEntityResolver {
                     + "出现|处理|频率|日常|状态|异常|判断|情况|里|吗)+$");
 
     private final KnowledgeRepository repository;
-    private final QueryRouter queryRouter;
     private final PlantAliasMatcher aliasMatcher;
     private final PlantCandidateGenerator candidateGenerator;
     private final PlantEntityDisambiguator disambiguator;
     private volatile List<PlantCatalogEntry> catalog;
 
     public PlantEntityResolver(KnowledgeRepository repository) {
-        this(repository, new QueryRouter(), new PlantAliasMatcher(),
+        this(repository, new PlantAliasMatcher(),
                 new PlantCandidateGenerator(null, null, new RagProperties(), null), null);
     }
 
     @Autowired
     public PlantEntityResolver(KnowledgeRepository repository,
-                               QueryRouter queryRouter, PlantAliasMatcher aliasMatcher,
+                               PlantAliasMatcher aliasMatcher,
                                PlantCandidateGenerator candidateGenerator,
                                PlantEntityDisambiguator disambiguator) {
         this.repository = repository;
-        this.queryRouter = queryRouter;
         this.aliasMatcher = aliasMatcher;
         this.candidateGenerator = candidateGenerator;
         this.disambiguator = disambiguator;
@@ -71,11 +69,12 @@ public class PlantEntityResolver {
                         RagProperties ragProperties,
                         RetrievalMetrics metrics,
                         PlantEntityDisambiguator disambiguator) {
-        this(repository, new QueryRouter(), new PlantAliasMatcher(),
+        this(repository, new PlantAliasMatcher(),
                 new PlantCandidateGenerator(entityStore, sparseIndex, ragProperties, metrics), disambiguator);
     }
 
-    public Resolution resolve(RagQuery query) {
+    public Resolution resolve(RetrievalRequest request) {
+        RagQuery query = request.query();
         List<PlantCatalogEntry> entries = catalog();
         if (query.canonicalPlantId() != null && !query.canonicalPlantId().isBlank()) {
             return entries.stream()
@@ -105,7 +104,7 @@ public class PlantEntityResolver {
             return Resolution.unknown(aliasMatch.reason(), 1, 0, aliasMatch.candidateCount());
         }
 
-        QueryRouter.RoutingDecision route = queryRouter.route(query);
+        QueryRouter.RoutingDecision route = request.routing();
         boolean catalogNameMentioned = aliasMatcher.containsCatalogName(normalizedQuery, entries);
         if (route.entityRequirement() == QueryRouter.EntityRequirement.OPTIONAL && !catalogNameMentioned) {
             return Resolution.generic();
@@ -120,7 +119,7 @@ public class PlantEntityResolver {
             return Resolution.unknown("entity_not_in_catalog", 0, 0, 0);
         }
 
-        boolean plantDomain = route.plantDomain() || catalogNameMentioned;
+        boolean plantDomain = route.plantDomain();
         List<PlantCandidateGenerator.Candidate> ranked = candidateGenerator.generate(
                 query.query(), normalizedQuery, entries, aliasMatcher.contextualEntryIds(normalizedQuery, entries),
                 plantDomain);

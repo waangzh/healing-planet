@@ -11,4 +11,12 @@ public interface EvidenceRetriever {
     default RetrievalResult retrieveWithDiagnostics(RagQuery query) {
         return new RetrievalResult(retrieve(query), null);
     }
+
+    default List<Evidence> retrieve(RetrievalRequest request) {
+        return retrieve(request.query());
+    }
+
+    default RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
+        return retrieveWithDiagnostics(request.query());
+    }
 }

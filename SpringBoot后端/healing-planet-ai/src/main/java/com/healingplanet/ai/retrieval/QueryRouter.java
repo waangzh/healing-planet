@@ -44,7 +44,10 @@ public class QueryRouter {
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
             "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",
             "光照", "阳光", "温度", "湿度", "土壤", "修剪", "养护", "黄叶", "发黄", "枯黄", "耐阴",
-            "喜阴", "弱光", "强光", "直射", "状态"
+            "喜阴", "弱光", "强光", "直射", "状态",
+            // Catalog-backed common names and aliases are domain signals, not source-routing terms.
+            "绿萝", "黄金葛", "绿箩", "虎尾兰", "虎皮兰", "虎尾蓝", "龟背竹", "蓬莱蕉", "龟背主",
+            "芦荟", "红掌", "白掌", "空气凤梨"
     );
     private static final Set<String> GENERIC_WATERING_STATE_TERMS = Set.of("要不要浇水", "需要浇水");
     private static final Pattern COMMUNITY_FOLLOW_UP =
@@ -79,52 +82,45 @@ public class QueryRouter {
             ".*(?:怎么养|如何养|多久|频率|要求|范围|适合什么|需要多少|多少|怎么处理|如何处理|能否|是否|是什么|"
                     + "光照|阳光|晒太阳|浇水|补水|温度|湿度|施肥|肥料|土壤|盆土|介质|黄叶|枯黄|修剪|"
                     + "耐阴|喜阴|弱光|强光|直射|养护).*");
+    private static final Pattern TOPIC_FRAME_CLAUSE = Pattern.compile(
+            ".*(?:日常养护|平时养护|平常养护)(?:时|中)?$");
 
     public RoutingDecision route(RagQuery query) {
         String text = query.query() == null ? "" : query.query().toLowerCase(Locale.ROOT);
         RoutingDecision decision;
         if (query.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
-            decision = new RoutingDecision(false, false, true, QueryIntent.DISEASE_DIAGNOSIS,
+            decision = new RoutingDecision(new SourcePlan(SourcePlan.Activation.OFF, SourcePlan.Activation.OFF,
+                    SourcePlan.Activation.REQUIRED), QueryIntent.DISEASE_DIAGNOSIS,
                     StateEvidenceNeed.STATE_DECISION);
         } else if (query.intent() == QueryIntent.PERSONAL_CARE) {
             decision = personalCareRoute(text);
-        } else if (query.intent() == QueryIntent.GENERAL_CARE) {
-            decision = new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
         } else {
             boolean personalContext = hasPersonalContext(text);
             boolean state = STATE_TERMS.stream().anyMatch(term -> !GENERIC_WATERING_STATE_TERMS.contains(term)
                     && text.contains(term));
             state = state || personalContext && GENERIC_WATERING_STATE_TERMS.stream().anyMatch(text::contains);
             state = state || CURRENT_STATE_PHRASES.stream().anyMatch(text::contains);
-            SourcePlan sourcePlan = sourcePlan(text, query.intent() == QueryIntent.COMMUNITY_SEARCH);
-            if (query.intent() == QueryIntent.COMMUNITY_SEARCH) {
-                decision = new RoutingDecision(sourcePlan.includeKnowledge(), sourcePlan.includeCommunity(), false,
-                        QueryIntent.COMMUNITY_SEARCH, StateEvidenceNeed.NONE);
-            } else if (sourcePlan.includeCommunity()) {
-                decision = new RoutingDecision(sourcePlan.includeKnowledge(), true, false,
-                        QueryIntent.COMMUNITY_SEARCH, StateEvidenceNeed.NONE);
-            } else if (state) {
+            SourcePlan sourcePlan = sourcePlanFor(text, query.intent() == QueryIntent.COMMUNITY_SEARCH);
+            if (state) {
                 decision = personalCareRoute(text);
             } else {
-                decision = new RoutingDecision(true, false, false, QueryIntent.GENERAL_CARE,
-                        StateEvidenceNeed.NONE);
+                decision = new RoutingDecision(sourcePlan, QueryIntent.GENERAL_CARE, StateEvidenceNeed.NONE);
             }
         }
-        return withEntityPolicy(decision, text, query.intent() != null);
+        return withEntityPolicy(decision, text);
     }
 
-    private RoutingDecision withEntityPolicy(RoutingDecision decision, String text, boolean explicitIntent) {
+    private RoutingDecision withEntityPolicy(RoutingDecision decision, String text) {
         String compactText = text.replaceAll("\\s+", "");
         boolean genericPlant = GENERIC_PLANT_QUERY.matcher(compactText).find()
                 || GENERIC_CARE_CONCEPT_QUERY.matcher(compactText).matches();
-        boolean genericCommunity = decision.intent() == QueryIntent.COMMUNITY_SEARCH
+        boolean genericCommunity = decision.community()
                 && GENERIC_COMMUNITY_QUERY.matcher(compactText).matches();
-        boolean explicitPlantIntent = explicitIntent && decision.intent() != QueryIntent.COMMUNITY_SEARCH;
-        boolean plantDomain = explicitPlantIntent || genericPlant || isPlantDomainQuery(compactText);
+        boolean plantDomain = genericPlant || isPlantDomainQuery(compactText);
         boolean generic = genericPlant || genericCommunity;
         EntityRequirement entityRequirement = !plantDomain ? EntityRequirement.NONE
                 : generic ? EntityRequirement.OPTIONAL : EntityRequirement.REQUIRED;
-        return new RoutingDecision(decision.knowledge(), decision.community(), decision.state(), decision.intent(),
+        return new RoutingDecision(decision.sourcePlan(), decision.intent(),
                 decision.stateEvidenceNeed(), plantDomain ? QueryDomain.PLANT : QueryDomain.OUT_OF_DOMAIN,
                 entityRequirement);
     }
@@ -144,7 +140,7 @@ public class QueryRouter {
         return COMMUNITY_TERMS.stream().anyMatch(term -> text.contains(term) && !isNegatedCommunityTerm(text, term));
     }
 
-    private SourcePlan sourcePlan(String text, boolean communityByIntent) {
+    private SourcePlan sourcePlanFor(String text, boolean communityByIntent) {
         boolean communityMentioned = COMMUNITY_TERMS.stream().anyMatch(text::contains);
         boolean positiveCommunityMentioned = hasPositiveCommunityIntent(text);
         boolean communityExcluded = communityMentioned && !positiveCommunityMentioned;
@@ -153,20 +149,26 @@ public class QueryRouter {
         boolean knowledgeOnly = hasKnowledgeOnlyPreference(text);
 
         if (communityOnly) {
-            return new SourcePlan(false, !communityExcluded);
+            return new SourcePlan(SourcePlan.Activation.OFF,
+                    communityExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.REQUIRED,
+                    SourcePlan.Activation.OFF);
         }
         if (knowledgeOnly) {
-            return new SourcePlan(!knowledgeExcluded, false);
+            return new SourcePlan(knowledgeExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.REQUIRED,
+                    SourcePlan.Activation.OFF, SourcePlan.Activation.OFF);
         }
 
-        boolean knowledgeRequested = false;
+        boolean careRequested = false;
+        boolean formalRequested = false;
         boolean communityRequested = false;
         for (String clause : splitClauses(text)) {
             if (!communityExcluded && hasPositiveCommunityIntent(clause)) {
                 communityRequested = true;
             }
             if (!knowledgeExcluded && hasPositiveKnowledgeClause(clause)) {
-                knowledgeRequested = true;
+                careRequested = true;
+                formalRequested = formalRequested
+                        || FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(clause::contains);
             }
         }
         if (!communityExcluded && COMMUNITY_FOLLOW_UP.matcher(text).find()) {
@@ -175,7 +177,21 @@ public class QueryRouter {
         if (communityByIntent && !communityExcluded) {
             communityRequested = true;
         }
-        return new SourcePlan(knowledgeRequested, communityRequested);
+        if (careRequested && communityRequested) {
+            return new SourcePlan(SourcePlan.Activation.REQUIRED, SourcePlan.Activation.REQUIRED,
+                    SourcePlan.Activation.OFF);
+        }
+        if (communityRequested) {
+            return new SourcePlan(SourcePlan.Activation.OFF, SourcePlan.Activation.REQUIRED,
+                    SourcePlan.Activation.OFF);
+        }
+        if (formalRequested) {
+            return new SourcePlan(SourcePlan.Activation.REQUIRED, SourcePlan.Activation.OFF,
+                    SourcePlan.Activation.OFF);
+        }
+        return new SourcePlan(SourcePlan.Activation.PRIMARY,
+                communityExcluded ? SourcePlan.Activation.OFF : SourcePlan.Activation.FALLBACK,
+                SourcePlan.Activation.OFF);
     }
 
     private List<String> splitClauses(String text) {
@@ -188,9 +204,14 @@ public class QueryRouter {
     private boolean hasPositiveKnowledgeClause(String clause) {
         String compactClause = clause.replaceAll("\\s+", "");
         if (compactClause.isBlank()) return false;
+        if (TOPIC_FRAME_CLAUSE.matcher(compactClause).matches()) return false;
         if (hasPositiveCommunityIntent(compactClause)
                 && FORMAL_KNOWLEDGE_TERMS.stream().noneMatch(compactClause::contains)) {
-            return false;
+            int firstCommunity = COMMUNITY_TERMS.stream().mapToInt(compactClause::indexOf)
+                    .filter(index -> index >= 0).min().orElse(-1);
+            String precedingClause = firstCommunity < 0 ? "" : compactClause.substring(0, firstCommunity);
+            return !precedingClause.isBlank() && isPlantDomainQuery(precedingClause)
+                    && KNOWLEDGE_CARE_QUERY.matcher(precedingClause).matches();
         }
         return FORMAL_KNOWLEDGE_TERMS.stream().anyMatch(compactClause::contains)
                 || isPlantDomainQuery(compactClause) && KNOWLEDGE_CARE_QUERY.matcher(compactClause).matches();
@@ -271,12 +292,26 @@ public class QueryRouter {
 
     public enum EntityRequirement { NONE, OPTIONAL, REQUIRED }
 
-    public record RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
+    public record RoutingDecision(SourcePlan sourcePlan, QueryIntent intent,
                                   StateEvidenceNeed stateEvidenceNeed, QueryDomain domain,
                                   EntityRequirement entityRequirement) {
+        public RoutingDecision {
+            sourcePlan = sourcePlan == null ? SourcePlan.of(false, false, false) : sourcePlan;
+        }
+
+        public RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
+                               StateEvidenceNeed stateEvidenceNeed, QueryDomain domain,
+                               EntityRequirement entityRequirement) {
+            this(SourcePlan.of(knowledge, community, state), intent, stateEvidenceNeed, domain, entityRequirement);
+        }
+
+        public RoutingDecision(SourcePlan sourcePlan, QueryIntent intent, StateEvidenceNeed stateEvidenceNeed) {
+            this(sourcePlan, intent, stateEvidenceNeed, QueryDomain.PLANT, EntityRequirement.REQUIRED);
+        }
+
         public RoutingDecision(boolean knowledge, boolean community, boolean state, QueryIntent intent,
                                StateEvidenceNeed stateEvidenceNeed) {
-            this(knowledge, community, state, intent, stateEvidenceNeed, QueryDomain.PLANT,
+            this(SourcePlan.of(knowledge, community, state), intent, stateEvidenceNeed, QueryDomain.PLANT,
                     EntityRequirement.REQUIRED);
         }
 
@@ -288,7 +323,9 @@ public class QueryRouter {
         public boolean plantDomain() {
             return domain == QueryDomain.PLANT;
         }
-    }
 
-    private record SourcePlan(boolean includeKnowledge, boolean includeCommunity) { }
+        public boolean knowledge() { return sourcePlan.includeKnowledge(); }
+        public boolean community() { return sourcePlan.includeCommunity(); }
+        public boolean state() { return sourcePlan.includeState(); }
+    }
 }

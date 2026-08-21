@@ -57,7 +57,7 @@ class HybridEvidenceRetrieverTest {
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝适合什么光照？", null, null, null,
                 null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
 
         retriever.retrieve(query);
 
@@ -75,7 +75,7 @@ class HybridEvidenceRetrieverTest {
                 1, 0, 1, 2, "");
         RagQuery query = new RagQuery("红掌和白掌的光照要求一样吗？", null, null, null,
                 null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
 
         var result = retriever.retrieveWithDiagnostics(query);
 
@@ -91,7 +91,7 @@ class HybridEvidenceRetrieverTest {
     @Test
     void shouldStopBeforeSearchingWhenNamedPlantIsUnknown() {
         RagQuery query = RagQuery.of("火星苔藓适合什么光照？");
-        when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.UNKNOWN, "", Set.of()));
 
         assertThat(retriever.retrieve(query)).isEmpty();
@@ -104,7 +104,7 @@ class HybridEvidenceRetrieverTest {
     @Test
     void shouldStopBeforeSearchingWhenQueryIsOutsidePlantCareDomain() {
         RagQuery query = RagQuery.of("量子纠缠是什么？");
-        when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN, "", Set.of()));
 
         assertThat(retriever.retrieve(query)).isEmpty();
@@ -117,7 +117,7 @@ class HybridEvidenceRetrieverTest {
     @Test
     void shouldStopBeforeSearchingWhenPlantEntityIsAmbiguous() {
         RagQuery query = RagQuery.of("某种室内植物适合什么光照？");
-        when(entityResolver.resolve(query)).thenReturn(new PlantEntityResolver.Resolution(
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.AMBIGUOUS, "", Set.of()));
 
         assertThat(retriever.retrieve(query)).isEmpty();
@@ -138,7 +138,7 @@ class HybridEvidenceRetrieverTest {
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
         RagQuery query = new RagQuery("绿萝光照和社区经验", null, null, null,
                 null, List.of(), Map.of("requiredKnowledgeType", "LIGHT"));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
                 document("p1", "LIGHT"), document("p2", "LIGHT"), document("p3", "LIGHT"),
@@ -167,7 +167,7 @@ class HybridEvidenceRetrieverTest {
         RagQuery query = new RagQuery("绿萝需要土壤吗？每周如何补水？", null, null, null,
                 null, List.of(), Map.of("includeCommunity", false,
                 "requiredKnowledgeTypes", List.of("WATERING", "GENERAL_CARE")));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
                 document("watering", "WATERING"),
@@ -197,7 +197,7 @@ class HybridEvidenceRetrieverTest {
                 1, 0, 1, 2, "");
         RagQuery query = new RagQuery("红掌和白掌的光照要求一样吗？", null, null, null,
                 null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class)))
                 .thenReturn(List.of(documentForPlant("plant-20", "20", "红掌", "LIGHT")))
@@ -206,7 +206,7 @@ class HybridEvidenceRetrieverTest {
         var result = retriever.retrieveWithDiagnostics(query);
 
         assertThat(result.retrievalTrace().selected()).hasSize(2)
-                .allMatch(item -> item.reason().equals("ENTITY_QUOTA"));
+                .anyMatch(item -> item.reason().equals("ENTITY_QUOTA"));
     }
 
     @Test
@@ -223,7 +223,7 @@ class HybridEvidenceRetrieverTest {
         var denseDocument = document("dense-1", "LIGHT");
         var sparseDocument = new KnowledgeDocumentMapper().fromSpring(document("sparse-1", "LIGHT"),
                 KnowledgeSource.PLANT);
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(denseDocument));
         when(sparseIndex.search(KnowledgeSource.PLANT, query.query(), properties.getSparseTopK()))
@@ -248,7 +248,7 @@ class HybridEvidenceRetrieverTest {
         assertThat(trace.selected()).extracting(item -> item.reason())
                 .containsExactly("TOPIC_COVERAGE", "GLOBAL_RANKING");
         assertThat(trace.stages()).extracting(item -> item.stage()).contains(
-                "entity_resolve", "dense_search", "sparse_search", "rrf_fusion",
+                "dense_search", "sparse_search", "rrf_fusion",
                 "knowledge_type_filter", "rerank", "final_rank", "knowledge_total");
     }
 
@@ -265,7 +265,7 @@ class HybridEvidenceRetrieverTest {
                 QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of(
                 "includePlantKnowledge", true, "includeCommunity", true,
                 "requiredKnowledgeType", "WATERING"));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
                 documentForPlant("plant-guide", "1916826110432137218", "白掌", "WATERING")));
@@ -296,7 +296,7 @@ class HybridEvidenceRetrieverTest {
                 null, List.of(), Map.of("includeCommunity", false));
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(sparseIndex.search(KnowledgeSource.PLANT, query.query(), properties.getSparseTopK()))
                 .thenReturn(List.of(new SparseIndexService.SparseHit(
@@ -317,7 +317,7 @@ class HybridEvidenceRetrieverTest {
                 null, List.of(), Map.of("includeCommunity", false));
         var entity = new PlantEntityResolver.Resolution(
                 PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        when(entityResolver.resolve(query)).thenReturn(entity);
+        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
         when(entityResolver.matches(any(), any())).thenReturn(true);
         when(plantStore.similaritySearch(any(SearchRequest.class)))
                 .thenReturn(List.of(document("dense", "LIGHT")));

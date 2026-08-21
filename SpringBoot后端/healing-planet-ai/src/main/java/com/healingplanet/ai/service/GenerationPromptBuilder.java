@@ -1,8 +1,13 @@
 package com.healingplanet.ai.service;
 
 import com.healingplanet.ai.domain.QueryIntent;
+import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.retrieval.QueryRouter;
+import com.healingplanet.ai.retrieval.RetrievalRequest;
+import com.healingplanet.ai.retrieval.SourcePlan;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 public class GenerationPromptBuilder {
@@ -24,18 +29,15 @@ public class GenerationPromptBuilder {
             """;
 
     public String build(QueryRouter.RoutingDecision decision) {
-        return BASE_PROMPT + "\n" + intentPolicy(decision);
+        return BASE_PROMPT + "\n" + intentPolicy(decision, decision.sourcePlan(), List.of());
     }
 
-    private String intentPolicy(QueryRouter.RoutingDecision decision) {
-        if (decision.intent() == QueryIntent.GENERAL_CARE) {
-            return """
-                    当前意图：GENERAL_CARE。
-                    - 仅使用与问题主题直接相关的正式养护知识回答。
-                    - 用户没有询问当前植株时，不得输出缺少实时状态、采集时间或需要补充植株信息等免责声明。
-                    - 不得引用或扩写问题未涉及的养护主题。
-                    """;
-        }
+    public String build(RetrievalRequest request, List<Evidence> evidence) {
+        return BASE_PROMPT + "\n" + intentPolicy(request.routing(), request.sourcePlan(), evidence);
+    }
+
+    private String intentPolicy(QueryRouter.RoutingDecision decision, SourcePlan sourcePlan,
+                                List<Evidence> evidence) {
         if (decision.intent() == QueryIntent.PERSONAL_CARE) {
             String stateRule = switch (decision.stateEvidenceNeed()) {
                 case STATE_DECISION_WITH_HISTORY -> """
@@ -56,9 +58,15 @@ public class GenerationPromptBuilder {
                     - 仅当用户询问数据时效性，或时效性会改变当前结论时，说明采集时间与陈旧状态。
                     %s""".formatted(stateRule);
         }
-        if (decision.intent() == QueryIntent.COMMUNITY_SEARCH && decision.knowledge()) {
+        boolean hasFormalEvidence = evidence.stream().anyMatch(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE);
+        boolean hasCommunityEvidence = evidence.stream().anyMatch(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST);
+        if (evidence.isEmpty()) {
+            hasFormalEvidence = sourcePlan.includeKnowledge();
+            hasCommunityEvidence = sourcePlan.includeCommunity();
+        }
+        if (hasFormalEvidence && hasCommunityEvidence) {
             return """
-                    当前意图：正式指南与社区经验的混合问题。
+                    当前证据：正式指南与社区经验并存。
                     - 分别以“正式指南”和“社区经验”陈述对应内容并分别引用，不得混写来源。
                     - 社区内容必须明确标注为帖子作者或社区用户的个人经验，不得表述为正式结论。
                     - 两类证据冲突时，以正式指南为准，并明确说明这一优先级。
@@ -67,9 +75,9 @@ public class GenerationPromptBuilder {
                     - 每一部分只回答用户在该来源下明确询问的事实。
                     """;
         }
-        if (decision.intent() == QueryIntent.COMMUNITY_SEARCH) {
+        if (hasCommunityEvidence) {
             return """
-                    当前意图：COMMUNITY_SEARCH。
+                    当前证据：社区经验。
                     - 仅回答用户明确询问的社区内容，并明确标注为帖子作者或社区用户的个人经验。
                     - 不得把社区经验升级为正式指南、通用结论或确定性建议。
                     - 不得把“容易出现”“耐阴”“有助于”“建议先观察”等表述加强成确定因果、绝对禁忌或普遍适用规则。
@@ -77,10 +85,18 @@ public class GenerationPromptBuilder {
                     - 用户没有要求来源比较时，不主动补充正式养护知识或当前植株状态。
                     """;
         }
+        if (decision.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
+            return """
+                    当前意图：DISEASE_DIAGNOSIS。
+                    - 视觉结果只能表述为候选观察，不能单独作为确诊或处理依据。
+                    - 处理建议必须有可信病害知识支持；状态与一致性证据只用于问题相关的辅助判断。
+                    """;
+        }
         return """
-                当前意图：DISEASE_DIAGNOSIS。
-                - 视觉结果只能表述为候选观察，不能单独作为确诊或处理依据。
-                - 处理建议必须有可信病害知识支持；状态与一致性证据只用于问题相关的辅助判断。
+                当前意图：GENERAL_CARE。
+                - 仅使用与问题主题直接相关的正式养护知识回答。
+                - 用户没有询问当前植株时，不得输出缺少实时状态、采集时间或需要补充植株信息等免责声明。
+                - 不得引用或扩写问题未涉及的养护主题。
                 """;
     }
 }

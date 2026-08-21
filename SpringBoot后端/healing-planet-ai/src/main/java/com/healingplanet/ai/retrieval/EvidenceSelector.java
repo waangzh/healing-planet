@@ -3,8 +3,6 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
-import com.healingplanet.ai.domain.QueryIntent;
-import com.healingplanet.ai.domain.RagQuery;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -33,19 +31,19 @@ public class EvidenceSelector {
         this.properties = properties;
     }
 
-    public Selection select(RagQuery query, List<Evidence> ranked, int maxEvidenceItems,
+    public Selection select(RetrievalRequest request, List<Evidence> ranked, int maxEvidenceItems,
                             List<String> canonicalPlantIds) {
         if (maxEvidenceItems <= 0 || ranked.isEmpty()) {
             return new Selection(List.of(), Map.of());
         }
 
-        SelectionState state = new SelectionState(maxEvidenceItems, isMixedSourceQuery(query));
-        Set<String> requiredTypes = requiredKnowledgeTypes(query);
+        SelectionState state = new SelectionState(maxEvidenceItems, request.sourcePlan());
+        Set<String> requiredTypes = request.requiredKnowledgeTypes();
 
         retainSourceCoverage(ranked, state);
         retainRequiredTopicCoverage(ranked, requiredTypes, state);
         retainEntityCoverage(ranked, canonicalPlantIds, state);
-        if (requiredTypes.isEmpty() && query.intent() == QueryIntent.GENERAL_CARE) {
+        if (requiredTypes.isEmpty() && request.routing().intent() == com.healingplanet.ai.domain.QueryIntent.GENERAL_CARE) {
             retainBroadCareCoverage(ranked, state);
         }
         ranked.forEach(evidence -> state.add(evidence, "GLOBAL_RANKING"));
@@ -60,10 +58,12 @@ public class EvidenceSelector {
     }
 
     private void retainSourceCoverage(List<Evidence> ranked, SelectionState state) {
-        if (!state.mixedSource()) return;
-        ranked.stream().filter(this::isPlant).findFirst()
-                .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
-        int communityLimit = Math.min(mixedSourceCommunityLimit(), Math.max(0, state.capacity() - 1));
+        if (state.sourcePlan().knowledge().required()) {
+            ranked.stream().filter(this::isPlant).findFirst()
+                    .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
+        }
+        if (!state.sourcePlan().community().required()) return;
+        int communityLimit = Math.min(mixedSourceCommunityLimit(), Math.max(0, state.capacity() - state.items().size()));
         for (Evidence evidence : ranked) {
             if (state.communitySourceCount() >= communityLimit) break;
             if (isCommunity(evidence)) {
@@ -101,32 +101,6 @@ public class EvidenceSelector {
         }
     }
 
-    private Set<String> requiredKnowledgeTypes(RagQuery query) {
-        Set<String> result = new LinkedHashSet<>();
-        addKnowledgeType(result, query.context().get("requiredKnowledgeType"));
-        Object multiple = query.context().get("requiredKnowledgeTypes");
-        if (multiple instanceof Iterable<?> values) {
-            values.forEach(value -> addKnowledgeType(result, value));
-        }
-        return result;
-    }
-
-    private void addKnowledgeType(Set<String> types, Object value) {
-        if (value instanceof String type && !type.isBlank()) {
-            types.add(type.toUpperCase(Locale.ROOT));
-        }
-    }
-
-    private boolean isMixedSourceQuery(RagQuery query) {
-        return booleanContext(query, "includePlantKnowledge", query.intent() != QueryIntent.COMMUNITY_SEARCH)
-                && booleanContext(query, "includeCommunity", true);
-    }
-
-    private boolean booleanContext(RagQuery query, String key, boolean defaultValue) {
-        Object value = query.context().get(key);
-        return value instanceof Boolean bool ? bool : defaultValue;
-    }
-
     private int mixedSourceCommunityLimit() {
         return Math.max(0, properties.getEvidenceSelector().getMixedSourceCommunityLimit());
     }
@@ -152,15 +126,15 @@ public class EvidenceSelector {
 
     private final class SelectionState {
         private final int capacity;
-        private final boolean mixedSource;
+        private final SourcePlan sourcePlan;
         private final Map<String, Evidence> items = new LinkedHashMap<>();
         private final Map<String, String> reasons = new LinkedHashMap<>();
         private final Set<String> logicalGroups = new LinkedHashSet<>();
         private final Set<String> communitySourceIds = new LinkedHashSet<>();
 
-        private SelectionState(int capacity, boolean mixedSource) {
+        private SelectionState(int capacity, SourcePlan sourcePlan) {
             this.capacity = capacity;
-            this.mixedSource = mixedSource;
+            this.sourcePlan = sourcePlan;
         }
 
         private void add(Evidence evidence, String reason) {
@@ -173,7 +147,7 @@ public class EvidenceSelector {
 
         private boolean canAdd(Evidence evidence) {
             if (logicalGroups.contains(logicalGroup(evidence))) return false;
-            return !mixedSource || !isCommunity(evidence)
+            return !sourcePlan.includeCommunity() || !isCommunity(evidence)
                     || !communitySourceIds.contains(sourceKey(evidence))
                     && communitySourceIds.size() < Math.min(mixedSourceCommunityLimit(), Math.max(0, capacity - 1));
         }
@@ -187,7 +161,7 @@ public class EvidenceSelector {
         }
 
         private int capacity() { return capacity; }
-        private boolean mixedSource() { return mixedSource; }
+        private SourcePlan sourcePlan() { return sourcePlan; }
         private int communitySourceCount() { return communitySourceIds.size(); }
         private Map<String, Evidence> items() { return items; }
         private Map<String, String> reasons() { return reasons; }

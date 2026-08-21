@@ -50,8 +50,26 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
+        RetrievalRequest request = trace.time("query_route", "all", "all",
+                () -> RetrievalRequest.from(query, router.route(query)));
+        return retrieveWithDiagnostics(request, trace);
+    }
+
+    @Override
+    public List<Evidence> retrieve(RetrievalRequest request) {
+        return retrieveWithDiagnostics(request).evidence();
+    }
+
+    @Override
+    public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
+        RetrievalTraceCollector trace = new RetrievalTraceCollector(
+                properties.getEval().isRetrievalTraceEnabled());
+        return retrieveWithDiagnostics(request, trace);
+    }
+
+    private RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RetrievalTraceCollector trace) {
         RetrievalPayload payload = trace.time("retrieve_total", "all", "all",
-                () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(query, trace)));
+                () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(request, trace)));
         RetrievalResult result = payload.result();
         RetrievalTrace retrievalTrace = result.retrievalTrace();
         if (properties.getEval().isRetrievalTraceEnabled()) {
@@ -59,20 +77,23 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
                 retrievalTrace = new RetrievalTrace(null, result.entityResolution(), List.of(), List.of(),
                         List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
             }
-            retrievalTrace = retrievalTrace.withRouting(routingSnapshot(payload.route(), payload.routed()),
+            retrievalTrace = retrievalTrace.withRouting(payload.request().routingSnapshot(),
                     trace.stages());
         }
         return new RetrievalResult(result.evidence(), result.entityResolution(), retrievalTrace);
     }
 
-    private RetrievalPayload retrieveTimed(RagQuery query, RetrievalTraceCollector trace) {
-        QueryRouter.RoutingDecision route = trace.time("query_route", "all", "all", () -> router.route(query));
+    private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace) {
+        if (!request.routing().plantDomain()) {
+            return new RetrievalPayload(new RetrievalResult(List.of(), null), request);
+        }
+        QueryRouter.RoutingDecision route = request.routing();
         List<Evidence> state = route.state()
                 ? trace.time("state_search", "state", "all",
-                        () -> metrics.time("state_search", "state", () -> stateRetriever.retrieve(query)))
+                        () -> metrics.time("state_search", "state", () -> stateRetriever.retrieve(request.query())))
                 : List.of();
         state = state.stream().filter(item -> stateEvidenceRequired(route.stateEvidenceNeed(), item)).toList();
-        RagQuery routed = routedQuery(query, route, state);
+        RetrievalRequest routed = routedRequest(request, state);
         List<Evidence> result = new ArrayList<>(state);
         RetrievalResult knowledge = route.knowledge() || route.community()
                 ? knowledgeRetriever.retrieveWithDiagnostics(routed) : new RetrievalResult(List.of(), null);
@@ -82,21 +103,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         result.addAll(knowledge.evidence());
         metrics.recordCandidates("response", "all", result.size());
         return new RetrievalPayload(new RetrievalResult(result, knowledge.entityResolution(),
-                knowledge.retrievalTrace()), route, routed);
-    }
-
-    private RetrievalTrace.RoutingSnapshot routingSnapshot(QueryRouter.RoutingDecision route, RagQuery routed) {
-        Object requiredKnowledgeType = routed.context().get("requiredKnowledgeType");
-        if (requiredKnowledgeType == null) {
-            Object multi = routed.context().get("requiredKnowledgeTypes");
-            if (multi instanceof Iterable<?> values) {
-                requiredKnowledgeType = joinValues(values);
-            }
-        }
-        return new RetrievalTrace.RoutingSnapshot(route.knowledge(), route.community(), route.state(),
-                route.intent() == null ? null : route.intent().name(),
-                route.stateEvidenceNeed() == null ? null : route.stateEvidenceNeed().name(), routed.query(),
-                requiredKnowledgeType == null ? null : requiredKnowledgeType.toString());
+                knowledge.retrievalTrace()), routed);
     }
 
     private boolean stateEvidenceRequired(QueryRouter.StateEvidenceNeed need, Evidence evidence) {
@@ -110,52 +117,15 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         };
     }
 
-    private RagQuery routedQuery(RagQuery query, QueryRouter.RoutingDecision route, List<Evidence> state) {
-        Map<String, Object> context = new HashMap<>(query.context());
-        context.put("includePlantKnowledge", route.knowledge());
-        context.put("includeCommunity", route.community());
-        Set<String> requiredKnowledgeTypes = route.knowledge() ? requiredKnowledgeTypes(query.query()) : Set.of();
-        if (requiredKnowledgeTypes.size() == 1) {
-            context.put("requiredKnowledgeType", requiredKnowledgeTypes.iterator().next());
-        } else if (!requiredKnowledgeTypes.isEmpty()) {
-            context.put("requiredKnowledgeTypes", requiredKnowledgeTypes);
-        }
+    private RetrievalRequest routedRequest(RetrievalRequest request, List<Evidence> state) {
         String plantName = state.stream().map(Evidence::metadata)
                 .map(metadata -> metadata.get("plantName"))
                 .filter(String.class::isInstance).map(String.class::cast)
                 .filter(value -> !value.isBlank()).findFirst().orElse(null);
-        String searchText = plantName == null || query.query().contains(plantName)
-                ? query.query() : plantName + " " + query.query();
-        return new RagQuery(searchText, query.userId(), query.plantInstanceId(), query.canonicalPlantId(),
-                route.intent(), query.keywords(), context);
+        String searchText = plantName == null || request.query().query().contains(plantName)
+                ? request.query().query() : plantName + " " + request.query().query();
+        return request.withSearchQuery(searchText);
     }
 
-    private Set<String> requiredKnowledgeTypes(String query) {
-        String text = query == null ? "" : query;
-        Map<String, Boolean> topics = Map.of(
-                "LIGHT", text.contains("光照") || text.contains("阳光") || text.contains("晒"),
-                "WATERING", text.contains("浇") || text.contains("补水"),
-                "TEMPERATURE", text.contains("温度") || text.contains("耐冷") || text.contains("耐热"),
-                "HUMIDITY", text.contains("湿度"),
-                "FERTILIZING", text.contains("施肥") || text.contains("肥料"),
-                "GENERAL_CARE", text.contains("土壤") || text.contains("盆土") || text.contains("介质")
-        );
-        return topics.entrySet().stream()
-                .filter(Map.Entry::getValue)
-                .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private String joinValues(Iterable<?> values) {
-        StringBuilder result = new StringBuilder();
-        for (Object value : values) {
-            if (value == null) continue;
-            if (result.length() > 0) result.append(",");
-            result.append(value);
-        }
-        return result.toString();
-    }
-
-    private record RetrievalPayload(RetrievalResult result, QueryRouter.RoutingDecision route,
-                                    RagQuery routed) { }
+    private record RetrievalPayload(RetrievalResult result, RetrievalRequest request) { }
 }

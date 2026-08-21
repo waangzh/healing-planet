@@ -70,27 +70,62 @@ class QueryRouterTest {
         var query = new RagQuery("最近大家怎么养绿萝", null, null, null,
                 QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
 
-        assertThat(router.route(query).intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(router.route(query).intent()).isEqualTo(QueryIntent.GENERAL_CARE);
     }
 
     @Test
     void communityWordingShouldNotBeMistakenForRecentPlantState() {
         var result = router.route(RagQuery.of("最近大家怎么养绿萝？"));
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isFalse();
         assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
     }
 
     @Test
-    void generalCareShouldUseFormalKnowledgeOnly() {
+    void generalCareShouldUseFormalKnowledgeWithCommunityFallback() {
         var result = router.route(RagQuery.of("绿萝建议多久浇一次水？"));
 
         assertThat(result.knowledge()).isTrue();
-        assertThat(result.community()).isFalse();
+        assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.PRIMARY);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.FALLBACK);
+    }
+
+    @Test
+    void implicitExperienceCasesShouldRemainGeneralCareWithCommunityFallback() {
+        for (String query : List.of(
+                "空气凤梨长期放在潮湿又闷的地方养可以吗？",
+                "芦荟长期在室内养，能直接搬到烈日下吗？",
+                "芦荟短期偏干和长期积水，哪个更容易恢复？",
+                "虎尾兰天气凉时浇水该怎么收着点？")) {
+            var result = router.route(RagQuery.of(query));
+
+            assertThat(result.intent()).as(query).isEqualTo(QueryIntent.GENERAL_CARE);
+            assertThat(result.sourcePlan().knowledge()).as(query).isEqualTo(SourcePlan.Activation.PRIMARY);
+            assertThat(result.sourcePlan().community()).as(query).isEqualTo(SourcePlan.Activation.FALLBACK);
+        }
+    }
+
+    @Test
+    void sourcePlanShouldSplitFormalAndCommunityClausesWithoutChangingIntent() {
+        var result = router.route(RagQuery.of("白掌的湿度要求和花友的光照摆放经验分别是什么？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.REQUIRED);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.REQUIRED);
+    }
+
+    @Test
+    void topicFrameShouldNotTurnACommunityOnlyClauseIntoFormalRetrieval() {
+        var result = router.route(RagQuery.of("白掌日常养护时，花友如何平衡湿润与积水？"));
+
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
+        assertThat(result.sourcePlan().knowledge()).isEqualTo(SourcePlan.Activation.OFF);
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.REQUIRED);
     }
 
     @Test
@@ -109,7 +144,7 @@ class QueryRouterTest {
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
     }
 
     @Test
@@ -117,7 +152,8 @@ class QueryRouterTest {
         var result = router.route(RagQuery.of("绿萝出现枯黄叶片时怎么处理？"));
 
         assertThat(result.knowledge()).isTrue();
-        assertThat(result.community()).isFalse();
+        assertThat(result.community()).isTrue();
+        assertThat(result.sourcePlan().community()).isEqualTo(SourcePlan.Activation.FALLBACK);
         assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
     }
 
@@ -141,7 +177,7 @@ class QueryRouterTest {
     void mixedSourceQuestionShouldUseClauseLevelSourcePlanning() {
         var result = router.route(RagQuery.of("绿萝怎么养？大家有什么经验？"));
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
         assertThat(result.state()).isFalse();
@@ -151,7 +187,7 @@ class QueryRouterTest {
     void commaSeparatedMixedSourceQuestionShouldUseBothSources() {
         var result = router.route(RagQuery.of("绿萝怎么养，大家有什么经验？"));
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
     }
@@ -174,7 +210,7 @@ class QueryRouterTest {
     void pureCommunityQuestionShouldNotAutoUpgradeToFormalKnowledge() {
         var result = router.route(RagQuery.of("大家养绿萝有什么经验？"));
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isFalse();
         assertThat(result.community()).isTrue();
     }
@@ -201,7 +237,7 @@ class QueryRouterTest {
     void communityOnlyPreferenceShouldDisableFormalKnowledge() {
         var result = router.route(RagQuery.of("只想看看花友经验，不需要官方指南。"));
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isFalse();
         assertThat(result.community()).isTrue();
     }
@@ -229,7 +265,7 @@ class QueryRouterTest {
 
         var result = router.route(query);
 
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.knowledge()).isTrue();
         assertThat(result.community()).isTrue();
     }
@@ -271,7 +307,7 @@ class QueryRouterTest {
         var result = router.route(query);
 
         assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.OPTIONAL);
     }
 
@@ -283,7 +319,7 @@ class QueryRouterTest {
         var result = router.route(query);
 
         assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.PLANT);
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.REQUIRED);
     }
 
@@ -295,7 +331,7 @@ class QueryRouterTest {
         var result = router.route(query);
 
         assertThat(result.domain()).isEqualTo(QueryRouter.QueryDomain.OUT_OF_DOMAIN);
-        assertThat(result.intent()).isEqualTo(QueryIntent.COMMUNITY_SEARCH);
+        assertThat(result.intent()).isEqualTo(QueryIntent.GENERAL_CARE);
         assertThat(result.entityRequirement()).isEqualTo(QueryRouter.EntityRequirement.NONE);
     }
 

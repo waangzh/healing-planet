@@ -40,13 +40,19 @@ public record RetrievalTrace(
     }
 
     public record RoutingSnapshot(
-            boolean knowledge,
-            boolean community,
-            boolean state,
-            String intent,
+            boolean includeKnowledge,
+            boolean includeCommunity,
+            boolean includeState,
+            String inputIntent,
+            String resolvedIntent,
+            String domain,
+            String entityRequirement,
             String stateEvidenceNeed,
             String searchQuery,
-            String requiredKnowledgeType
+            String requiredKnowledgeTypes,
+            String knowledgeActivation,
+            String communityActivation,
+            String stateActivation
     ) { }
 
     public record CandidateSnapshot(

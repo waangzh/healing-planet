@@ -20,7 +20,7 @@ public class PlantAliasMatcher {
     private static final Pattern CONTEXTUAL_RIGHT_HINT = Pattern.compile(
             "^(?:的|浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|"
                     + "叶片|叶基|叶子|根腐|缺水|晒|太阳|浇|补|出现|处理|频率|耐阴|喜阴|弱光|"
-                    + "强光|直射|状态|异常|判断|表现|检查)");
+                    + "强光|直射|状态|异常|判断|表现|检查|日常|长期|短期|指南)");
     private static final Pattern HAN_NAME = Pattern.compile("[\\p{IsHan}]+");
     MatchResult match(String query, String mentionQuery, String namedSubject, List<PlantCatalogEntry> entries) {
         MatchResult entityChain = entityChainMatch(query, entries);

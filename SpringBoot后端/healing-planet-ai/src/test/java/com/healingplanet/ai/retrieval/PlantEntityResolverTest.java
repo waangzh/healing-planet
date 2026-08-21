@@ -45,11 +45,15 @@ class PlantEntityResolverTest {
         resolver = new PlantEntityResolver(repository, entityStore, null, new RagProperties(), null);
     }
 
+    private PlantEntityResolver.Resolution resolve(RagQuery query) {
+        return resolver.resolve(RetrievalRequest.from(query, new QueryRouter().route(query)));
+    }
+
     @Test
     void shouldResolveKnownPlantAndRejectOtherPlantDocuments() {
         disambiguator = mock(PlantEntityDisambiguator.class);
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
-        var resolution = resolver.resolve(RagQuery.of("绿萝"));
+        var resolution = resolve(RagQuery.of("绿萝"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("1");
@@ -57,6 +61,29 @@ class PlantEntityResolverTest {
         verify(disambiguator, never()).disambiguate(any(), any(), any());
         assertThat(resolver.matches(resolution, document("1", "绿萝", "绿萝光照指南"))).isTrue();
         assertThat(resolver.matches(resolution, document("10", "芦荟", "芦荟光照指南"))).isFalse();
+    }
+
+    @Test
+    void holdoutPlantNamesShouldResolveLocallyFromTheSingleRoutingRequest() {
+        disambiguator = mock(PlantEntityDisambiguator.class);
+        resolver = new PlantEntityResolver(mockRepository(), entityStore, null,
+                new RagProperties(), null, disambiguator);
+        QueryRouter router = new QueryRouter();
+
+        Map<String, String> expectedIds = Map.of(
+                "从花友角度看，绿萝长期放在很暗的位置会怎么样？", "1",
+                "白掌日常养护时，花友如何平衡湿润与积水？", "21",
+                "白掌的湿度要求和花友的光照摆放经验分别是什么？", "21",
+                "虎尾兰指南的浇水频率和花友避免浇多的建议怎么结合？", "2",
+                "绿萝指南的温度范围与花友对弱光的提醒分别是什么？", "1");
+        expectedIds.forEach((query, id) -> {
+            RagQuery ragQuery = RagQuery.of(query);
+            var resolution = resolver.resolve(RetrievalRequest.from(ragQuery, router.route(ragQuery)));
+
+            assertThat(resolution.kind()).as(query).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+            assertThat(resolution.canonicalPlantId()).as(query).isEqualTo(id);
+        });
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
     @Test
@@ -74,7 +101,7 @@ class PlantEntityResolverTest {
                 "水晶蛇尾兰需要什么光照？",
                 "量子虎皮兰的根腐怎么处理？"
         )).allSatisfy(query -> {
-            var resolution = resolver.resolve(RagQuery.of(query));
+            var resolution = resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
             assertThat(resolution.rejectionReason()).isEqualTo("entity_not_in_catalog");
         });
@@ -88,7 +115,7 @@ class PlantEntityResolverTest {
                 entityHit("1", "绿萝", 0.86), entityHit("10", "芦荟", 0.58)
         ));
 
-        var resolution = resolver.resolve(RagQuery.of("绿箩能一直晒大太阳不？"));
+        var resolution = resolve(RagQuery.of("绿箩能一直晒大太阳不？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("1");
@@ -103,7 +130,7 @@ class PlantEntityResolverTest {
                 entityHit("1", "绿萝", 0.67), entityHit("10", "芦荟", 0.52)
         ));
 
-        var resolution = resolver.resolve(RagQuery.of("绿植耐阴吗？"));
+        var resolution = resolve(RagQuery.of("绿植耐阴吗？"));
 
         assertThat(resolution.kind()).isNotEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         verify(disambiguator, never()).disambiguate(any(), any(), any());
@@ -116,8 +143,8 @@ class PlantEntityResolverTest {
                 PlantEntityDisambiguator.Decision.known("2", 0.95),
                 PlantEntityDisambiguator.Decision.known("3", 0.95));
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
-        var tigerTail = resolver.resolve(RagQuery.of("虎尾蓝多久浇一次水？"));
-        var monstera = resolver.resolve(RagQuery.of("龟背主应该在什么情况下浇水？"));
+        var tigerTail = resolve(RagQuery.of("虎尾蓝多久浇一次水？"));
+        var monstera = resolve(RagQuery.of("龟背主应该在什么情况下浇水？"));
 
         assertThat(tigerTail.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(tigerTail.canonicalPlantId()).isEqualTo("2");
@@ -130,7 +157,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldResolveConfiguredAliasWithoutLlm() {
-        var resolution = resolver.resolve(RagQuery.of("虎皮兰需要什么光照？"));
+        var resolution = resolve(RagQuery.of("虎皮兰需要什么光照？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("2");
@@ -152,7 +179,7 @@ class PlantEntityResolverTest {
         resolver = new PlantEntityResolver(aliasCollisionRepository(), entityStore, null,
                 new RagProperties(), null, disambiguator);
 
-        var resolution = resolver.resolve(RagQuery.of(query));
+        var resolution = resolve(RagQuery.of(query));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("30");
@@ -164,7 +191,7 @@ class PlantEntityResolverTest {
     void shouldKeepAliasCollisionAmbiguousWhenContextCannotChooseOneCandidate() {
         useAliasCollisionDecision(PlantEntityDisambiguator.Decision.ambiguous("llm_ambiguous"));
 
-        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+        var resolution = resolve(RagQuery.of("万年青的叶片为什么发黄？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
         assertThat(resolution.rejectionReason()).isEqualTo("llm_ambiguous");
@@ -174,7 +201,7 @@ class PlantEntityResolverTest {
     void shouldRejectAliasCollisionWhenNoCandidateFitsTheMention() {
         useAliasCollisionDecision(PlantEntityDisambiguator.Decision.unknown("llm_rejected_or_unknown"));
 
-        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+        var resolution = resolve(RagQuery.of("万年青的叶片为什么发黄？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
         assertThat(resolution.rejectionReason()).isEqualTo("llm_rejected_or_unknown");
@@ -184,7 +211,7 @@ class PlantEntityResolverTest {
     void shouldFailClosedAsAmbiguousWhenAliasCollisionDisambiguationIsUnavailable() {
         useAliasCollisionDecision(PlantEntityDisambiguator.Decision.unavailable("llm_disambiguation_failed"));
 
-        var resolution = resolver.resolve(RagQuery.of("万年青的叶片为什么发黄？"));
+        var resolution = resolve(RagQuery.of("万年青的叶片为什么发黄？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
         assertThat(resolution.rejectionReason()).isEqualTo("llm_disambiguation_failed");
@@ -196,9 +223,10 @@ class PlantEntityResolverTest {
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null,
                 new RagProperties(), null, disambiguator);
 
-        var resolution = resolver.resolve(RagQuery.of("绿萝、虎尾兰，分别需要什么光照？"));
+        var resolution = resolve(RagQuery.of("绿萝、虎尾兰，分别需要什么光照？"));
 
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolution.canonicalPlantIds()).containsExactly("1", "2");
         verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
 
@@ -214,7 +242,7 @@ class PlantEntityResolverTest {
         );
 
         assertThat(queries).allSatisfy(query -> {
-            var resolution = resolver.resolve(RagQuery.of(query));
+            var resolution = resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantId()).isEqualTo("1");
             assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.ALIAS);
@@ -223,7 +251,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldResolveAllExactEntitiesInComparison() {
-        var resolution = resolver.resolve(RagQuery.of("红掌和白掌的光照要求一样吗？"));
+        var resolution = resolve(RagQuery.of("红掌和白掌的光照要求一样吗？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantIds()).containsExactlyInAnyOrder("20", "21");
@@ -231,7 +259,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldResolveComparisonWhenRightEntityHasNaturalLanguageSuffix() {
-        var resolution = resolver.resolve(RagQuery.of("绿萝和虎尾兰适宜温度分别是多少？"));
+        var resolution = resolve(RagQuery.of("绿萝和虎尾兰适宜温度分别是多少？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantIds()).containsExactlyInAnyOrder("1", "2");
@@ -239,7 +267,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldResolveAllPlantsInPunctuationAndConjunctionSeparatedEntityChain() {
-        var resolution = resolver.resolve(RagQuery.of("绿萝/白掌，红掌；虎尾兰的光照要求分别是什么？"));
+        var resolution = resolve(RagQuery.of("绿萝/白掌，红掌；虎尾兰的光照要求分别是什么？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantIds()).containsExactlyInAnyOrder("1", "2", "20", "21");
@@ -247,7 +275,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldResolveScientificNamesInEntityChain() {
-        var resolution = resolver.resolve(RagQuery.of(
+        var resolution = resolve(RagQuery.of(
                 "Epipremnum aureum / Spathiphyllum wallisii，Anthurium andraeanum 的湿度要求分别是什么？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
@@ -256,7 +284,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldFallbackToSingleEntityWhenComparisonPartnerIsNotRecognizedPlant() {
-        var resolution = resolver.resolve(RagQuery.of("绿萝和常春藤的浇水方法相同吗？"));
+        var resolution = resolve(RagQuery.of("绿萝和常春藤的浇水方法相同吗？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantIds()).containsExactly("1");
@@ -272,7 +300,7 @@ class PlantEntityResolverTest {
         );
 
         queries.forEach((query, expectedPlantId) -> {
-            var resolution = resolver.resolve(RagQuery.of(query));
+            var resolution = resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantIds()).containsExactly(expectedPlantId);
         });
@@ -283,9 +311,9 @@ class PlantEntityResolverTest {
         disambiguator = mock(PlantEntityDisambiguator.class);
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
 
-        assertThat(resolver.resolve(RagQuery.of("我的绿萝需要什么光照？")).method())
+        assertThat(resolve(RagQuery.of("我的绿萝需要什么光照？")).method())
                 .isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
-        assertThat(resolver.resolve(RagQuery.of("这盆绿萝需要什么光照？")).method())
+        assertThat(resolve(RagQuery.of("这盆绿萝需要什么光照？")).method())
                 .isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
         verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
@@ -299,7 +327,7 @@ class PlantEntityResolverTest {
                 "绿萝官方浇水频率是什么？",
                 "绿萝耐阴吗？"
         )).allSatisfy(query -> {
-            var resolution = resolver.resolve(RagQuery.of(query));
+            var resolution = resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantId()).isEqualTo("1");
             assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
@@ -310,7 +338,7 @@ class PlantEntityResolverTest {
                 "社区用户遇到绿萝状态变化时是怎么判断的？",
                 "社区经验里绿萝浇水要避免什么情况？"
         )).allSatisfy(query -> {
-            var resolution = resolver.resolve(RagQuery.of(query));
+            var resolution = resolve(RagQuery.of(query));
             assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
             assertThat(resolution.canonicalPlantId()).isEqualTo("1");
             assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.EXACT_NAME);
@@ -332,9 +360,9 @@ class PlantEntityResolverTest {
                 entityHit("3", "龟背竹", 0.80)
         ));
 
-        assertThat(resolver.resolve(RagQuery.of("虎皮兰需要什么光照？")).canonicalPlantId()).isEqualTo("2");
-        assertThat(resolver.resolve(RagQuery.of("黄金葛一周浇几次水？")).canonicalPlantId()).isEqualTo("1");
-        var monsteraAlias = resolver.resolve(RagQuery.of("蓬莱蕉适合什么光照？"));
+        assertThat(resolve(RagQuery.of("虎皮兰需要什么光照？")).canonicalPlantId()).isEqualTo("2");
+        assertThat(resolve(RagQuery.of("黄金葛一周浇几次水？")).canonicalPlantId()).isEqualTo("1");
+        var monsteraAlias = resolve(RagQuery.of("蓬莱蕉适合什么光照？"));
         assertThat(monsteraAlias.canonicalPlantId()).isEqualTo("3");
         assertThat(monsteraAlias.diagnostics().aliasNormalizations()).containsExactly(
                 new com.healingplanet.ai.domain.EntityResolutionDiagnostics.AliasNormalization(
@@ -347,13 +375,13 @@ class PlantEntityResolverTest {
         disambiguator = mock(PlantEntityDisambiguator.class);
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
 
-        assertThat(resolver.resolve(RagQuery.of("社区里白掌缺水时叶片会有什么表现？")).canonicalPlantId())
+        assertThat(resolve(RagQuery.of("社区里白掌缺水时叶片会有什么表现？")).canonicalPlantId())
                 .isEqualTo("21");
-        assertThat(resolver.resolve(RagQuery.of("网友遇到虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
+        assertThat(resolve(RagQuery.of("网友遇到虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
                 .isEqualTo("2");
-        assertThat(resolver.resolve(RagQuery.of("论坛帖里白掌缺水时叶片会有什么表现？")).canonicalPlantId())
+        assertThat(resolve(RagQuery.of("论坛帖里白掌缺水时叶片会有什么表现？")).canonicalPlantId())
                 .isEqualTo("21");
-        assertThat(resolver.resolve(RagQuery.of("花友记录的虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
+        assertThat(resolve(RagQuery.of("花友记录的虎尾兰叶基发软时先检查什么？")).canonicalPlantId())
                 .isEqualTo("2");
         verify(disambiguator, never()).disambiguate(any(), any(), any());
     }
@@ -362,7 +390,7 @@ class PlantEntityResolverTest {
     void shouldUseAliasCandidateFallbackWhenUnseenContextMissesRegex() {
         useLlmDecision(PlantEntityDisambiguator.Decision.known("1", 0.95));
 
-        var resolution = resolver.resolve(RagQuery.of("听说黄金葛在北向窗边也能长，冬天还需要补水吗？"));
+        var resolution = resolve(RagQuery.of("听说黄金葛在北向窗边也能长，冬天还需要补水吗？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("1");
@@ -378,7 +406,7 @@ class PlantEntityResolverTest {
                 entityHit("1", "绿萝", 0.81), entityHit("10", "芦荟", 0.79)
         ));
 
-        var resolution = resolver.resolve(RagQuery.of("多久浇一次水？"));
+        var resolution = resolve(RagQuery.of("多久浇一次水？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
         verify(disambiguator, never()).disambiguate(any(), any(), any());
@@ -386,7 +414,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldKeepGenericPlantCareConceptQuestionsOpen() {
-        var resolution = resolver.resolve(RagQuery.of("耐阴等于喜阴吗？"));
+        var resolution = resolve(RagQuery.of("耐阴等于喜阴吗？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
     }
@@ -397,7 +425,7 @@ class PlantEntityResolverTest {
                 entityHit("1", "绿萝", 0.85), entityHit("10", "芦荟", 0.82)
         ));
 
-        var resolution = resolver.resolve(RagQuery.of("某种室内植物适合什么光照？"));
+        var resolution = resolve(RagQuery.of("某种室内植物适合什么光照？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
         assertThat(resolution.canonicalPlantId()).isEmpty();
@@ -413,7 +441,7 @@ class PlantEntityResolverTest {
                 "什么植物比较耐阴？",
                 "推荐几种适合办公室的绿植",
                 "植物叶子发黄怎么办？"
-        )).allSatisfy(query -> assertThat(resolver.resolve(RagQuery.of(query)).kind())
+        )).allSatisfy(query -> assertThat(resolve(RagQuery.of(query)).kind())
                 .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC));
     }
 
@@ -422,7 +450,7 @@ class PlantEntityResolverTest {
         var query = new RagQuery("社区最近有哪些比较热门的养护经验？", null, null, null,
                 QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
 
-        var resolution = resolver.resolve(query);
+        var resolution = resolve(query);
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
         verify(entityStore, never()).similaritySearch(any(SearchRequest.class));
@@ -433,7 +461,7 @@ class PlantEntityResolverTest {
         var query = new RagQuery("社区最近有哪些比较热门的养护经验？", null, null, "1",
                 QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of());
 
-        var resolution = resolver.resolve(query);
+        var resolution = resolve(query);
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("1");
@@ -443,7 +471,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldNotSearchAllPlantsWhenCareQueryHasNoConfirmedSubject() {
-        var resolution = resolver.resolve(RagQuery.of("多久浇一次水？"));
+        var resolution = resolve(RagQuery.of("多久浇一次水？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
         assertThat(resolution.rejectionReason()).isEqualTo("plant_query_without_confirmed_entity");
@@ -451,7 +479,7 @@ class PlantEntityResolverTest {
 
     @Test
     void shouldRejectQueriesOutsidePlantCareDomain() {
-        var resolution = resolver.resolve(RagQuery.of("量子纠缠是什么？"));
+        var resolution = resolve(RagQuery.of("量子纠缠是什么？"));
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN);
     }
@@ -459,7 +487,7 @@ class PlantEntityResolverTest {
     @Test
     void shouldMatchCommunityContentWithoutCanonicalPlantId() {
         useLlmDecision(PlantEntityDisambiguator.Decision.known("1", 0.95));
-        var resolution = resolver.resolve(RagQuery.of("社区里的绿萝养护经验"));
+        var resolution = resolve(RagQuery.of("社区里的绿萝养护经验"));
         KnowledgeDocument community = document("", "", "作者记录了绿萝的日常浇水习惯");
 
         assertThat(resolver.matches(resolution, community)).isTrue();

@@ -9,6 +9,7 @@ import com.healingplanet.ai.retrieval.EvidenceRetriever;
 import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalResult;
 import com.healingplanet.ai.retrieval.RetrievalMetrics;
+import com.healingplanet.ai.retrieval.RetrievalRequest;
 import com.healingplanet.ai.domain.EvidenceType;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -39,9 +40,13 @@ public class RagService {
 
     public RagResponse chat(RagQuery query) {
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
+        RetrievalRequest request = RetrievalRequest.from(query, decision);
+        if (!decision.plantDomain()) {
+            return new RagResponse(outOfScopeAnswer(), List.of(), null, routingOnlyTrace(request));
+        }
         String validation = validateStateQuery(query, decision);
         if (validation != null) return new RagResponse(validation, List.of());
-        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(query);
+        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         if (missingStateEvidence(decision, evidence)) {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
@@ -54,16 +59,20 @@ public class RagService {
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(decision))
+                chatClient.prompt().system(promptBuilder.build(request, evidence))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).call().content());
         return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
     }
 
     public RagStream stream(RagQuery query) {
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
+        RetrievalRequest request = RetrievalRequest.from(query, decision);
+        if (!decision.plantDomain()) {
+            return new RagStream(List.of(), null, routingOnlyTrace(request), Flux.just(outOfScopeAnswer()));
+        }
         String validation = validateStateQuery(query, decision);
         if (validation != null) return new RagStream(List.of(), Flux.just(validation));
-        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(query);
+        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         if (missingStateEvidence(decision, evidence)) {
             return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
@@ -79,13 +88,13 @@ public class RagService {
                     Flux.just(emptyEvidenceAnswer(retrieval)));
         }
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(decision))
+                chatClient.prompt().system(promptBuilder.build(request, evidence))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).stream().content());
         return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
     }
 
     public List<Evidence> search(RagQuery query) {
-        return retriever.retrieve(query);
+        return retriever.retrieve(RetrievalRequest.from(query, queryRouter.route(query)));
     }
 
     String userPrompt(String query, List<Evidence> evidence, EntityResolutionDiagnostics entityResolution) {
@@ -99,6 +108,15 @@ public class RagService {
             return "植物名称识别服务暂时不可用，请稍后重试。";
         }
         return "当前知识库中没有足够证据回答这个问题。";
+    }
+
+    private String outOfScopeAnswer() {
+        return "这个问题不属于当前植物养护知识库的可回答范围。";
+    }
+
+    private RetrievalTrace routingOnlyTrace(RetrievalRequest request) {
+        return new RetrievalTrace(request.routingSnapshot(), null, List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private boolean isEntityResolutionDependencyFailure(String reason) {

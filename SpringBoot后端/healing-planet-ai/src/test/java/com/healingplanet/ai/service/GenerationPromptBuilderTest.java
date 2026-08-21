@@ -63,7 +63,7 @@ class GenerationPromptBuilderTest {
         String prompt = builder.build(decision(false, true, false, QueryIntent.COMMUNITY_SEARCH));
 
         assertThat(prompt)
-                .contains("当前意图：COMMUNITY_SEARCH", "个人经验")
+                .contains("当前证据：社区经验", "个人经验")
                 .contains("不得把社区经验升级为正式指南、通用结论或确定性建议")
                 .doesNotContain("正式指南与社区经验的混合问题");
     }
@@ -73,7 +73,7 @@ class GenerationPromptBuilderTest {
         String prompt = builder.build(decision(true, true, false, QueryIntent.COMMUNITY_SEARCH));
 
         assertThat(prompt)
-                .contains("正式指南与社区经验的混合问题", "分别以“正式指南”和“社区经验”陈述")
+                .contains("正式指南与社区经验并存", "分别以“正式指南”和“社区经验”陈述")
                 .contains("两类证据冲突时，以正式指南为准")
                 .contains("保留这条最关键的具体表现")
                 .contains("“正式指南”部分只能使用正式养护证据")

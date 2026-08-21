@@ -25,6 +25,26 @@ import static org.mockito.Mockito.when;
 class RagServiceTest {
 
     @Test
+    void shouldReturnOutOfScopeBeforeEntityResolutionOrRetrieval() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        QueryRouter queryRouter = mock(QueryRouter.class);
+        RagService service = new RagService(retriever, mock(PromptContextBuilder.class),
+                mock(GenerationPromptBuilder.class), mock(ChatClient.class), queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
+        RagQuery query = RagQuery.of("TCP 三次握手是什么？");
+        when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, true, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE,
+                QueryRouter.QueryDomain.OUT_OF_DOMAIN, QueryRouter.EntityRequirement.NONE));
+
+        var response = service.chat(query);
+
+        assertThat(response.answer()).contains("不属于当前植物养护知识库的可回答范围");
+        assertThat(response.retrievalTrace().routing().domain()).isEqualTo("OUT_OF_DOMAIN");
+        assertThat(response.retrievalTrace().routing().entityRequirement()).isEqualTo("NONE");
+        verify(retriever, never()).retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(com.healingplanet.ai.retrieval.RetrievalRequest.class));
+    }
+
+    @Test
     void shouldReturnStateUnavailableBeforeGenericInsufficientKnowledgeWhenOnlyCareGuideIsAvailable() {
         EvidenceRetriever retriever = mock(EvidenceRetriever.class);
         PromptContextBuilder contextBuilder = mock(PromptContextBuilder.class);
@@ -37,7 +57,7 @@ class RagServiceTest {
                 QueryIntent.PERSONAL_CARE, List.of(), Map.of());
         when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, false, true,
                 QueryIntent.PERSONAL_CARE, QueryRouter.StateEvidenceNeed.STATE_DECISION));
-        when(retriever.retrieveWithDiagnostics(query)).thenReturn(new RetrievalResult(List.of(
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(com.healingplanet.ai.retrieval.RetrievalRequest.class))).thenReturn(new RetrievalResult(List.of(
                 new Evidence("guide", EvidenceType.CARE_GUIDE, "g1", "PLANT", "绿萝状态判断",
                         "保持通风并检查黄叶", 1d, null, 1d, 1d, Map.of(), null)
         ), null));
@@ -62,7 +82,7 @@ class RagServiceTest {
         RagQuery query = RagQuery.of("月球绿萝需要浇水吗？");
         when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(false, true, false,
                 QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));
-        when(retriever.retrieveWithDiagnostics(query)).thenReturn(new RetrievalResult(List.of(),
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(com.healingplanet.ai.retrieval.RetrievalRequest.class))).thenReturn(new RetrievalResult(List.of(),
                 new EntityResolutionDiagnostics("UNKNOWN", "NONE", null, List.of(),
                         0.8, 0.3, 0.5, 2, "llm_disambiguation_failed")));
 
@@ -85,7 +105,7 @@ class RagServiceTest {
                 QueryIntent.PERSONAL_CARE, List.of(), Map.of());
         when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(false, false, true,
                 QueryIntent.PERSONAL_CARE, QueryRouter.StateEvidenceNeed.STATE_FRESHNESS));
-        when(retriever.retrieveWithDiagnostics(query)).thenReturn(new RetrievalResult(List.of(
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(com.healingplanet.ai.retrieval.RetrievalRequest.class))).thenReturn(new RetrievalResult(List.of(
                 new Evidence("live", EvidenceType.LIVE_STATE, "state", "SMART_GREEN_PLANT", "植物当前状态",
                         "数据距当前：31 分钟", 1d, null, 1d, 1d,
                         Map.of("stale", true, "ageMinutes", 31L), null)
