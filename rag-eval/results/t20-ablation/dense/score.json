@@ -1,0 +1,3407 @@
+{
+  "schema_version": 7,
+  "coverage": {
+    "golden_case_count": 30,
+    "scored_case_count": 30,
+    "missing_case_ids": []
+  },
+  "metrics": {
+    "retrieval_recall_at_10": {
+      "value": 0.969697,
+      "numerator": 32,
+      "denominator": 33
+    },
+    "context_precision": {
+      "value": 0.880357,
+      "score_total": 24.65,
+      "judged_case_count": 28,
+      "eligible_case_count": 28
+    },
+    "context_recall": {
+      "value": 1.0,
+      "numerator": 37,
+      "denominator": 37,
+      "judged_case_count": 28,
+      "eligible_case_count": 28
+    },
+    "selected_evidence_id_recall_at_6": {
+      "value": 0.969697,
+      "numerator": 32,
+      "denominator": 33
+    },
+    "required_evidence_type_hit": {
+      "value": 0.964286,
+      "numerator": 27,
+      "denominator": 28
+    },
+    "required_evidence_type_hit_by_type": {
+      "CARE_GUIDE:FERTILIZING": {
+        "value": 0.75,
+        "numerator": 3,
+        "denominator": 4
+      },
+      "CARE_GUIDE:GENERAL_CARE": {
+        "value": 1.0,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "CARE_GUIDE:HUMIDITY": {
+        "value": 1.0,
+        "numerator": 6,
+        "denominator": 6
+      },
+      "CARE_GUIDE:LIGHT": {
+        "value": 1.0,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "CARE_GUIDE:TEMPERATURE": {
+        "value": 1.0,
+        "numerator": 3,
+        "denominator": 3
+      },
+      "CARE_GUIDE:WATERING": {
+        "value": 1.0,
+        "numerator": 3,
+        "denominator": 3
+      },
+      "COMMUNITY_POST": {
+        "value": 1.0,
+        "numerator": 15,
+        "denominator": 15
+      }
+    },
+    "selection_constraint_hit": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0
+    },
+    "citation_index_validity": {
+      "value": 1.0,
+      "numerator": 71,
+      "denominator": 71
+    },
+    "safe_outcome_accuracy": {
+      "value": 1.0,
+      "numerator": 2,
+      "denominator": 2
+    },
+    "route_accuracy": {
+      "value": 1.0,
+      "numerator": 29,
+      "denominator": 29
+    },
+    "diagnostics": {
+      "domain_match": {
+        "value": 1.0,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "entity_requirement_match": {
+        "value": 1.0,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "source_requirement_match": {
+        "value": 1.0,
+        "numerator": 7,
+        "denominator": 7
+      },
+      "route_propagation_consistency_failure_count": 0
+    },
+    "answer_availability": {
+      "value": 1.0,
+      "numerator": 28,
+      "denominator": 28
+    },
+    "entity_resolution_dependency_failure_count": 0,
+    "request_error_count": 0,
+    "llm_judge_answer_correctness": {
+      "value": 0.928571,
+      "score_total": 52,
+      "judged_case_count": 28,
+      "eligible_case_count": 28
+    },
+    "faithfulness": {
+      "value": 0.990196,
+      "supported_claim_count": 101,
+      "claim_count": 102,
+      "judged_case_count": 28,
+      "eligible_case_count": 28
+    },
+    "latency_ms": {
+      "sample_count": 30,
+      "p50": 26168.51,
+      "p95": 81492.89,
+      "max": 152404.06
+    },
+    "retrieval_latency_ms": {
+      "sample_count": 29,
+      "p95": 484.63
+    }
+  },
+  "case_results": [
+    {
+      "case_id": "1",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 36156.24,
+      "retrieval_latency_ms": 1181.023,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成答案正确陈述了虎尾兰可适应任何湿度的核心事实，额外社区经验未构成矛盾。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "虎尾兰对空气湿度不挑剔，可适应任何湿度环境。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "虎尾兰对湿度要求不高。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "过于潮湿的环境可能引发根腐病。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "2",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:FERTILIZING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 38102.13,
+      "retrieval_latency_ms": 267.487,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的答案正确传达了正式指南的核心事实：生长季每2周施一次平衡肥，并指出社区经验与正式指南的差异且应以正式指南为准。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "正式指南中，龟背竹在生长季应每2周施用一次平衡肥。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区经验中，生长期（5-9月）建议每月施一次液肥。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "社区经验中，可选择富含氮、磷、钾的复合肥或腐熟有机肥水。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "社区经验中，在叶片生长期间可适当增加氮肥比例。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "两者在施肥频率与肥料类型上存在差异。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim": "请以正式指南为准。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "3",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:FERTILIZING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 28800.83,
+      "retrieval_latency_ms": 280.868,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 正确回答了芦荟施肥季节和肥料类型，且与 Gold Claims 和 Reference Answer 一致。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "芦荟通常在春季施肥，建议使用多肉专用肥，每年施1次",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "当前提供的社区内容中未涉及芦荟的施肥季节与肥料类型",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "4",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:WATERING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 35481.66,
+      "retrieval_latency_ms": 273.919,
+      "error": null,
+      "correctness_judge": {
+        "score": 1,
+        "missing_claims": [
+          "红掌盆土接近干燥时再浇透",
+          "应避免长期积水"
+        ],
+        "wrong_claims": [],
+        "reason": "Generated Answer正确提到了浇水前盆土应接近干燥，但遗漏了浇透和避免长期积水这两个重要要点。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "红掌浇水前，建议等待盆土表层稍干或接近干燥时",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "5",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:TEMPERATURE"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 19306.48,
+      "retrieval_latency_ms": 283.187,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成答案正确给出白掌适宜温度为18-26°C，并以正式指南为准，核心事实完整。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "白掌的适宜温度范围为 18-26°C。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "帖子作者的个人养护经验认为 18-28℃ 是适宜生长的范围。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "低于 10℃ 时白掌生长速度会变慢。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "超过 35℃ 时白掌会出现不适。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "两类证据在温度上限上存在差异。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim": "证据冲突时，以正式指南为准。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "6",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:TEMPERATURE"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 23536.2,
+      "retrieval_latency_ms": 260.916,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer correctly states the suitable temperature range of 15-30°C, matching the gold claim completely."
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "正式指南：空气凤梨适合的温度范围是15-30°C",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区经验：该部分未提供温度相关信息",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "7",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "OFF",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:GENERAL_CARE"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 9,
+      "valid_citation_count": 9,
+      "latency_ms": 23133.45,
+      "retrieval_latency_ms": 141.783,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成答案完整包含了金标准中的所有核心要点：明亮散射光、排水良好、适度浇水、薄肥少施和及时修剪，且未遗漏或错误陈述任何关键信息。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "光照要求明亮散射光",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "植株耐阴",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E5"
+            ]
+          },
+          {
+            "claim": "浇水应适度",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "建议每周浇水1次",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "施肥应薄肥少施",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "每月施稀释液肥1次",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "适宜温度为18-28℃",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "湿度需保持大于40%",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E6"
+            ]
+          },
+          {
+            "claim": "使用排水良好的介质",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "需要及时修剪",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E5",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E6",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "8",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "OFF",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:FERTILIZING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE"
+      ],
+      "required_evidence_type_hit": false,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 0,
+      "matched_selected_evidence_count": 0,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 93365.3,
+      "retrieval_latency_ms": 136.192,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer正确复述了Reference Answer和Gold Claims的核心事实。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "虎尾兰几乎不需要修剪",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "9",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 4,
+      "valid_citation_count": 4,
+      "latency_ms": 152404.06,
+      "retrieval_latency_ms": 292.085,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的回答正确陈述了龟背竹空气湿度应保持在60%以上，核心事实与参考答案一致，且额外补充了社区经验，未出现错误或遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "正式指南建议龟背竹的空气湿度保持在60%以上",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区经验指出龟背竹适宜在空气湿度较高的环境中生长",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "具体表现为夏季可每天浇水一次，同时向叶片和周围环境喷水2-3次以增加空气湿度",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "有用户提醒“喜湿”标签不能机械理解",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "需结合植株开背情况、成熟度、光照和整体长势综合判断",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": false,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "10",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "OFF",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 17750.25,
+      "retrieval_latency_ms": 123.876,
+      "error": null,
+      "correctness_judge": {
+        "score": 1,
+        "missing_claims": [
+          "红掌需要较高湿度"
+        ],
+        "wrong_claims": [],
+        "reason": "生成的答案指出了空气干燥时适当增湿，但遗漏了红掌需要较高湿度这一核心背景信息，因此基本正确但存在重要遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "指南建议在空气干燥时适当增湿",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E5",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E6",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "11",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 17969.0,
+      "retrieval_latency_ms": 155.847,
+      "error": null,
+      "correctness_judge": {
+        "score": 1,
+        "missing_claims": [
+          "绿萝耐阴不等于喜阴"
+        ],
+        "wrong_claims": [],
+        "reason": "Generated Answer正确描述了长期弱光会导致节间拉长、叶片变小等主要现象，但遗漏了'绿萝耐阴不等于喜阴'这一重要观点，因此基本正确但存在重要遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "绿萝长期放在很暗的位置，容易出现节间拉长（藤条变细）。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim": "绿萝长期放在很暗的位置，容易出现叶片间距变大。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "绿萝长期放在很暗的位置，容易出现叶片变小。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim": "绿萝长期放在很暗的位置，容易出现颜色变浅。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "该描述仅反映发帖者的日常养护观察，并非确定性结论或通用指南。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "12",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 31005.02,
+      "retrieval_latency_ms": 137.067,
+      "error": null,
+      "correctness_judge": {
+        "score": 1,
+        "missing_claims": [
+          "施肥情况"
+        ],
+        "wrong_claims": [],
+        "reason": "生成的回答提到了浇水、根系、光照，但遗漏了施肥情况这一核心排查方面。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "绿萝短时间内连续大量黄叶时，建议重点排查浇水、根系、光照和通风情况。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "若出现黄叶、烂根或叶片变小等问题，可对照盆土、叶片、藤条和新芽的观察情况逐一排查。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "偶尔一两片老叶发黄属于正常新陈代谢，无需过度紧张。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "13",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 20484.68,
+      "retrieval_latency_ms": 134.201,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "回答准确覆盖了修剪长藤、促进侧芽并改善株型的核心事实，且未引入错误信息。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "根据帖子作者/社区用户的个人经验",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          },
+          {
+            "claim": "当绿萝藤条过长时，花友通常会适当剪掉过长、过细的枝条。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "修剪后植株往往会重新萌发侧芽。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "修剪后株型会更加丰满。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "剪下的健康枝条还可带节点重新扦插回盆中。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "14",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 37050.49,
+      "retrieval_latency_ms": 275.857,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的答案明确指出潮湿闷热环境不适合空气凤梨，并建议避免长期置于此类环境，与参考答案和黄金主张一致。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "空气凤梨不能长期放在潮湿又闷的地方养护。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "正式指南仅提及空气凤梨适合“高湿度环境”。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "正式指南未对“闷”或通风条件作具体说明。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区经验明确指出“潮湿但阴暗闷热的环境同样不合适”。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "社区经验建议养护时保持良好通风的环境。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "15",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 14886.32,
+      "retrieval_latency_ms": 135.362,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated answer correctly states that providing climbing support helps with the plant's shape development, matching the reference answer and gold claims."
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "根据帖子作者的个人经验，为了让龟背竹株型发展更好，可以为其提供攀爬支撑，这有助于株型发展。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "该结论仅来自社区用户的个人养护记录，仅供参考。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "16",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 38682.99,
+      "retrieval_latency_ms": 272.449,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 正确回答了问题，明确指出芦荟不能直接搬到烈日下，并补充了社区经验，与 Gold Claims 一致，核心事实完整。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "芦荟不能直接搬到烈日下。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "芦荟光照指南中提及该植物的光照需求为“全日照”。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "多位用户基于个人养护经验均明确指出，芦荟在长期室内养护后不要突然强晒。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "17",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 44639.96,
+      "retrieval_latency_ms": 256.768,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的答案正确陈述了核心事实：短期偏干比长期积水更容易恢复。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "短期偏干更容易恢复。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "芦荟肉质叶可以储水。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "正式指南仅提及芦荟浇水频率为每3周1次。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "正式指南未涉及短期偏干与长期积水哪个更容易恢复的对比内容。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "18",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 6,
+      "valid_citation_count": 6,
+      "latency_ms": 22926.56,
+      "retrieval_latency_ms": 612.998,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 正确包含了 Gold Claims 中的两个核心事实：介质明显干燥后再浇和低温季节更要控水。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "正式指南未针对天气凉时给出额外的浇水调整建议。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "正式指南仅统一建议每2周浇水1次。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区用户经验建议在天气凉或低温季节应延长浇水间隔并控制水量。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E4"
+            ]
+          },
+          {
+            "claim": "社区经验具体表现为遵循“干透浇透”原则。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "社区经验具体表现为等介质明显干燥后再浇水。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "社区经验具体表现为低温季节更要控水。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "该做法仅为个人经验。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          },
+          {
+            "claim": "实际介质干燥速度会因地区、季节和介质不同而有差异。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3",
+              "E4"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E4"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "19",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 22014.12,
+      "retrieval_latency_ms": 133.888,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的回答正确包含了核心事实‘白掌喜欢湿润但不耐长期积水’，并给出了额外合理的浇水建议，没有错误或遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "有花友指出白掌“喜欢湿润但不耐长期积水”，缺水时叶片常会明显下垂。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "另一位花友建议遵循“见干见湿，浇则浇透”的原则，具体做法是观察盆土表面微微发白，或用手指戳入土中2~3厘米，感觉干透后再浇水，以此避免积水烂根或缺水萎蔫。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "以上内容仅为社区帖子作者的个人养护经验总结，非通用养护指南。",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "20",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 31389.4,
+      "retrieval_latency_ms": 137.934,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 准确传达了稳定环境和耐心观察比频繁折腾更重要的核心观点，与 Reference Answer 和 Gold Claims 一致。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "如果不想频繁折腾绿萝，最重要的是给它一个相对稳定的环境。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "养绿萝要做到“少一点过度照顾，多一点耐心观察”。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "养绿萝的秘诀不在于每天围着它忙，而是了解它真正需要什么。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "21",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY",
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 2,
+      "matched_retrieval_evidence_count": 2,
+      "matched_selected_evidence_count": 2,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 13489.05,
+      "retrieval_latency_ms": 287.496,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 完全涵盖了 Gold Claims 中的两个核心事实：湿度大于50%和明亮散射光避免暴晒，且与 Reference Answer 一致。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "白掌的湿度要求为大于50%。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "根据帖子作者的个人经验，白掌最好放置在明亮的散射光处，例如窗边拉上纱帘的位置或客厅角落。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "根据帖子作者的个人经验，白掌应避免强光直射。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "另一位社区用户的日常养护经验指出，稳定的做法是给予明亮散射光。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "另一位社区用户的日常养护经验指出，应避免强烈暴晒。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E4"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "22",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY",
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 2,
+      "matched_retrieval_evidence_count": 2,
+      "matched_selected_evidence_count": 2,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 20462.94,
+      "retrieval_latency_ms": 260.973,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "回答完整覆盖了参考答案中的两个核心事实：湿度要求大于60%和攀爬支撑有助于株型发展。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "龟背竹的湿度要求为大于60%。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "提供攀爬支撑有助于龟背竹的株型发展。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E5"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E5",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E5"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "23",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:WATERING",
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 2,
+      "matched_retrieval_evidence_count": 2,
+      "matched_selected_evidence_count": 2,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 30945.6,
+      "retrieval_latency_ms": 265.362,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 完整包含了 Gold Claims 中的两条核心事实，并给出了合理的结合方式，无错误或遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "虎尾兰的浇水频率为每2周1次。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区花友建议避免浇多的具体做法是“干透再浇”或“等介质明显干燥后再浇”。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "积水容易烂根。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "虎尾兰更喜欢“干巴巴”的生活。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "频繁浇水比短期缺水更容易造成问题。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          },
+          {
+            "claim": "冬季可延长浇水间隔。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E4"
+            ]
+          },
+          {
+            "claim": "可将正式指南的“每2周1次”作为基础检查周期。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "实际浇水需以土壤状态为准。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2",
+              "E3",
+              "E4"
+            ]
+          },
+          {
+            "claim": "每2周左右查看盆土，若介质已明显干透则浇水，若未干透则顺延。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ]
+          },
+          {
+            "claim": "低温季节或环境较潮湿时，应进一步拉长间隔或减少水量。",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E3",
+              "E4"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "24",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:LIGHT",
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 2,
+      "matched_retrieval_evidence_count": 2,
+      "matched_selected_evidence_count": 2,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 18724.92,
+      "retrieval_latency_ms": 253.845,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "回答准确涵盖正式光照要求（明亮散射光）和社区经验强调的通风条件，无遗漏或错误。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "空气凤梨的光照要求为明亮散射光",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "该帖子作者的个人经验强调光线应尽量保持在明亮散射光",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "该帖子作者的个人经验强调需保持良好通风的环境",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "潮湿但阴暗闷热的环境并不合适",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "25",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "REQUIRED",
+        "community": "REQUIRED",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:TEMPERATURE",
+        "COMMUNITY_POST"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 2,
+      "matched_retrieval_evidence_count": 2,
+      "matched_selected_evidence_count": 2,
+      "selection_constraints": null,
+      "citation_count": 3,
+      "valid_citation_count": 3,
+      "latency_ms": 38600.05,
+      "retrieval_latency_ms": 258.428,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "生成的答案完整包含了参考答案中的两个核心事实：适宜温度18-28℃和社区经验提醒耐阴不等于喜阴、长期弱光导致节间拉长和叶片变小。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "绿萝的温度范围为18-28℃",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "“耐阴”不等于“喜阴”",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "长期弱光容易导致节间拉长、叶片变小",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E4"
+            ]
+          },
+          {
+            "claim": "长期放在无自然光的昏暗角落，容易出现藤条细长、叶片间距变大、叶片越来越小及颜色变浅等情况",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E5"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E3",
+            "relevant": false
+          },
+          {
+            "evidence_id": "E4",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E5",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim_index": 2,
+            "supported": true,
+            "evidence_ids": [
+              "E4",
+              "E5"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "26",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:HUMIDITY"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 31959.94,
+      "retrieval_latency_ms": 266.451,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 正确包含了核心事实：空气湿度应大于50%，且无错误或遗漏。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "Spathiphyllum wallisii（白掌）的湿度要求为大于50%",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "白掌喜欢湿润的环境",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "日常可以向叶片喷水",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "27",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:WATERING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 1,
+      "valid_citation_count": 1,
+      "latency_ms": 66982.16,
+      "retrieval_latency_ms": 262.653,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 正确给出了每次浸泡2-3小时，与 Reference Answer 和 Gold Claims 一致。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "每次浸泡建议2-3小时",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "28",
+      "category": "holdout",
+      "expected_outcome": "ANSWER",
+      "predicted_outcome": "ANSWER",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [
+        "CARE_GUIDE:FERTILIZING"
+      ],
+      "actual_evidence_types": [
+        "CARE_GUIDE",
+        "COMMUNITY_POST"
+      ],
+      "required_evidence_type_hit": true,
+      "gold_evidence_count": 1,
+      "matched_retrieval_evidence_count": 1,
+      "matched_selected_evidence_count": 1,
+      "selection_constraints": null,
+      "citation_count": 2,
+      "valid_citation_count": 2,
+      "latency_ms": 21677.95,
+      "retrieval_latency_ms": 260.829,
+      "error": null,
+      "correctness_judge": {
+        "score": 2,
+        "missing_claims": [],
+        "wrong_claims": [],
+        "reason": "Generated Answer 明确包含正式指南“生长季每2周施一次平衡肥”，与 Reference Answer 和 Gold Claims 一致，核心事实完整。"
+      },
+      "faithfulness_judge": {
+        "claims": [
+          {
+            "claim": "正式指南：生长季每2周施一次平衡肥",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          },
+          {
+            "claim": "社区经验：生长季（4至9月）每隔15至20天施一次稀薄的液肥",
+            "claim_type": "EVIDENCE_FACT",
+            "supported": true,
+            "evidence_ids": [
+              "E2"
+            ]
+          },
+          {
+            "claim": "社区内容仅为发帖用户的个人经验",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          },
+          {
+            "claim": "若与正式指南存在差异，以正式指南为准",
+            "claim_type": "SYSTEM_POLICY",
+            "supported": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "context_quality_judge": {
+        "contexts": [
+          {
+            "evidence_id": "E1",
+            "relevant": true
+          },
+          {
+            "evidence_id": "E2",
+            "relevant": false
+          }
+        ],
+        "reference_claims": [
+          {
+            "claim_index": 1,
+            "supported": true,
+            "evidence_ids": [
+              "E1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "29",
+      "category": "holdout",
+      "expected_outcome": "SAFE_REFUSAL",
+      "predicted_outcome": "INSUFFICIENT_KNOWLEDGE",
+      "safe_outcome_match": true,
+      "expected_route": "GENERAL_CARE",
+      "predicted_route": "GENERAL_CARE",
+      "route_match": true,
+      "expected_domain": null,
+      "predicted_domain": "PLANT",
+      "domain_match": null,
+      "expected_entity_requirement": null,
+      "predicted_entity_requirement": "REQUIRED",
+      "entity_requirement_match": null,
+      "expected_source_requirement": null,
+      "predicted_source_requirement": {
+        "knowledge": "OPTIONAL",
+        "community": "OPTIONAL",
+        "state": "OFF"
+      },
+      "source_requirement_match": null,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [],
+      "actual_evidence_types": [],
+      "required_evidence_type_hit": null,
+      "gold_evidence_count": 0,
+      "matched_retrieval_evidence_count": 0,
+      "matched_selected_evidence_count": 0,
+      "selection_constraints": null,
+      "citation_count": 0,
+      "valid_citation_count": 0,
+      "latency_ms": 21.33,
+      "retrieval_latency_ms": 2.128,
+      "error": null,
+      "correctness_judge": null,
+      "faithfulness_judge": null,
+      "context_quality_judge": null
+    },
+    {
+      "case_id": "30",
+      "category": "holdout",
+      "expected_outcome": "OUT_OF_SCOPE",
+      "predicted_outcome": "OUT_OF_SCOPE",
+      "safe_outcome_match": true,
+      "expected_route": null,
+      "predicted_route": "GENERAL_CARE",
+      "route_match": null,
+      "expected_domain": "OUT_OF_DOMAIN",
+      "predicted_domain": "OUT_OF_DOMAIN",
+      "domain_match": true,
+      "expected_entity_requirement": "NONE",
+      "predicted_entity_requirement": "NONE",
+      "entity_requirement_match": true,
+      "expected_source_requirement": {
+        "knowledge": "OFF",
+        "community": "OFF",
+        "state": "OFF"
+      },
+      "predicted_source_requirement": {
+        "knowledge": "OFF",
+        "community": "OFF",
+        "state": "OFF"
+      },
+      "source_requirement_match": true,
+      "route_propagation_consistent": true,
+      "dependency_failure": false,
+      "required_evidence_types": [],
+      "actual_evidence_types": [],
+      "required_evidence_type_hit": null,
+      "gold_evidence_count": 0,
+      "matched_retrieval_evidence_count": 0,
+      "matched_selected_evidence_count": 0,
+      "selection_constraints": null,
+      "citation_count": 0,
+      "valid_citation_count": 0,
+      "latency_ms": 28.69,
+      "retrieval_latency_ms": null,
+      "error": null,
+      "correctness_judge": null,
+      "faithfulness_judge": null,
+      "context_quality_judge": null
+    }
+  ]
+}
