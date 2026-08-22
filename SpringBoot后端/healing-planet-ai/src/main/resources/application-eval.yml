@@ -1,3 +1,10 @@
+spring:
+  ai:
+    openai:
+      chat:
+        options:
+          temperature: 0.0
+
 app:
   rag:
     eval:

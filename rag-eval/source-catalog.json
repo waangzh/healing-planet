@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "provenance": "只读查询本机 green_community 数据库（2026-08-20）；未保存数据库凭据。source_id 与 KnowledgeRepository 的 plants.id / post.id 一致；绿萝 detail_advice 与新增社区帖已按当前数据库内容复核。",
+  "version": 6,
+  "provenance": "以本次评测索引输出复核（2026-08-22）；未保存数据库凭据。source_id 与 KnowledgeRepository 的 plants.id / post.id 一致；养护字段及可分块 detail_advice 已按当前索引内容修订。",
   "sources": [
     {
       "source_id": "1",
@@ -12,7 +12,7 @@
         "WATERING": "每周1次",
         "TEMPERATURE": "18-28℃",
         "HUMIDITY": ">40%",
-        "FERTILIZING": "修剪枯黄叶片即可",
+        "FERTILIZING": "每月施稀释液肥1次",
         "GENERAL_CARE": "明亮散射光、排水良好、适度浇水、薄肥少施、及时修剪"
       }
     },
@@ -26,8 +26,8 @@
         "WATERING": "每2周1次",
         "TEMPERATURE": "15-30℃",
         "HUMIDITY": "任何湿度",
-        "FERTILIZING": "几乎不需要修剪",
-        "GENERAL_CARE": "每季度施缓释肥1次"
+        "FERTILIZING": "每季度施缓释肥1次",
+        "GENERAL_CARE": "几乎不需要修剪"
       }
     },
     {

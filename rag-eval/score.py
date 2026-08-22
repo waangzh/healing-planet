@@ -227,21 +227,39 @@ def value_from_evidence(evidence: dict[str, Any], key: str) -> Any:
     return metadata.get(key) if isinstance(metadata, dict) else None
 
 
-def evidence_ref(evidence: dict[str, Any]) -> tuple[str, str | None]:
+def evidence_ref(evidence: dict[str, Any]) -> tuple[str, str | None, str | None]:
     source_id = value_from_evidence(evidence, "sourceId")
     knowledge_type = value_from_evidence(evidence, "knowledgeType")
-    return str(source_id) if source_id is not None else "", str(knowledge_type) if knowledge_type else None
+    evidence_id = evidence.get("id")
+    return (
+        str(source_id) if source_id is not None else "",
+        str(knowledge_type) if knowledge_type else None,
+        str(evidence_id) if evidence_id else None,
+    )
 
 
-def gold_ref(ref: Any) -> tuple[str, str | None] | None:
+def gold_ref(ref: Any) -> tuple[str, str | None, str | None] | None:
     if not isinstance(ref, dict) or ref.get("source_id") is None:
         return None
     knowledge_type = ref.get("knowledge_type")
-    return str(ref["source_id"]), str(knowledge_type) if knowledge_type else None
+    evidence_id = ref.get("evidence_id")
+    return (
+        str(ref["source_id"]),
+        str(knowledge_type) if knowledge_type else None,
+        str(evidence_id) if evidence_id else None,
+    )
 
 
-def reference_matches(gold: tuple[str, str | None], actual: tuple[str, str | None]) -> bool:
-    return gold[0] == actual[0] and (gold[1] is None or gold[1] == actual[1])
+def reference_matches(gold: tuple[str, str | None, str | None],
+                      actual: tuple[str, str | None, str | None]) -> bool:
+    return gold[0] == actual[0] \
+        and (gold[1] is None or gold[1] == actual[1]) \
+        and (gold[2] is None or gold[2] == actual[2])
+
+
+def evidence_group_ref(evidence: dict[str, Any]) -> tuple[str, str | None]:
+    source_id, knowledge_type, _ = evidence_ref(evidence)
+    return source_id, knowledge_type
 
 
 def knowledge_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -353,7 +371,7 @@ def selection_constraint_result(golden: dict[str, Any], raw: dict[str, Any],
 
     selected = knowledge_evidence(evidence)
     checks: dict[str, bool] = {}
-    group_counts = Counter(evidence_ref(item) for item in selected)
+    group_counts = Counter(evidence_group_ref(item) for item in selected)
     max_per_group = expectations.get("max_selected_per_source_knowledge_type")
     if isinstance(max_per_group, int) and max_per_group >= 0:
         checks["max_selected_per_source_knowledge_type"] = all(

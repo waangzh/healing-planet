@@ -2,26 +2,26 @@
   "schema_version": 3,
   "freeze_date": null,
   "annotation_revision": {
-    "date": "2026-08-21",
-    "reason": "Routing Trace v3 uses SourceRequirement; out-of-domain cases disable all retrieval sources."
+    "date": "2026-08-22",
+    "reason": "修正养护字段类型标注，并将可分块的正式指南 gold reference 绑定到实际 evidence_id。"
   },
   "development": {
     "path": "golden.jsonl",
     "role": "development-regression",
     "case_count": 114,
-    "sha256": "407e2da02f96c7a40d7ae259c9e37161bd65ad556b06f145c7d3261de2760a1c"
+    "sha256": "16e10672523e66023e5929f9690aaf1c9f4a82bfa5d3fb92703ec1a9f54d9d02"
   },
   "holdout": {
     "path": "holdout.jsonl",
     "role": "evaluation-regression",
     "case_count": 30,
-    "sha256": "0eae337b4965b340bb69e847eaae7b15d4a9cb69c10d02ba2b073a2f490ce803",
+    "sha256": "0e56314a5882cfe600f0d31ff868bcb9de1b3685af3910e27a3a698fad3e7881",
     "id_format": "1..30 as strings",
     "usage": ""
   },
   "source_catalog": {
     "path": "source-catalog.json",
     "version": 6,
-    "sha256": "85ed2428f62b9660bd5721422f35d66c7397e3dcc5460a16384fc54ee940b4ef"
+    "sha256": "9b95199ca137af15ee29df8125c276c53d0ebb044ae898da77904b008928453e"
   }
 }
