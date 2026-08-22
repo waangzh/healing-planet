@@ -3,10 +3,10 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.RetrievalTrace;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Immutable request passed after the single routing decision has been made.
@@ -25,12 +25,16 @@ public record RetrievalRequest(
         routing = Objects.requireNonNull(routing, "routing");
         sourcePlan = Objects.requireNonNullElse(sourcePlan, routing.sourcePlan());
         searchQuery = searchQuery == null ? query.query() : searchQuery;
-        requiredKnowledgeTypes = requiredKnowledgeTypes == null ? Set.of()
-                : requiredKnowledgeTypes.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .collect(Collectors.toUnmodifiableSet());
+        if (requiredKnowledgeTypes == null) {
+            requiredKnowledgeTypes = Set.of();
+        } else {
+            LinkedHashSet<String> normalizedTypes = requiredKnowledgeTypes.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(value -> !value.isEmpty())
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            requiredKnowledgeTypes = Collections.unmodifiableSet(normalizedTypes);
+        }
     }
 
     public static RetrievalRequest from(RagQuery query, QueryRouter.RoutingDecision routing) {
@@ -56,14 +60,6 @@ public record RetrievalRequest(
 
     private static Set<String> requiredKnowledgeTypes(String query, SourcePlan sourcePlan) {
         if (!sourcePlan.includeKnowledge()) return Set.of();
-        String text = query == null ? "" : query;
-        Set<String> types = new LinkedHashSet<>();
-        if (text.contains("光照") || text.contains("阳光") || text.contains("晒")) types.add("LIGHT");
-        if (text.contains("浇") || text.contains("补水")) types.add("WATERING");
-        if (text.contains("温度") || text.contains("耐冷") || text.contains("耐热")) types.add("TEMPERATURE");
-        if (text.contains("湿度")) types.add("HUMIDITY");
-        if (text.contains("施肥") || text.contains("肥料")) types.add("FERTILIZING");
-        if (text.contains("土壤") || text.contains("盆土") || text.contains("介质")) types.add("GENERAL_CARE");
-        return Set.copyOf(types);
+        return KnowledgeTopicClassifier.classify(query);
     }
 }

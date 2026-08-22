@@ -70,8 +70,8 @@ public class PlantAliasMatcher {
             String right = comparisonSubject(query.substring(separator.end()), true);
             NameMatch leftMatch = comparisonEntry(left, entries);
             NameMatch rightMatch = comparisonEntry(right, entries);
-            boolean leftLooksLikeEntity = leftMatch != null || looksLikeUnknownMention(left);
-            boolean rightLooksLikeEntity = rightMatch != null || looksLikeUnknownMention(right);
+            boolean leftLooksLikeEntity = leftMatch != null || looksLikeUnknownEntityOperand(left, entries);
+            boolean rightLooksLikeEntity = rightMatch != null || looksLikeUnknownEntityOperand(right, entries);
             if (!leftLooksLikeEntity || !rightLooksLikeEntity) continue;
             if (leftMatch == null || rightMatch == null) {
                 List<PlantCatalogEntry> known = new ArrayList<>();
@@ -107,6 +107,8 @@ public class PlantAliasMatcher {
             int index = value.indexOf(marker);
             if (index > 0) boundary = Math.min(boundary, index);
         }
+        Matcher comparison = COMPARISON_TERM.matcher(value);
+        if (comparison.find() && comparison.start() > 0) boundary = Math.min(boundary, comparison.start());
         Matcher care = CARE_ANCHOR.matcher(value);
         if (care.find() && care.start() > 0) boundary = Math.min(boundary, care.start());
         return boundary == value.length() ? -1 : boundary;
@@ -131,12 +133,14 @@ public class PlantAliasMatcher {
                 || CARE_ANCHOR.matcher(suffix).find();
     }
 
-    private boolean looksLikeUnknownMention(String value) {
+    private boolean looksLikeUnknownEntityOperand(String value, List<PlantCatalogEntry> entries) {
         String candidate = value == null ? "" : value.trim();
         int boundary = firstOperandBoundary(candidate);
         if (boundary > 0) candidate = candidate.substring(0, boundary);
         if (candidate.isBlank() || candidate.length() < 2 || candidate.length() > 30
                 || !HAN_NAME.matcher(candidate).matches()) return false;
+        if (containsCatalogName(candidate, entries)) return false;
+        if (!KnowledgeTopicClassifier.classify(candidate).isEmpty()) return false;
         return NON_ENTITY_TERMS.stream().noneMatch(candidate::contains);
     }
 

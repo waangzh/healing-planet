@@ -318,6 +318,30 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void shouldTreatSinglePlantConditionComparisonsAsSinglePlantQueries() {
+        Map<String, String> queries = Map.of(
+                "芦荟短期偏干和长期积水，哪个更容易恢复？", "10",
+                "白掌保持湿润与长期积水，哪种状态风险更高？", "21",
+                "虎尾兰处于强光和弱光时，哪个环境更适合？", "2");
+
+        queries.forEach((query, expectedPlantId) -> {
+            var resolution = resolve(RagQuery.of(query));
+            assertThat(resolution.kind()).as(query).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+            assertThat(resolution.canonicalPlantIds()).as(query).containsExactly(expectedPlantId);
+            assertThat(resolution.rejectionReason()).as(query).isBlank();
+        });
+    }
+
+    @Test
+    void shouldKeepUnregisteredPlantOperandWhenComparisonPredicateHasNoPossessiveMarker() {
+        var resolution = resolve(RagQuery.of("绿萝和常春藤哪个更耐阴？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.PARTIAL);
+        assertThat(resolution.canonicalPlantIds()).containsExactly("1");
+        assertThat(resolution.unresolvedMentions()).containsExactly("常春藤");
+    }
+
+    @Test
     void shouldResolveKnownNameWithNaturalLanguageContextWithoutLlm() {
         disambiguator = mock(PlantEntityDisambiguator.class);
         resolver = new PlantEntityResolver(mockRepository(), entityStore, null, new RagProperties(), null, disambiguator);
