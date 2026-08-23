@@ -82,7 +82,7 @@ public class IngestionService {
 
     public IndexReport indexDiseases() {
         List<KnowledgeDocument> documents = diseaseRepository.findAll().stream()
-                .map(diseaseConverter::convert).toList();
+                .flatMap(row -> diseaseConverter.convertAll(row).stream()).toList();
         int deleted = replace(KnowledgeSource.DISEASE, documents, diseaseVectorStore);
         return IndexReport.disease(documents.size(), deleted);
     }
@@ -94,13 +94,15 @@ public class IngestionService {
             deleteIds(KnowledgeSource.DISEASE, oldIds, diseaseVectorStore);
             return IndexReport.disease(0, oldIds.size());
         }
-        KnowledgeDocument document = diseaseConverter.convert(row);
+        List<KnowledgeDocument> documents = diseaseConverter.convertAll(row);
+        Set<String> newIds = documents.stream().map(KnowledgeDocument::id)
+                .collect(java.util.stream.Collectors.toSet());
         Set<String> staleIds = new HashSet<>(oldIds);
-        staleIds.remove(document.id());
+        staleIds.removeAll(newIds);
         deleteIds(KnowledgeSource.DISEASE, staleIds, diseaseVectorStore);
-        diseaseVectorStore.add(toSpringDocuments(List.of(document)));
-        sparseIndex.upsert(document);
-        return IndexReport.disease(1, staleIds.size());
+        diseaseVectorStore.add(toSpringDocuments(documents));
+        documents.forEach(sparseIndex::upsert);
+        return IndexReport.disease(documents.size(), staleIds.size());
     }
 
     public IndexReport indexPost(String postId) {

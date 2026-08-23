@@ -59,32 +59,33 @@ public class KnowledgeRepository {
     public List<PostRow> findPublishedPosts() {
         return jdbcClient.sql("""
                 select p.id, p.title, p.content, p.likes, p.collects, p.comments, p.view,
-                       p.essence, p.create_time, group_concat(distinct t.name separator ',') tags
+                       p.essence, p.create_time, p.modify_time, group_concat(distinct t.name separator ',') tags
                 from post p
                 left join post_tag pt on p.id = pt.post_id
                 left join tag t on pt.tag_id = t.id
                 where (p.status = 1 or p.status is null)
                 group by p.id, p.title, p.content, p.likes, p.collects, p.comments,
-                         p.view, p.essence, p.create_time
+                         p.view, p.essence, p.create_time, p.modify_time
                 """).query(this::mapPost).list();
     }
 
     public PostRow findPublishedPost(String postId) {
         return jdbcClient.sql("""
                 select p.id, p.title, p.content, p.likes, p.collects, p.comments, p.view,
-                       p.essence, p.create_time, group_concat(distinct t.name separator ',') tags
+                       p.essence, p.create_time, p.modify_time, group_concat(distinct t.name separator ',') tags
                 from post p
                 left join post_tag pt on p.id = pt.post_id
                 left join tag t on pt.tag_id = t.id
                 where p.id = :postId and (p.status = 1 or p.status is null)
                 group by p.id, p.title, p.content, p.likes, p.collects, p.comments,
-                         p.view, p.essence, p.create_time
+                         p.view, p.essence, p.create_time, p.modify_time
                 """).param("postId", postId).query(this::mapPost).optional()
                 .orElse(null);
     }
 
     private PostRow mapPost(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         var timestamp = rs.getTimestamp("create_time");
+        var modifiedTimestamp = rs.getTimestamp("modify_time");
         return new PostRow(
                 rs.getString("id"), rs.getString("title"), rs.getString("content"),
                 valueOrZero(rs.getObject("likes", Integer.class)),
@@ -92,7 +93,8 @@ public class KnowledgeRepository {
                 valueOrZero(rs.getObject("comments", Integer.class)),
                 valueOrZero(rs.getObject("view", Integer.class)),
                 Boolean.TRUE.equals(rs.getObject("essence", Boolean.class)),
-                timestamp == null ? null : timestamp.toInstant(), rs.getString("tags")
+                timestamp == null ? null : timestamp.toInstant(),
+                modifiedTimestamp == null ? null : modifiedTimestamp.toInstant(), rs.getString("tags")
         );
     }
 
@@ -120,6 +122,10 @@ public class KnowledgeRepository {
     }
 
     public record PostRow(String id, String title, String content, int likes, int collects,
-                          int comments, int views, boolean essence, Instant createdAt, String tags) {
+                          int comments, int views, boolean essence, Instant createdAt, Instant updatedAt, String tags) {
+        public PostRow(String id, String title, String content, int likes, int collects,
+                       int comments, int views, boolean essence, Instant createdAt, String tags) {
+            this(id, title, content, likes, collects, comments, views, essence, createdAt, createdAt, tags);
+        }
     }
 }

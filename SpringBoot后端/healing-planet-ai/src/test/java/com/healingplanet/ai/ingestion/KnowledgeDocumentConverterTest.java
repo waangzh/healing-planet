@@ -44,6 +44,30 @@ class KnowledgeDocumentConverterTest {
     }
 
     @Test
+    void shouldPreferHeadingsAndParagraphsThenUseTokenBoundedHardSplitForCommunityContent() {
+        String uninterrupted = "连续记录无句号".repeat(1_500);
+        var post = new KnowledgeRepository.PostRow("post-2", "绿萝长文", "# 观察记录\n\n"
+                + uninterrupted + "\n\n# 调整方案\n\n减少浇水并改善通风。",
+                0, 0, 0, 0, false, Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-02-01T00:00:00Z"), "绿萝");
+
+        var documents = converter.fromPost(post);
+
+        assertThat(documents).hasSizeGreaterThan(2).allSatisfy(document -> {
+            assertThat(TokenAwareTextChunker.countTokens(document.content()))
+                    .isLessThanOrEqualTo(TokenAwareTextChunker.COMMUNITY_MAX_TOKENS);
+            assertThat(document.metadata()).containsKeys("chunkIndex", "chunkCount", "section", "contentHash",
+                    "sourceUpdatedAt", "indexVersion");
+            assertThat(String.valueOf(document.metadata().get("contentHash"))).hasSize(64);
+            assertThat(document.metadata().get("sourceUpdatedAt")).isEqualTo("2026-02-01T00:00:00Z");
+        });
+        assertThat(documents).anySatisfy(document -> assertThat(document.metadata().get("section")).isEqualTo("观察记录"));
+        assertThat(documents).anySatisfy(document -> assertThat(document.metadata().get("section")).isEqualTo("调整方案"));
+        assertThat(documents).extracting(document -> document.metadata().get("chunkCount"))
+                .containsOnly(String.valueOf(documents.size()));
+    }
+
+    @Test
     void shouldSplitLongDetailAdviceIntoGeneralCareChunksOfAtMost300Characters() {
         String detailAdvice = "第一段综合养护建议。".repeat(20) + "\n\n"
                 + "第二段综合养护建议。".repeat(20) + "\n\n"

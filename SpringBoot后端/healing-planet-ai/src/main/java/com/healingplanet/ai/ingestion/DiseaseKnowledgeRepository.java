@@ -3,6 +3,7 @@ package com.healingplanet.ai.ingestion;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 
 @Repository
@@ -27,7 +28,7 @@ public class DiseaseKnowledgeRepository {
         return """
                 select id, canonical_plant_id, plant_name, disease_name, aliases, symptoms,
                        visual_symptoms, trigger_conditions, environment_conditions,
-                       treatment, prevention, source, source_level
+                       treatment, prevention, source, source_level, created_at, updated_at
                 from plant_disease_knowledge
                 """;
     }
@@ -38,11 +39,26 @@ public class DiseaseKnowledgeRepository {
                 rs.getString("symptoms"), rs.getString("visual_symptoms"),
                 rs.getString("trigger_conditions"), rs.getString("environment_conditions"),
                 rs.getString("treatment"), rs.getString("prevention"), rs.getString("source"),
-                rs.getString("source_level"));
+                rs.getString("source_level"), instant(rs.getTimestamp("created_at")),
+                instant(rs.getTimestamp("updated_at")));
+    }
+
+    private Instant instant(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant();
     }
 
     public record DiseaseRow(String id, String canonicalPlantId, String plantName, String diseaseName,
                              String aliases, String symptoms, String visualSymptoms,
                              String triggerConditions, String environmentConditions,
-                             String treatment, String prevention, String source, String sourceLevel) { }
+                             String treatment, String prevention, String source, String sourceLevel,
+                             Instant createdAt, Instant updatedAt) {
+        public DiseaseRow(String id, String canonicalPlantId, String plantName, String diseaseName,
+                          String aliases, String symptoms, String visualSymptoms,
+                          String triggerConditions, String environmentConditions,
+                          String treatment, String prevention, String source, String sourceLevel) {
+            this(id, canonicalPlantId, plantName, diseaseName, aliases, symptoms, visualSymptoms,
+                    triggerConditions, environmentConditions, treatment, prevention, source, sourceLevel,
+                    null, null);
+        }
+    }
 }
