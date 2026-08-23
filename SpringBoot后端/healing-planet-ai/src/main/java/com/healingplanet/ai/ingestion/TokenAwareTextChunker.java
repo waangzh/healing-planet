@@ -182,12 +182,7 @@ final class TokenAwareTextChunker {
     }
 
     private static String cleanInlineMarkdown(String value) {
-        return value.replaceAll("!\\[[^]]*]\\([^)]*\\)", " ")
-                .replaceAll("\\[([^]]+)]\\([^)]*\\)", "$1")
-                .replaceAll("[`*_>|~-]", " ")
-                .replaceAll("(?m)[ \\t]+$", "")
-                .replaceAll("(?m)^[ \\t]+", "")
-                .trim();
+        return MarkdownPlainTextSanitizer.strip(value);
     }
 
     record Chunk(String content, String section) {

@@ -104,13 +104,7 @@ public class KnowledgeDocumentConverter {
     }
 
     static String stripMarkdown(String value) {
-        if (value == null) return "";
-        return value.replaceAll("!\\[[^]]*]\\([^)]*\\)", " ")
-                .replaceAll("\\[([^]]+)]\\([^)]*\\)", "$1")
-                .replaceAll("(?m)^#{1,6}\\s*", "")
-                .replaceAll("[`*_>|~-]", " ")
-                .replaceAll("[ \\t]+", " ")
-                .trim();
+        return MarkdownPlainTextSanitizer.strip(value);
     }
 
     private String inferPlantName(List<String> tags) {

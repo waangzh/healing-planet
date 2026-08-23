@@ -84,4 +84,50 @@ class KnowledgeDocumentConverterTest {
             assertThat(document.content()).hasSizeLessThanOrEqualTo(360);
         });
     }
+
+    @Test
+    void shouldPreserveRangesWhenSplittingDetailAdviceMarkdown() {
+        String detailAdvice = """
+                # 综合养护
+
+                - 适温：18-28℃
+                - 缓苗：2-3 天
+                - 空气湿度：40%~60%
+                > **建议**：保持通风
+                """;
+        var plant = new KnowledgeRepository.PlantRow("plant-1", "Epipremnum aureum", "绿萝",
+                "明亮散射光", "表土干后浇透", "15-30℃", "较高湿度", "生长期薄肥", detailAdvice);
+
+        var generalCare = converter.fromPlant(plant).stream()
+                .filter(document -> document.knowledgeType().equals("GENERAL_CARE"))
+                .map(document -> document.content())
+                .toList();
+
+        assertThat(generalCare).singleElement().satisfies(content -> {
+            assertThat(content).contains("18-28℃", "2-3 天", "40%~60%");
+            assertThat(content).contains("建议：保持通风");
+            assertThat(content).doesNotContain("- 适温", "> ", "**");
+        });
+    }
+
+    @Test
+    void shouldPreserveRangesWhenSplittingCommunityPostMarkdown() {
+        String content = """
+                # 夏季养护记录
+
+                - 温度保持在 18-28℃
+                - 缓苗需要 2-3 天
+                - 空气湿度控制在 40%~60%
+                """;
+        var post = new KnowledgeRepository.PostRow("post-range", "范围数据", content,
+                0, 0, 0, 0, false, Instant.parse("2026-01-01T00:00:00Z"), "绿萝");
+
+        var documents = converter.fromPost(post);
+
+        assertThat(documents).singleElement().satisfies(document -> {
+            assertThat(document.content()).contains("18-28℃", "2-3 天", "40%~60%");
+            assertThat(document.content()).doesNotContain("# 夏季养护记录", "- 温度保持");
+            assertThat(document.metadata().get("section")).isEqualTo("夏季养护记录");
+        });
+    }
 }
