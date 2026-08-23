@@ -19,6 +19,12 @@ public class DiseaseKnowledgeRepository {
                 .query((rs, rowNum) -> map(rs)).list();
     }
 
+    public List<DiseaseRow> findAfter(String lastId, int limit) {
+        return jdbcClient.sql(selectSql() + " where id > :lastId order by id limit :limit")
+                .param("lastId", lastId).param("limit", limit)
+                .query((rs, rowNum) -> map(rs)).list();
+    }
+
     public DiseaseRow findById(String id) {
         return jdbcClient.sql(selectSql() + " where id = :id")
                 .param("id", id).query((rs, rowNum) -> map(rs)).optional().orElse(null);

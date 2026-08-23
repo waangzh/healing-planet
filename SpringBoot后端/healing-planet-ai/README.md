@@ -78,7 +78,7 @@
 - RRF 融合、可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
 - 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用。
-- 全量索引、植物索引、社区索引、单帖子更新与删除。
+- 分页增量索引、植物索引、社区索引、单帖子更新与删除；全量扫描仅用于修复与补数。
 
 ### 第二阶段 · 个体化状态感知
 
@@ -138,7 +138,7 @@ healing-planet-ai:  PLANT_STATE_API_KEY
 smart_green_plant:  PLANT_INTERNAL_API_KEY
 ```
 
-首次启动会在 embedding 模型返回向量维度后创建 Qdrant collection。模型维度变更时应使用新 collection 名称或手动迁移，不能直接复用原 collection。
+首次启动会在 embedding 模型返回向量维度后创建 Qdrant collection。模型维度变更时应使用新 collection 名称或手动迁移，不能直接复用原 collection。模型、归一化策略或维度变更后，还必须同步修改 `RAG_EMBEDDING_MODEL_VERSION`，使已有 chunk 在下一次补偿扫描中重新向量化。
 
 ## 配置说明
 
@@ -151,6 +151,9 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `COMMUNITY_DB_URL` | 社区库 JDBC 地址 | `jdbc:mysql://localhost:3306/green_community` |
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 聊天模型 | `change-me` / `https://api.siliconflow.cn` / `Qwen/Qwen3.5-397B-A17B` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | Embedding 模型 | `https://api.siliconflow.cn` / `BAAI/bge-m3` |
+| `RAG_INGESTION_BATCH_SIZE` | 每次读取与写入的外层 chunk 批次，范围 50–200 | `100` |
+| `RAG_EMBEDDING_MODEL_VERSION` | 向量化版本；模型或 embedding 策略变动时必须修改 | `EMBEDDING_MODEL` |
+| `RAG_EMBEDDING_BATCH_MAX_TOKENS` / `RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE` | Spring AI 内层 token 批处理上限与预留比例 | `8000` / `0.1` |
 | `QDRANT_HOST` / `QDRANT_GRPC_PORT` | Qdrant 连接 | `localhost` / `6334` |
 | `QDRANT_PLANT_COLLECTION` | 植物知识 collection | `plant_knowledge` |
 | `QDRANT_PLANT_ENTITY_COLLECTION` | 植物实体 collection | `plant_entities` |
@@ -170,14 +173,29 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 ## 索引流程
 
-应用启动不会扫描并重新向量化业务数据。服务就绪后显式触发一次全量索引：
+应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 chunk；只有 `contentHash` 或 `embeddingModelVersion` 变化的 chunk 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
+
+首次引入该机制或需要补数时，先由数据库发布流程执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)，再显式触发扫描：
 
 ```bash
 curl -X POST http://localhost:8010/internal/index/full \
   -H "X-Internal-Api-Key: replace-with-a-random-secret"
 ```
 
-帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。文档 ID 是确定性的，重复调用会更新同一条向量和稀疏索引。
+帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
+
+生产环境不应靠定时全量扫描同步帖子。社区服务应在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件，并由独立发布器投递以下契约；消费者据此调用上面的内部接口：
+
+```json
+{
+  "eventId": "全局唯一 ID",
+  "type": "POST_UPSERT 或 POST_DELETE",
+  "postId": "post.id",
+  "occurredAt": "ISO-8601 时间"
+}
+```
+
+投递可使用现有 RabbitMQ，但确认/重试必须以 outbox 记录为准，而不是直接在帖子事务中发消息。这样消息重复、延迟或消费者重试不会导致重复向量化；全量扫描仅保留为 outbox 故障后的补偿工具。
 
 ## API 接口
 
@@ -261,7 +279,7 @@ curl "http://localhost:8010/actuator/prometheus"
 | `POST` | `/internal/index/diseases` | 仅病害知识 |
 | `POST` | `/internal/index/disease/{diseaseId}` | 单病害更新 |
 
-> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。
+> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。`rag_embedding_state` 是 AI 服务唯一需要写入的表，部署账号应只被授予该表的写权限，其他业务表保持只读权限。
 
 ### 多模态病害辅助分析
 

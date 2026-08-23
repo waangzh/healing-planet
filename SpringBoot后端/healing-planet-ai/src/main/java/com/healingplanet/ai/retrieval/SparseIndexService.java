@@ -18,7 +18,10 @@ import org.apache.lucene.index.MultiBits;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -79,12 +82,34 @@ public class SparseIndexService {
         }
     }
 
+    public synchronized void upsertAll(List<KnowledgeDocument> documents) {
+        if (documents.isEmpty()) return;
+        try (IndexWriter writer = writer(documents.get(0).source())) {
+            for (KnowledgeDocument document : documents) {
+                writer.updateDocument(new Term("id", document.id()), toLucene(document));
+            }
+            writer.commit();
+        } catch (IOException e) {
+            throw new UncheckedIOException("批量更新稀疏索引失败", e);
+        }
+    }
+
     public synchronized void delete(KnowledgeSource source, String id) {
         try (IndexWriter writer = writer(source)) {
             writer.deleteDocuments(new Term("id", id));
             writer.commit();
         } catch (IOException e) {
             throw new UncheckedIOException("删除稀疏索引失败", e);
+        }
+    }
+
+    public synchronized void deleteAll(KnowledgeSource source, List<String> ids) {
+        if (ids.isEmpty()) return;
+        try (IndexWriter writer = writer(source)) {
+            writer.deleteDocuments(ids.stream().map(id -> new Term("id", id)).toArray(Term[]::new));
+            writer.commit();
+        } catch (IOException e) {
+            throw new UncheckedIOException("批量删除稀疏索引失败", e);
         }
     }
 
@@ -122,6 +147,26 @@ public class SparseIndexService {
             return result;
         } catch (IOException e) {
             throw new UncheckedIOException("读取稀疏索引失败", e);
+        }
+    }
+
+    public synchronized Map<String, KnowledgeDocument> documentsByIds(KnowledgeSource source, Set<String> ids) {
+        if (ids.isEmpty()) return Map.of();
+        try {
+            if (!DirectoryReader.indexExists(directories.get(source))) return Map.of();
+            try (DirectoryReader reader = DirectoryReader.open(directories.get(source))) {
+                BooleanQuery.Builder query = new BooleanQuery.Builder();
+                ids.forEach(id -> query.add(new TermQuery(new Term("id", id)), BooleanClause.Occur.SHOULD));
+                var hits = new IndexSearcher(reader).search(query.build(), ids.size()).scoreDocs;
+                Map<String, KnowledgeDocument> result = new java.util.HashMap<>();
+                for (ScoreDoc hit : hits) {
+                    KnowledgeDocument document = fromLucene(reader.storedFields().document(hit.doc));
+                    result.put(document.id(), document);
+                }
+                return result;
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("读取稀疏索引文档失败", e);
         }
     }
 

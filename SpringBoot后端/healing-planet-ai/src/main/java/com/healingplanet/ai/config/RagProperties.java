@@ -17,6 +17,7 @@ public class RagProperties {
     private int rrfK = 60;
     private String internalApiKey = "";
     private Path dataDirectory = Path.of("data", "rag");
+    private final Ingestion ingestion = new Ingestion();
     private final Qdrant qdrant = new Qdrant();
     private final EntityResolution entityResolution = new EntityResolution();
     private final Reranker reranker = new Reranker();
@@ -44,6 +45,7 @@ public class RagProperties {
     public void setInternalApiKey(String internalApiKey) { this.internalApiKey = internalApiKey; }
     public Path getDataDirectory() { return dataDirectory; }
     public void setDataDirectory(Path dataDirectory) { this.dataDirectory = dataDirectory; }
+    public Ingestion getIngestion() { return ingestion; }
     public Qdrant getQdrant() { return qdrant; }
     public EntityResolution getEntityResolution() { return entityResolution; }
     public Reranker getReranker() { return reranker; }
@@ -62,6 +64,28 @@ public class RagProperties {
 
         public boolean usesDense() { return this != BM25_ONLY; }
         public boolean usesSparse() { return this != DENSE_ONLY; }
+    }
+
+    public static class Ingestion {
+        private int batchSize = 100;
+        private String embeddingModelVersion = "BAAI/bge-m3";
+        private int embeddingBatchMaxTokens = 8000;
+        private double embeddingBatchReservePercentage = 0.1;
+
+        public int getBatchSize() { return batchSize; }
+        public void setBatchSize(int batchSize) { this.batchSize = batchSize; }
+        public String getEmbeddingModelVersion() { return embeddingModelVersion; }
+        public void setEmbeddingModelVersion(String embeddingModelVersion) {
+            this.embeddingModelVersion = embeddingModelVersion;
+        }
+        public int getEmbeddingBatchMaxTokens() { return embeddingBatchMaxTokens; }
+        public void setEmbeddingBatchMaxTokens(int embeddingBatchMaxTokens) {
+            this.embeddingBatchMaxTokens = embeddingBatchMaxTokens;
+        }
+        public double getEmbeddingBatchReservePercentage() { return embeddingBatchReservePercentage; }
+        public void setEmbeddingBatchReservePercentage(double embeddingBatchReservePercentage) {
+            this.embeddingBatchReservePercentage = embeddingBatchReservePercentage;
+        }
     }
 
     public static class SourceAwareRanking {

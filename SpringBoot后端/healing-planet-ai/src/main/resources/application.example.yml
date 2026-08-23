@@ -18,7 +18,8 @@ spring:
     password: ${COMMUNITY_DB_PASSWORD:}
     hikari:
       maximum-pool-size: 5
-      read-only: true
+      # 仅写入 rag_embedding_state；业务表仍由应用约束保持只读。
+      read-only: false
   ai:
     retry:
       max-attempts: ${AI_RETRY_MAX_ATTEMPTS:1}
@@ -63,6 +64,14 @@ app:
       min-ngram: ${RAG_BM25_MIN_NGRAM:1}
       max-ngram: ${RAG_BM25_MAX_NGRAM:3}
     data-directory: ${RAG_DATA_DIRECTORY:data/rag}
+    ingestion:
+      # 外层业务批控制内存和单次 Qdrant 写入；取值必须在 50 到 200 之间。
+      batch-size: ${RAG_INGESTION_BATCH_SIZE:100}
+      # 模型、维度或归一化策略变化时必须改变此值，使已有 chunk 被重新向量化。
+      embedding-model-version: ${RAG_EMBEDDING_MODEL_VERSION:${EMBEDDING_MODEL:BAAI/bge-m3}}
+      # Spring AI TokenCountBatchingStrategy 的内层 token 批处理配置。
+      embedding-batch-max-tokens: ${RAG_EMBEDDING_BATCH_MAX_TOKENS:8000}
+      embedding-batch-reserve-percentage: ${RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE:0.1}
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     qdrant:
       host: ${QDRANT_HOST:localhost}

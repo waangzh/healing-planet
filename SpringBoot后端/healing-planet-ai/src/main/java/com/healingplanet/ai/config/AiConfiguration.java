@@ -1,10 +1,13 @@
 package com.healingplanet.ai.config;
 
+import com.knuddels.jtokkit.api.EncodingType;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.embedding.BatchingStrategy;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.TokenCountBatchingStrategy;
 import org.springframework.ai.model.openai.autoconfigure.OpenAIAutoConfigurationUtil;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiConnectionProperties;
@@ -49,31 +52,46 @@ public class AiConfiguration {
     }
 
     @Bean("plantVectorStore")
-    VectorStore plantVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
-        return vectorStore(client, embeddingModel, properties.getQdrant().getPlantCollection(), properties);
+    VectorStore plantVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties,
+                                 @Qualifier("embeddingBatchingStrategy") BatchingStrategy batchingStrategy) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getPlantCollection(), properties, batchingStrategy);
     }
 
     @Bean("plantEntityVectorStore")
-    VectorStore plantEntityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
-        return vectorStore(client, embeddingModel, properties.getQdrant().getPlantEntityCollection(), properties);
+    VectorStore plantEntityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties,
+                                       @Qualifier("embeddingBatchingStrategy") BatchingStrategy batchingStrategy) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getPlantEntityCollection(), properties,
+                batchingStrategy);
     }
 
     @Bean("communityVectorStore")
-    VectorStore communityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
-        return vectorStore(client, embeddingModel, properties.getQdrant().getCommunityCollection(), properties);
+    VectorStore communityVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties,
+                                     @Qualifier("embeddingBatchingStrategy") BatchingStrategy batchingStrategy) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getCommunityCollection(), properties,
+                batchingStrategy);
     }
 
     @Bean("diseaseVectorStore")
-    VectorStore diseaseVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties) {
-        return vectorStore(client, embeddingModel, properties.getQdrant().getDiseaseCollection(), properties);
+    VectorStore diseaseVectorStore(QdrantClient client, EmbeddingModel embeddingModel, RagProperties properties,
+                                   @Qualifier("embeddingBatchingStrategy") BatchingStrategy batchingStrategy) {
+        return vectorStore(client, embeddingModel, properties.getQdrant().getDiseaseCollection(), properties,
+                batchingStrategy);
     }
 
     private VectorStore vectorStore(QdrantClient client, EmbeddingModel embeddingModel,
-                                    String collection, RagProperties properties) {
+                                    String collection, RagProperties properties, BatchingStrategy batchingStrategy) {
         return QdrantVectorStore.builder(client, embeddingModel)
                 .collectionName(collection)
                 .initializeSchema(properties.getQdrant().isInitializeSchema())
+                .batchingStrategy(batchingStrategy)
                 .build();
+    }
+
+    @Bean("embeddingBatchingStrategy")
+    BatchingStrategy embeddingBatchingStrategy(RagProperties properties) {
+        var ingestion = properties.getIngestion();
+        return new TokenCountBatchingStrategy(EncodingType.CL100K_BASE, ingestion.getEmbeddingBatchMaxTokens(),
+                ingestion.getEmbeddingBatchReservePercentage());
     }
 
     @Bean

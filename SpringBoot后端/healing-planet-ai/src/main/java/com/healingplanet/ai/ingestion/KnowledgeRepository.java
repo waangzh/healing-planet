@@ -34,6 +34,25 @@ public class KnowledgeRepository {
         )).list();
     }
 
+    public List<PlantRow> findPlantsAfter(String lastId, int limit) {
+        return jdbcClient.sql("""
+                select p.id, p.scientific_name, p.common_name,
+                       g.light_requirements, g.watering_frequency,
+                       g.temperature_preference, g.humidity_preference,
+                       g.fertilizing_tips, g.detail_advice
+                from plants p
+                left join plant_care_guides g on p.id = g.plant_id
+                where p.id > :lastId
+                order by p.id
+                limit :limit
+                """).param("lastId", lastId).param("limit", limit).query((rs, rowNum) -> new PlantRow(
+                rs.getString("id"), rs.getString("scientific_name"), rs.getString("common_name"),
+                rs.getString("light_requirements"), rs.getString("watering_frequency"),
+                rs.getString("temperature_preference"), rs.getString("humidity_preference"),
+                rs.getString("fertilizing_tips"), rs.getString("detail_advice")
+        )).list();
+    }
+
     public List<PlantEntityRow> findPlantEntities() {
         Map<String, List<String>> aliasesByPlantId = jdbcClient.sql("""
                 select plant_id, alias
@@ -56,6 +75,22 @@ public class KnowledgeRepository {
         )).list();
     }
 
+    public List<PlantEntityRow> findPlantEntitiesAfter(String lastId, int limit) {
+        return jdbcClient.sql("""
+                select p.id, p.scientific_name, p.common_name,
+                       group_concat(a.alias order by a.id separator '|||') aliases
+                from plants p
+                left join plant_aliases a on a.plant_id = p.id and a.enabled = true
+                where p.id > :lastId
+                group by p.id, p.scientific_name, p.common_name
+                order by p.id
+                limit :limit
+                """).param("lastId", lastId).param("limit", limit).query((rs, rowNum) -> new PlantEntityRow(
+                rs.getString("id"), rs.getString("scientific_name"), rs.getString("common_name"),
+                splitAliases(rs.getString("aliases"))
+        )).list();
+    }
+
     public List<PostRow> findPublishedPosts() {
         return jdbcClient.sql("""
                 select p.id, p.title, p.content, p.likes, p.collects, p.comments, p.view,
@@ -67,6 +102,21 @@ public class KnowledgeRepository {
                 group by p.id, p.title, p.content, p.likes, p.collects, p.comments,
                          p.view, p.essence, p.create_time, p.modify_time
                 """).query(this::mapPost).list();
+    }
+
+    public List<PostRow> findPublishedPostsAfter(String lastId, int limit) {
+        return jdbcClient.sql("""
+                select p.id, p.title, p.content, p.likes, p.collects, p.comments, p.view,
+                       p.essence, p.create_time, p.modify_time, group_concat(distinct t.name separator ',') tags
+                from post p
+                left join post_tag pt on p.id = pt.post_id
+                left join tag t on pt.tag_id = t.id
+                where (p.status = 1 or p.status is null) and p.id > :lastId
+                group by p.id, p.title, p.content, p.likes, p.collects, p.comments,
+                         p.view, p.essence, p.create_time, p.modify_time
+                order by p.id
+                limit :limit
+                """).param("lastId", lastId).param("limit", limit).query(this::mapPost).list();
     }
 
     public PostRow findPublishedPost(String postId) {
@@ -100,6 +150,14 @@ public class KnowledgeRepository {
 
     private int valueOrZero(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private List<String> splitAliases(String aliases) {
+        if (aliases == null || aliases.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(aliases.split("\\Q|||\\E"))
+                .filter(alias -> !alias.isBlank()).toList();
     }
 
     public record PlantRow(String id, String scientificName, String commonName,
