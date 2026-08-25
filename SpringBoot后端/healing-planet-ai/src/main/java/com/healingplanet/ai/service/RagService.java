@@ -1,5 +1,9 @@
 package com.healingplanet.ai.service;
 
+import com.healingplanet.ai.config.RagChatOptions;
+import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
+import com.healingplanet.ai.config.RagRuntimeConfigProvider;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.RagQuery;
@@ -12,6 +16,7 @@ import com.healingplanet.ai.retrieval.RetrievalMetrics;
 import com.healingplanet.ai.retrieval.RetrievalRequest;
 import com.healingplanet.ai.domain.EvidenceType;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -26,19 +31,33 @@ public class RagService {
     private final ChatClient chatClient;
     private final QueryRouter queryRouter;
     private final RetrievalMetrics metrics;
+    private final RagRuntimeConfigProvider runtimeConfigProvider;
+    private final RagChatOptions chatOptions;
 
+    @Autowired
     public RagService(EvidenceRetriever retriever, PromptContextBuilder contextBuilder,
                       GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter,
-                      RetrievalMetrics metrics) {
+                      RetrievalMetrics metrics, RagRuntimeConfigProvider runtimeConfigProvider,
+                      RagChatOptions chatOptions) {
         this.retriever = retriever;
         this.contextBuilder = contextBuilder;
         this.promptBuilder = promptBuilder;
         this.chatClient = chatClient;
         this.queryRouter = queryRouter;
         this.metrics = metrics;
+        this.runtimeConfigProvider = runtimeConfigProvider;
+        this.chatOptions = chatOptions;
+    }
+
+    public RagService(EvidenceRetriever retriever, PromptContextBuilder contextBuilder,
+                      GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter,
+                      RetrievalMetrics metrics) {
+        this(retriever, contextBuilder, promptBuilder, chatClient, queryRouter, metrics,
+                new RagRuntimeConfigProvider(new RagProperties()), new RagChatOptions());
     }
 
     public RagResponse chat(RagQuery query) {
+        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
         RetrievalRequest request = RetrievalRequest.from(query, decision);
         if (decision.outOfDomain()) {
@@ -59,12 +78,14 @@ public class RagService {
         if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
                 retrieval.entityResolution(), retrieval.retrievalTrace());
         String answer = metrics.time("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
+                chatClient.prompt().options(chatOptions.from(config))
+                        .system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).call().content());
         return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
     }
 
     public RagStream stream(RagQuery query) {
+        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         QueryRouter.RoutingDecision decision = queryRouter.route(query);
         RetrievalRequest request = RetrievalRequest.from(query, decision);
         if (decision.outOfDomain()) {
@@ -88,7 +109,8 @@ public class RagService {
                     Flux.just(emptyEvidenceAnswer(retrieval)));
         }
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
-                chatClient.prompt().system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
+                chatClient.prompt().options(chatOptions.from(config))
+                        .system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).stream().content());
         return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
     }

@@ -145,15 +145,6 @@ public class AiConfiguration {
         };
     }
 
-    @Bean("rerankerRestClient")
-    RestClient rerankerRestClient(RagProperties properties) {
-        RestClient.Builder builder = RestClient.builder().baseUrl(properties.getReranker().getBaseUrl());
-        if (properties.getReranker().getApiKey() != null && !properties.getReranker().getApiKey().isBlank()) {
-            builder.defaultHeader("Authorization", "Bearer " + properties.getReranker().getApiKey());
-        }
-        return builder.build();
-    }
-
     @Bean("plantStateRestClient")
     RestClient plantStateRestClient(RagProperties properties) {
         var state = properties.getPlantState();

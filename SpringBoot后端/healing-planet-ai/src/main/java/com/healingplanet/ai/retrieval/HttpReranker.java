@@ -1,9 +1,8 @@
 package com.healingplanet.ai.retrieval;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.healingplanet.ai.config.RagProperties;
-import com.healingplanet.ai.config.RagRuntimeConfig;
-import org.springframework.beans.factory.annotation.Qualifier;
+import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -14,29 +13,30 @@ import java.util.Map;
 @Component
 class HttpReranker implements SnapshotReranker {
 
-    private final RestClient client;
-    private final RagProperties properties;
+    private final RagRuntimeConfigProvider runtimeConfigProvider;
 
-    HttpReranker(@Qualifier("rerankerRestClient") RestClient client, RagProperties properties) {
-        this.client = client;
-        this.properties = properties;
+    HttpReranker(RagRuntimeConfigProvider runtimeConfigProvider) {
+        this.runtimeConfigProvider = runtimeConfigProvider;
     }
 
     @Override
     public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates) {
-        return rerank(query, candidates, RagRuntimeConfig.from(properties));
+        return rerank(query, candidates, runtimeConfigProvider.runtimeSnapshot());
     }
 
     @Override
-    public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeConfig config) {
+    public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeSnapshot runtimeSnapshot) {
+        var config = runtimeSnapshot.config();
         if (!config.rerankerEnabled() || candidates.isEmpty()) return Map.of();
-        int configuredTopK = properties.getReranker().getCandidateTopK();
+        RagRuntimeSnapshot.RerankerRuntimeClient client = runtimeSnapshot.rerankerClient();
+        if (client == null) return Map.of();
+        int configuredTopK = client.candidateTopK();
         List<RetrievalCandidate> rerankCandidates = configuredTopK > 0
                 ? candidates.stream().limit(configuredTopK).toList() : candidates;
         List<String> documents = rerankCandidates.stream()
                 .map(candidate -> candidate.document().content()).toList();
-        RerankResponse response = client.post().uri(properties.getReranker().getPath())
-                .body(new RerankRequest(properties.getReranker().getModel(), query, documents))
+        RerankResponse response = client.client().post().uri(client.path())
+                .body(new RerankRequest(client.model(), query, documents))
                 .retrieve().body(RerankResponse.class);
         if (response == null || response.results() == null) return Map.of();
         Map<String, Double> scores = new HashMap<>();

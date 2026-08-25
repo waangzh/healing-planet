@@ -55,6 +55,33 @@ public class RagRuntimeConfigValidator {
         finiteInRange("engagementNormalization", ranking.engagementNormalization(), 1, 100000, errors);
         finiteInRange("recencyDecayDays", ranking.recencyDecayDays(), 1, 3650, errors);
         positiveInRange("mixedSourceCommunityLimit", config.mixedSourceCommunityLimit(), 0, 30, errors);
+        if (config.generation() == null) {
+            errors.add("generation 不能为空");
+        } else {
+            if (config.generation().model() == null || config.generation().model().isBlank()
+                    || config.generation().model().length() > 200) {
+                errors.add("generation.model 必须是 1 到 200 个字符");
+            }
+            finiteInRange("generation.temperature", config.generation().temperature(), 0, 2, errors);
+            positiveInRange("generation.maxTokens", config.generation().maxTokens(), 1, 16384, errors);
+        }
+        if (config.rerankerClient() == null) {
+            errors.add("rerankerClient 不能为空");
+        } else {
+            if (config.rerankerClient().connectionId() == null || config.rerankerClient().connectionId().isBlank()
+                    || config.rerankerClient().connectionId().length() > 100) {
+                errors.add("rerankerClient.connectionId 必须是 1 到 100 个字符");
+            }
+            String path = config.rerankerClient().path();
+            if (path == null || !path.startsWith("/") || path.contains("://") || path.length() > 300) {
+                errors.add("rerankerClient.path 必须是以 / 开头的相对路径");
+            }
+            if (config.rerankerClient().model() == null || config.rerankerClient().model().isBlank()
+                    || config.rerankerClient().model().length() > 200) {
+                errors.add("rerankerClient.model 必须是 1 到 200 个字符");
+            }
+            positiveInRange("rerankerClient.candidateTopK", config.rerankerClient().candidateTopK(), 0, 100, errors);
+        }
         return errors;
     }
 

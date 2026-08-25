@@ -4,6 +4,8 @@ import com.healingplanet.ai.config.RagConfigDraftRequest;
 import com.healingplanet.ai.config.RagConfigRevisionView;
 import com.healingplanet.ai.config.RagConfigService;
 import com.healingplanet.ai.config.RagConfigValidationResult;
+import com.healingplanet.ai.config.RagConnectionProfileView;
+import com.healingplanet.ai.config.RagConnectionTestResult;
 import com.healingplanet.ai.config.RagProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,6 +52,13 @@ public class InternalRagConfigController {
         return service.revision(revision);
     }
 
+    @GetMapping("/connection-profiles")
+    public List<RagConnectionProfileView> connectionProfiles(
+            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+        authorize(apiKey);
+        return service.connectionProfiles();
+    }
+
     @PostMapping("/drafts")
     public RagConfigRevisionView saveDraft(@RequestBody RagConfigDraftRequest request,
                                            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
@@ -62,6 +71,14 @@ public class InternalRagConfigController {
                                               @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
         authorize(apiKey);
         return service.validate(revision, request == null ? null : request.operator());
+    }
+
+    @PostMapping("/drafts/{revision}/connections/test")
+    public RagConnectionTestResult testConnections(@PathVariable long revision,
+            @RequestBody(required = false) OperatorRequest request,
+            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey) {
+        authorize(apiKey);
+        return service.testConnections(revision, request == null ? null : request.operator());
     }
 
     @PostMapping("/drafts/{revision}/publish")

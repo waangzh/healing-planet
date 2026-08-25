@@ -1,5 +1,9 @@
 package com.healingplanet.ai.service;
 
+import com.healingplanet.ai.config.RagChatOptions;
+import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
+import com.healingplanet.ai.config.RagRuntimeConfigProvider;
 import com.healingplanet.ai.domain.DiseaseDetection;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -14,6 +18,7 @@ import com.healingplanet.ai.retrieval.DiseaseKnowledgeRetriever;
 import com.healingplanet.ai.retrieval.PlantStateRetriever;
 import com.healingplanet.ai.retrieval.SensorConsistencyAnalyzer;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
@@ -61,11 +66,15 @@ public class MultimodalDiagnosisService {
     private final RagService ragService;
     private final ImageAttachmentStore attachmentStore;
     private final MultimodalRouter multimodalRouter;
+    private final RagRuntimeConfigProvider runtimeConfigProvider;
+    private final RagChatOptions chatOptions;
 
+    @Autowired
     public MultimodalDiagnosisService(DiseaseDetectorClient detector, DiseaseKnowledgeRetriever diseaseRetriever,
                                       PlantStateRetriever stateRetriever, SensorConsistencyAnalyzer consistencyAnalyzer,
                                       PromptContextBuilder contextBuilder, ChatClient chatClient, RagService ragService,
-                                      ImageAttachmentStore attachmentStore, MultimodalRouter multimodalRouter) {
+                                      ImageAttachmentStore attachmentStore, MultimodalRouter multimodalRouter,
+                                      RagRuntimeConfigProvider runtimeConfigProvider, RagChatOptions chatOptions) {
         this.detector = detector;
         this.diseaseRetriever = diseaseRetriever;
         this.stateRetriever = stateRetriever;
@@ -75,27 +84,38 @@ public class MultimodalDiagnosisService {
         this.ragService = ragService;
         this.attachmentStore = attachmentStore;
         this.multimodalRouter = multimodalRouter;
+        this.runtimeConfigProvider = runtimeConfigProvider;
+        this.chatOptions = chatOptions;
+    }
+
+    public MultimodalDiagnosisService(DiseaseDetectorClient detector, DiseaseKnowledgeRetriever diseaseRetriever,
+                                      PlantStateRetriever stateRetriever, SensorConsistencyAnalyzer consistencyAnalyzer,
+                                      PromptContextBuilder contextBuilder, ChatClient chatClient, RagService ragService,
+                                      ImageAttachmentStore attachmentStore, MultimodalRouter multimodalRouter) {
+        this(detector, diseaseRetriever, stateRetriever, consistencyAnalyzer, contextBuilder, chatClient, ragService,
+                attachmentStore, multimodalRouter, new RagRuntimeConfigProvider(new RagProperties()), new RagChatOptions());
     }
 
     public MultimodalRagResponse analyze(FilePart image, String attachmentId, Long userId, Long plantInstanceId,
                                          String canonicalPlantId, String question, MultimodalRoute requestedRoute) {
+        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         String queryText = question == null || question.isBlank() ? "请分析这张植物图片" : question.trim();
         ImageAttachment attachment = attachmentStore.resolve(image, attachmentId);
         VisualObservation observation = attachment.observation();
         if (observation == null) {
-            observation = observe(attachment, queryText);
+            observation = observe(attachment, queryText, config);
             ImageAttachment updated = attachmentStore.updateObservation(attachment.id(), observation);
             if (updated != null) attachment = updated;
         }
         MultimodalRoute route = multimodalRouter.route(requestedRoute, queryText, observation);
         return route == MultimodalRoute.DISEASE_DIAGNOSIS
-                ? diagnose(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation)
-                : answerGeneral(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, route);
+                ? diagnose(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, config)
+                : answerGeneral(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, route, config);
     }
 
     private MultimodalRagResponse diagnose(ImageAttachment attachment, Long userId, Long plantInstanceId,
                                             String canonicalPlantId, String queryText,
-                                            VisualObservation observation) {
+                                            VisualObservation observation, RagRuntimeConfig config) {
         RagQuery query = new RagQuery(queryText, userId, plantInstanceId, canonicalPlantId,
                 QueryIntent.DISEASE_DIAGNOSIS, List.of(), Map.of());
         DiseaseDetection detection = attachment.detection();
@@ -128,13 +148,14 @@ public class MultimodalDiagnosisService {
         if (userId == null || plantInstanceId == null) {
             note = joinNote(note, "未选择植物，本轮未结合传感器数据，只能依据图片和知识库分析。");
         }
-        return response(answerWithImage(SYSTEM_PROMPT, queryText, evidence, note, attachment), evidence,
+        return response(answerWithImage(SYSTEM_PROMPT, queryText, evidence, note, attachment, config), evidence,
                 attachment, MultimodalRoute.DISEASE_DIAGNOSIS, observation, hasStateEvidence(state), note);
     }
 
     private MultimodalRagResponse answerGeneral(ImageAttachment attachment, Long userId, Long plantInstanceId,
                                                  String canonicalPlantId, String queryText,
-                                                 VisualObservation observation, MultimodalRoute route) {
+                                                 VisualObservation observation, MultimodalRoute route,
+                                                 RagRuntimeConfig config) {
         String retrievalQuery = Stream.of(queryText, observation.searchQuery(), observation.summary(),
                         observation.recognizedText())
                 .filter(value -> value != null && !value.isBlank()).distinct().reduce((a, b) -> a + " " + b)
@@ -147,13 +168,13 @@ public class MultimodalDiagnosisService {
         boolean stateUsed = hasStateEvidence(evidence);
         String note = userId == null || plantInstanceId == null
                 ? "未选择植物，本轮未结合传感器数据。" : null;
-        return response(answerWithImage(GENERAL_SYSTEM_PROMPT, queryText, evidence, note, attachment), evidence,
+        return response(answerWithImage(GENERAL_SYSTEM_PROMPT, queryText, evidence, note, attachment, config), evidence,
                 attachment, route, observation, stateUsed, note);
     }
 
-    private VisualObservation observe(ImageAttachment attachment, String query) {
+    private VisualObservation observe(ImageAttachment attachment, String query, RagRuntimeConfig config) {
         try {
-            VisualObservation result = chatClient.prompt().system(OBSERVATION_PROMPT)
+            VisualObservation result = chatClient.prompt().options(chatOptions.from(config)).system(OBSERVATION_PROMPT)
                     .user(user -> user.text("用户问题：" + query)
                             .media(MimeTypeUtils.parseMimeType(attachment.contentType()), attachment.resource()))
                     .call().entity(VisualObservation.class);
@@ -167,10 +188,10 @@ public class MultimodalDiagnosisService {
     }
 
     private String answerWithImage(String systemPrompt, String query, List<Evidence> evidence, String note,
-                                   ImageAttachment attachment) {
+                                   ImageAttachment attachment, RagRuntimeConfig config) {
         String prompt = "用户问题：\n" + query + (note == null ? "" : "\n\n额外约束：" + note)
                 + "\n\n可用证据：\n" + contextBuilder.build(evidence);
-        return chatClient.prompt().system(systemPrompt)
+        return chatClient.prompt().options(chatOptions.from(config)).system(systemPrompt)
                 .user(user -> user.text(prompt)
                         .media(MimeTypeUtils.parseMimeType(attachment.contentType()), attachment.resource()))
                 .call().content();

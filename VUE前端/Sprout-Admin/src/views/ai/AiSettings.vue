@@ -14,7 +14,7 @@
     </section>
 
     <el-alert
-      title="本页仅管理检索策略、TopK、阈值、重排开关与排序权重；模型、Embedding、Qdrant 连接和索引结构不在本阶段开放。"
+      title="本页支持请求级 Chat 模型、temperature、maxTokens 与检索策略。连接密钥仅由部署配置维护，不会显示或写入版本库。"
       type="info"
       :closable="false"
       show-icon
@@ -32,6 +32,26 @@
 
       <div class="card-body">
         <el-form :model="form" label-position="top" class="rag-form">
+          <section class="form-section">
+            <div class="form-section__title">
+              <span>00</span>
+              <div><h4>生成与外部连接</h4><p>模型参数会在每次 Chat 请求中应用；重排服务切换会先探测，再原子重载。</p></div>
+            </div>
+            <div class="form-grid form-grid--four">
+              <el-form-item label="Chat 模型"><el-input v-model="form.generation.model" maxlength="200" /></el-form-item>
+              <el-form-item label="Temperature"><el-input-number v-model="form.generation.temperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" /></el-form-item>
+              <el-form-item label="Max Tokens"><el-input-number v-model="form.generation.maxTokens" :min="1" :max="16384" controls-position="right" /></el-form-item>
+              <el-form-item label="重排连接 profile">
+                <el-select v-model="form.rerankerClient.connectionId">
+                  <el-option v-for="profile in connectionProfiles" :key="profile.id" :label="profile.label" :value="profile.id" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="重排接口路径"><el-input v-model="form.rerankerClient.path" maxlength="300" /></el-form-item>
+              <el-form-item label="重排模型"><el-input v-model="form.rerankerClient.model" maxlength="200" /></el-form-item>
+              <el-form-item label="重排候选上限（0 = 全部）"><el-input-number v-model="form.rerankerClient.candidateTopK" :min="0" :max="100" controls-position="right" /></el-form-item>
+            </div>
+          </section>
+
           <section class="form-section">
             <div class="form-section__title">
               <span>01</span>
@@ -103,6 +123,7 @@
         <div>
           <el-button :disabled="submitting" @click="resetToActive">恢复当前生效配置</el-button>
           <el-button type="primary" plain :loading="submitting" @click="saveDraft">保存草稿</el-button>
+          <el-button type="success" plain :loading="submitting" @click="testConnections">测试外部连接</el-button>
           <el-button type="warning" :loading="submitting" @click="validateDraft">校验草稿</el-button>
           <el-button type="primary" :loading="submitting" @click="publishDraft">发布并应用</el-button>
         </div>
@@ -132,7 +153,7 @@
 import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
 import { ElInputNumber, ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { createRagConfigDraft, getRagConfigCurrent, getRagConfigRevisions, publishRagConfigDraft, rollbackRagConfig, validateRagConfigDraft } from '@/api/rag-config'
+import { createRagConfigDraft, getRagConfigCurrent, getRagConfigRevisions, getRagConnectionProfiles, publishRagConfigDraft, rollbackRagConfig, testRagConfigConnections, validateRagConfigDraft } from '@/api/rag-config'
 
 const NumberField = defineComponent({
   props: { modelValue: { type: Number, required: true }, label: { type: String, required: true }, min: Number, max: Number, step: Number },
@@ -148,6 +169,8 @@ const NumberField = defineComponent({
 const defaultConfig = () => ({
   denseTopK: 30, sparseTopK: 30, finalTopK: 8, similarityThreshold: 0.25, retrievalMode: 'HYBRID_RRF', rrfK: 60,
   rerankerEnabled: false, evidenceSelectorEnabled: true, mixedSourceCommunityLimit: 3,
+  generation: { model: 'Qwen/Qwen3.5-397B-A17B', temperature: 0.1, maxTokens: 1024 },
+  rerankerClient: { connectionId: 'default', path: '/v1/rerank', model: 'BAAI/bge-reranker-v2-m3', candidateTopK: 0 },
   sourceAwareRanking: {
     enabled: true, rrfNormalizationFactor: 31, denseWeight: 0.55, rrfWeight: 0.45,
     plantSemanticWeight: 0.7, plantTrustWeight: 0.2, plantMatchWeight: 0.1,
@@ -160,6 +183,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const activeRevision = ref(null)
 const revisions = ref([])
+const connectionProfiles = ref([{ id: 'default', label: '默认重排连接' }])
 const draftRevision = ref(null)
 const description = ref('')
 const form = reactive(defaultConfig())
@@ -176,9 +200,10 @@ const loadHistory = async () => { revisions.value = unwrap(await getRagConfigRev
 const loadPage = async () => {
   loading.value = true
   try {
-    const [currentResponse, historyResponse] = await Promise.all([getRagConfigCurrent(), getRagConfigRevisions()])
+    const [currentResponse, historyResponse, profilesResponse] = await Promise.all([getRagConfigCurrent(), getRagConfigRevisions(), getRagConnectionProfiles()])
     activeRevision.value = unwrap(currentResponse)
     revisions.value = unwrap(historyResponse) || []
+    connectionProfiles.value = unwrap(profilesResponse) || connectionProfiles.value
     if (!draftRevision.value) applyConfig(activeRevision.value.config)
   } catch (error) {
     ElMessage.error(error.message || '加载 RAG 配置失败')
@@ -199,6 +224,25 @@ const saveDraft = async () => {
   } finally { submitting.value = false }
 }
 const ensureDraft = async () => draftRevision.value || await saveDraft()
+const testConnections = async () => {
+  const revision = await ensureDraft()
+  if (!revision) return false
+  submitting.value = true
+  try {
+    const result = unwrap(await testRagConfigConnections(revision))
+    const failed = (result.checks || []).filter(item => !item.successful)
+    if (!result.successful) {
+      ElMessage.error(failed.map(item => `${item.name}：${item.message}`).join('；') || '外部连接测试未通过')
+      return false
+    }
+    ElMessage.success(`草稿 v${revision} 的外部连接测试通过`)
+    await loadHistory()
+    return true
+  } catch (error) {
+    ElMessage.error(error.message || '外部连接测试失败')
+    return false
+  } finally { submitting.value = false }
+}
 const validateDraft = async () => {
   const revision = await ensureDraft()
   if (!revision) return false

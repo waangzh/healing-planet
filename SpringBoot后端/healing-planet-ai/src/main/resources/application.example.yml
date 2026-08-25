@@ -58,6 +58,17 @@ app:
     final-top-k: ${RAG_FINAL_TOP_K:6}
     similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.25}
     rrf-k: ${RAG_RRF_K:60}
+    # 以下参数由 RAG 配置版本控制，并在每次 ChatClient 调用时覆盖默认 options。
+    generation:
+      model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}
+      temperature: ${LLM_TEMPERATURE:0.1}
+      max-tokens: ${LLM_MAX_TOKENS:1024}
+      # 仅用于发布前连通性探测；不进入版本库。
+      health-path: ${RAG_CHAT_HEALTH_PATH:/v1/models}
+    # 多实例共享 rag_config_revision，以 ACTIVE revision 轮询收敛。
+    config-sync-enabled: ${RAG_CONFIG_SYNC_ENABLED:true}
+    config-sync-interval-ms: ${RAG_CONFIG_SYNC_INTERVAL_MS:5000}
+    config-sync-initial-delay-ms: ${RAG_CONFIG_SYNC_INITIAL_DELAY_MS:10000}
     bm25:
       k1: ${RAG_BM25_K1:1.2}
       b: ${RAG_BM25_B:0.75}
@@ -104,6 +115,15 @@ app:
       api-key: ${RERANKER_API_KEY:}
       model: ${RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
       candidate-top-k: ${RERANKER_CANDIDATE_TOP_K:0} # 0 表示重排全部融合候选
+    # 可选备用连接。管理端版本仅保存 profile id，不会保存 base-url、api-key 等部署机密。
+    # reranker-connections:
+    #   standby:
+    #     label: 备用重排服务
+    #     base-url: ${RERANKER_STANDBY_BASE_URL:}
+    #     api-key: ${RERANKER_STANDBY_API_KEY:}
+    #     health-path: ${RERANKER_STANDBY_HEALTH_PATH:/v1/models}
+    #     connect-timeout-millis: ${RERANKER_STANDBY_CONNECT_TIMEOUT_MILLIS:2000}
+    #     read-timeout-millis: ${RERANKER_STANDBY_READ_TIMEOUT_MILLIS:5000}
     source-aware-ranking:
       enabled: ${RAG_SOURCE_AWARE_RANKING_ENABLED:true}
       rrf-normalization-factor: ${RAG_RRF_NORMALIZATION_FACTOR:31}

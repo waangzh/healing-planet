@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.DiseaseDetection;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -39,13 +40,14 @@ public class DiseaseKnowledgeRetriever {
 
     public List<Evidence> retrieve(DiseaseDetection detection, RagQuery query) {
         if (detection.healthy()) return List.of();
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
+        RagRuntimeConfig config = runtimeSnapshot.config();
         String searchText = searchText(detection, query);
         List<RrfFusion.DenseHit> dense = config.retrievalMode().usesDense() ? denseSearch(searchText, config) : List.of();
         List<SparseIndexService.SparseHit> sparse = config.retrievalMode().usesSparse()
                 ? sparseIndex.search(KnowledgeSource.DISEASE, searchText, config.sparseTopK()) : List.of();
         List<RetrievalCandidate> candidates = RrfFusion.fuse(dense, sparse, config.rrfK());
-        Map<String, Double> rerankScores = rerank(searchText, candidates, config);
+        Map<String, Double> rerankScores = rerank(searchText, candidates, runtimeSnapshot);
         return candidates.stream().map(candidate -> toEvidence(candidate,
                         rerankScores.get(candidate.document().id()), detection, config))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
@@ -94,9 +96,10 @@ public class DiseaseKnowledgeRetriever {
     private String safe(String value) { return value == null ? "" : value; }
     private double clamp(double value) { return Math.max(0, Math.min(1, value)); }
 
-    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeConfig config) {
+    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates,
+                                       RagRuntimeSnapshot runtimeSnapshot) {
         if (reranker instanceof SnapshotReranker snapshotReranker) {
-            return snapshotReranker.rerank(query, candidates, config);
+            return snapshotReranker.rerank(query, candidates, runtimeSnapshot);
         }
         return reranker.rerank(query, candidates);
     }

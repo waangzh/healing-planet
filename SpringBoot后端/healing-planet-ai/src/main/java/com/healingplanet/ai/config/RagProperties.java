@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @ConfigurationProperties(prefix = "app.rag")
 public class RagProperties {
@@ -22,12 +24,15 @@ public class RagProperties {
     private final EntityResolution entityResolution = new EntityResolution();
     private final Reranker reranker = new Reranker();
     private final Bm25 bm25 = new Bm25();
+    private final Generation generation = new Generation();
     private final SourceAwareRanking sourceAwareRanking = new SourceAwareRanking();
     private final EvidenceSelector evidenceSelector = new EvidenceSelector();
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
     private final Attachments attachments = new Attachments();
     private final Eval eval = new Eval();
+    /** 连接配置仅由部署侧维护；运行时版本只引用 profile id，避免密钥进入数据库和管理端。 */
+    private final Map<String, RerankerConnection> rerankerConnections = new LinkedHashMap<>();
 
     public int getDenseTopK() { return denseTopK; }
     public void setDenseTopK(int denseTopK) { this.denseTopK = denseTopK; }
@@ -50,12 +55,14 @@ public class RagProperties {
     public EntityResolution getEntityResolution() { return entityResolution; }
     public Reranker getReranker() { return reranker; }
     public Bm25 getBm25() { return bm25; }
+    public Generation getGeneration() { return generation; }
     public SourceAwareRanking getSourceAwareRanking() { return sourceAwareRanking; }
     public EvidenceSelector getEvidenceSelector() { return evidenceSelector; }
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
     public Attachments getAttachments() { return attachments; }
     public Eval getEval() { return eval; }
+    public Map<String, RerankerConnection> getRerankerConnections() { return rerankerConnections; }
 
     public enum RetrievalMode {
         BM25_ONLY,
@@ -86,6 +93,22 @@ public class RagProperties {
         public void setEmbeddingBatchReservePercentage(double embeddingBatchReservePercentage) {
             this.embeddingBatchReservePercentage = embeddingBatchReservePercentage;
         }
+    }
+
+    public static class Generation {
+        private String model = "Qwen/Qwen3.5-397B-A17B";
+        private double temperature = 0.1;
+        private int maxTokens = 1024;
+        private String healthPath = "/v1/models";
+
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public double getTemperature() { return temperature; }
+        public void setTemperature(double temperature) { this.temperature = temperature; }
+        public int getMaxTokens() { return maxTokens; }
+        public void setMaxTokens(int maxTokens) { this.maxTokens = maxTokens; }
+        public String getHealthPath() { return healthPath; }
+        public void setHealthPath(String healthPath) { this.healthPath = healthPath; }
     }
 
     public static class SourceAwareRanking {
@@ -332,5 +355,27 @@ public class RagProperties {
         public void setModel(String model) { this.model = model; }
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
+    }
+
+    public static class RerankerConnection {
+        private String label = "";
+        private String baseUrl = "";
+        private String apiKey = "";
+        private String healthPath = "/v1/models";
+        private int connectTimeoutMillis = 2000;
+        private int readTimeoutMillis = 5000;
+
+        public String getLabel() { return label; }
+        public void setLabel(String label) { this.label = label; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getHealthPath() { return healthPath; }
+        public void setHealthPath(String healthPath) { this.healthPath = healthPath; }
+        public int getConnectTimeoutMillis() { return connectTimeoutMillis; }
+        public void setConnectTimeoutMillis(int connectTimeoutMillis) { this.connectTimeoutMillis = connectTimeoutMillis; }
+        public int getReadTimeoutMillis() { return readTimeoutMillis; }
+        public void setReadTimeoutMillis(int readTimeoutMillis) { this.readTimeoutMillis = readTimeoutMillis; }
     }
 }

@@ -38,6 +38,11 @@ public class AdminRagConfigController {
         return Result.success(ragAdminClient.revision(revision));
     }
 
+    @GetMapping("/connection-profiles")
+    public Result<Object> connectionProfiles() {
+        return Result.success(ragAdminClient.connectionProfiles());
+    }
+
     @PostMapping("/drafts")
     public Result<Object> saveDraft(@RequestBody Map<String, Object> request) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>(request);
@@ -48,6 +53,11 @@ public class AdminRagConfigController {
     @PostMapping("/drafts/{revision}/validate")
     public Result<Object> validate(@PathVariable long revision) {
         return Result.success(ragAdminClient.validate(revision, currentOperator()));
+    }
+
+    @PostMapping("/drafts/{revision}/connections/test")
+    public Result<Object> testConnections(@PathVariable long revision) {
+        return Result.success(ragAdminClient.testConnections(revision, currentOperator()));
     }
 
     @PostMapping("/drafts/{revision}/publish")

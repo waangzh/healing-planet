@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.RetrievalTrace;
@@ -58,12 +59,12 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
         RetrievalRequest request = trace.time("query_route", "all", "all",
                 () -> RetrievalRequest.from(query, router.route(query)));
-        return retrieveWithDiagnostics(request, trace, config);
+        return retrieveWithDiagnostics(request, trace, runtimeSnapshot);
     }
 
     @Override
@@ -73,16 +74,17 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
-        return retrieveWithDiagnostics(request, trace, config);
+        return retrieveWithDiagnostics(request, trace, runtimeSnapshot);
     }
 
     private RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RetrievalTraceCollector trace,
-                                                    RagRuntimeConfig config) {
+                                                    RagRuntimeSnapshot runtimeSnapshot) {
+        RagRuntimeConfig config = runtimeSnapshot.config();
         RetrievalPayload payload = trace.time("retrieve_total", "all", "all",
-                () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(request, trace, config)));
+                () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(request, trace, runtimeSnapshot)));
         RetrievalResult result = payload.result();
         RetrievalTrace retrievalTrace = result.retrievalTrace();
         if (properties.getEval().isRetrievalTraceEnabled()) {
@@ -97,7 +99,8 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     }
 
     private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace,
-                                           RagRuntimeConfig config) {
+                                           RagRuntimeSnapshot runtimeSnapshot) {
+        RagRuntimeConfig config = runtimeSnapshot.config();
         if (request.routing().outOfDomain()) {
             return new RetrievalPayload(new RetrievalResult(List.of(), null), request);
         }
@@ -110,7 +113,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         RetrievalRequest routed = routedRequest(request, state);
         List<Evidence> result = new ArrayList<>(state);
         RetrievalResult knowledge = route.knowledge() || route.community()
-                ? knowledgeRetriever.retrieveWithDiagnostics(routed, config) : new RetrievalResult(List.of(), null);
+                ? knowledgeRetriever.retrieveWithDiagnostics(routed, runtimeSnapshot) : new RetrievalResult(List.of(), null);
         if (knowledge == null) {
             knowledge = knowledgeRetriever.retrieveWithDiagnostics(routed);
         }

@@ -14,7 +14,9 @@ public record RagRuntimeConfig(
         boolean rerankerEnabled,
         SourceAwareRanking sourceAwareRanking,
         boolean evidenceSelectorEnabled,
-        int mixedSourceCommunityLimit) {
+        int mixedSourceCommunityLimit,
+        Generation generation,
+        RerankerClient rerankerClient) {
 
     public static RagRuntimeConfig from(RagProperties properties) {
         RagProperties.SourceAwareRanking ranking = properties.getSourceAwareRanking();
@@ -37,12 +39,25 @@ public record RagRuntimeConfig(
                         ranking.getCollectWeight(), ranking.getCommentWeight(), ranking.getViewWeight(),
                         ranking.getEngagementNormalization(), ranking.getRecencyDecayDays()),
                 properties.getEvidenceSelector().isEnabled(),
-                properties.getEvidenceSelector().getMixedSourceCommunityLimit());
+                properties.getEvidenceSelector().getMixedSourceCommunityLimit(),
+                new Generation(properties.getGeneration().getModel(), properties.getGeneration().getTemperature(),
+                        properties.getGeneration().getMaxTokens()),
+                new RerankerClient("default", properties.getReranker().getPath(), properties.getReranker().getModel(),
+                        properties.getReranker().getCandidateTopK()));
     }
 
     public RagRuntimeConfig withRevision(long value) {
         return new RagRuntimeConfig(value, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
-                rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit);
+                rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                generation, rerankerClient);
+    }
+
+    /** 兼容第一阶段已经落库、尚未包含本阶段字段的版本。 */
+    public RagRuntimeConfig completeWith(RagRuntimeConfig fallback) {
+        return new RagRuntimeConfig(revision, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
+                rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                generation == null ? fallback.generation : generation,
+                rerankerClient == null ? fallback.rerankerClient : rerankerClient);
     }
 
     public record SourceAwareRanking(
@@ -65,5 +80,12 @@ public record RagRuntimeConfig(
             double viewWeight,
             double engagementNormalization,
             double recencyDecayDays) {
+    }
+
+    public record Generation(String model, double temperature, int maxTokens) {
+    }
+
+    /** 仅保存部署侧 profile 标识和非敏感调用参数；URL、密钥和探活地址保留在应用配置中。 */
+    public record RerankerClient(String connectionId, String path, String model, int candidateTopK) {
     }
 }

@@ -32,9 +32,13 @@ public class RagAdminClient {
     public Object current() { return exchange(HttpMethod.GET, "/current", null); }
     public Object revisions() { return exchange(HttpMethod.GET, "/revisions", null); }
     public Object revision(long revision) { return exchange(HttpMethod.GET, "/revisions/" + revision, null); }
+    public Object connectionProfiles() { return exchange(HttpMethod.GET, "/connection-profiles", null); }
     public Object saveDraft(Map<String, Object> body) { return exchange(HttpMethod.POST, "/drafts", body); }
     public Object validate(long revision, String operator) {
         return exchange(HttpMethod.POST, "/drafts/" + revision + "/validate", Collections.singletonMap("operator", operator));
+    }
+    public Object testConnections(long revision, String operator) {
+        return exchange(HttpMethod.POST, "/drafts/" + revision + "/connections/test", Collections.singletonMap("operator", operator));
     }
     public Object publish(long revision, String operator) {
         return exchange(HttpMethod.POST, "/drafts/" + revision + "/publish", Collections.singletonMap("operator", operator));

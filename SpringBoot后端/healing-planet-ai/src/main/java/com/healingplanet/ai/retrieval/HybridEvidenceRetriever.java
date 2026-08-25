@@ -3,6 +3,7 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.domain.RagQuery;
@@ -81,20 +82,26 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
-        return retrieveWithDiagnostics(request, runtimeConfigProvider.snapshot());
+        return retrieveWithDiagnostics(request, runtimeConfigProvider.runtimeSnapshot());
     }
 
     public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RagRuntimeConfig config) {
+        return retrieveWithDiagnostics(request, new RagRuntimeSnapshot(config, null));
+    }
+
+    public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RagRuntimeSnapshot runtimeSnapshot) {
+        RagRuntimeConfig config = runtimeSnapshot.config();
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
         RetrievalPayload payload = trace.time("knowledge_total", "all", "all",
-                () -> metrics.time("knowledge_total", "all", () -> retrieveTimed(request, trace, config)));
+                () -> metrics.time("knowledge_total", "all", () -> retrieveTimed(request, trace, runtimeSnapshot)));
         return new RetrievalResult(payload.evidence(), payload.entityResolution(),
                 trace.build(payload.entityResolution()));
     }
 
     private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace,
-                                           RagRuntimeConfig config) {
+                                           RagRuntimeSnapshot runtimeSnapshot) {
+        RagRuntimeConfig config = runtimeSnapshot.config();
         if (request.routing().outOfDomain()) {
             metrics.recordCandidates("selected", "all", 0);
             return new RetrievalPayload(List.of(), null);
@@ -129,7 +136,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                 () -> filterKnowledgeType(request, fused));
         trace.filtered(filtered);
         Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
-                () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), filtered, config)));
+                () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), filtered, runtimeSnapshot)));
         List<RetrievalCandidate> reranked = filtered.stream()
                 .sorted(Comparator.comparingDouble((RetrievalCandidate candidate) -> rerankScores
                         .getOrDefault(candidate.document().id(), Double.NEGATIVE_INFINITY)).reversed())
@@ -222,9 +229,9 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                 () -> metrics.time("embedding", sourceTag, () -> store.similaritySearch(request)));
     }
 
-    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeConfig config) {
+    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeSnapshot runtimeSnapshot) {
         if (reranker instanceof SnapshotReranker snapshotReranker) {
-            return snapshotReranker.rerank(query, candidates, config);
+            return snapshotReranker.rerank(query, candidates, runtimeSnapshot);
         }
         return reranker.rerank(query, candidates);
     }
