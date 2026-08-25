@@ -1,6 +1,7 @@
 package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import org.springframework.stereotype.Component;
@@ -33,11 +34,17 @@ public class EvidenceSelector {
 
     public Selection select(RetrievalRequest request, List<Evidence> ranked, int maxEvidenceItems,
                             List<String> canonicalPlantIds) {
+        return select(request, ranked, maxEvidenceItems, canonicalPlantIds, RagRuntimeConfig.from(properties));
+    }
+
+    public Selection select(RetrievalRequest request, List<Evidence> ranked, int maxEvidenceItems,
+                            List<String> canonicalPlantIds, RagRuntimeConfig config) {
         if (maxEvidenceItems <= 0 || ranked.isEmpty()) {
             return new Selection(List.of(), Map.of());
         }
 
-        SelectionState state = new SelectionState(maxEvidenceItems, request.sourcePlan());
+        SelectionState state = new SelectionState(maxEvidenceItems, request.sourcePlan(),
+                config.mixedSourceCommunityLimit());
         Set<String> requiredTypes = request.requiredKnowledgeTypes();
 
         retainSourceCoverage(ranked, state);
@@ -63,7 +70,8 @@ public class EvidenceSelector {
                     .ifPresent(evidence -> state.add(evidence, "SOURCE_RETENTION"));
         }
         if (!state.sourcePlan().community().required()) return;
-        int communityLimit = Math.min(mixedSourceCommunityLimit(), Math.max(0, state.capacity() - state.items().size()));
+        int communityLimit = Math.min(state.mixedSourceCommunityLimit(),
+                Math.max(0, state.capacity() - state.items().size()));
         for (Evidence evidence : ranked) {
             if (state.communitySourceCount() >= communityLimit) break;
             if (isCommunity(evidence)) {
@@ -101,10 +109,6 @@ public class EvidenceSelector {
         }
     }
 
-    private int mixedSourceCommunityLimit() {
-        return Math.max(0, properties.getEvidenceSelector().getMixedSourceCommunityLimit());
-    }
-
     private boolean isPlant(Evidence evidence) {
         return evidence.type() == EvidenceType.CARE_GUIDE;
     }
@@ -127,14 +131,16 @@ public class EvidenceSelector {
     private final class SelectionState {
         private final int capacity;
         private final SourcePlan sourcePlan;
+        private final int mixedSourceCommunityLimit;
         private final Map<String, Evidence> items = new LinkedHashMap<>();
         private final Map<String, String> reasons = new LinkedHashMap<>();
         private final Set<String> logicalGroups = new LinkedHashSet<>();
         private final Set<String> communitySourceIds = new LinkedHashSet<>();
 
-        private SelectionState(int capacity, SourcePlan sourcePlan) {
+        private SelectionState(int capacity, SourcePlan sourcePlan, int mixedSourceCommunityLimit) {
             this.capacity = capacity;
             this.sourcePlan = sourcePlan;
+            this.mixedSourceCommunityLimit = Math.max(0, mixedSourceCommunityLimit);
         }
 
         private void add(Evidence evidence, String reason) {
@@ -149,7 +155,7 @@ public class EvidenceSelector {
             if (logicalGroups.contains(logicalGroup(evidence))) return false;
             return !sourcePlan.includeCommunity() || !isCommunity(evidence)
                     || !communitySourceIds.contains(sourceKey(evidence))
-                    && communitySourceIds.size() < Math.min(mixedSourceCommunityLimit(), Math.max(0, capacity - 1));
+                    && communitySourceIds.size() < Math.min(mixedSourceCommunityLimit, Math.max(0, capacity - 1));
         }
 
         private String logicalGroup(Evidence evidence) {
@@ -161,6 +167,7 @@ public class EvidenceSelector {
         }
 
         private int capacity() { return capacity; }
+        private int mixedSourceCommunityLimit() { return mixedSourceCommunityLimit; }
         private SourcePlan sourcePlan() { return sourcePlan; }
         private int communitySourceCount() { return communitySourceIds.size(); }
         private Map<String, Evidence> items() { return items; }

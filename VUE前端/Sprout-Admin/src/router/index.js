@@ -24,8 +24,6 @@ import PlantDetail from '@/views/plant/PlantDetail.vue'
 import PlantRecognition from '@/views/plant/PlantRecognition.vue'
 
 // AI管理
-import AiManagement from '@/views/ai/AiManagement.vue'
-import AiConversations from '@/views/ai/AiConversations.vue'
 import AiSettings from '@/views/ai/AiSettings.vue'
 
 // 消息管理
@@ -125,24 +123,12 @@ const router = createRouter({
         //   component: PlantRecognition,
         //   meta: { title: '识别记录', icon: 'View' }
         // },
-        // {
-        //   path: 'ai',
-        //   name: 'AiManagement',
-        //   component: AiManagement,
-        //   meta: { title: 'AI管理', icon: 'Robot' }
-        // },
-        // {
-        //   path: 'ai-conversations',
-        //   name: 'AiConversations',
-        //   component: AiConversations,
-        //   meta: { title: 'AI对话', icon: 'ChatDotRound' }
-        // },
-        // {
-        //   path: 'ai-settings',
-        //   name: 'AiSettings',
-        //   component: AiSettings,
-        //   meta: { title: 'AI设置', icon: 'Setting' }
-        // },
+        {
+          path: 'rag-settings',
+          name: 'RagSettings',
+          component: AiSettings,
+          meta: { title: 'RAG 配置', icon: 'Setting' }
+        },
         // {
         //   path: 'messages',
         //   name: 'MessageManagement',

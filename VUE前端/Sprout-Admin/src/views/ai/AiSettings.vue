@@ -1,562 +1,272 @@
 <template>
-  <div class="ai-settings">
-    <div class="page-header">
-      <h2 class="page-title">AI设置</h2>
+  <div class="rag-settings" v-loading="loading">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">RETRIEVAL CONTROL ROOM</p>
+        <h2 class="page-title">RAG 检索配置</h2>
+        <p class="hero-copy">调整低风险检索参数；发布后新请求会使用完整的新版本快照。</p>
+      </div>
+      <div class="revision-chip">
+        <span>当前生效</span>
+        <strong>v{{ activeRevision?.revision ?? '—' }}</strong>
+        <small>{{ activeRevision?.status === 'ACTIVE' ? '运行中' : '未加载' }}</small>
+      </div>
+    </section>
+
+    <el-alert
+      title="本页仅管理检索策略、TopK、阈值、重排开关与排序权重；模型、Embedding、Qdrant 连接和索引结构不在本阶段开放。"
+      type="info"
+      :closable="false"
+      show-icon
+      class="scope-alert"
+    />
+
+    <div class="admin-card config-card">
+      <div class="card-header card-header--split">
+        <div>
+          <p class="section-kicker">DRAFT EDITOR</p>
+          <h3 class="card-title">检索策略草稿</h3>
+        </div>
+        <el-input v-model="description" maxlength="500" show-word-limit placeholder="本次调整说明（会写入审计日志）" class="description-input" />
+      </div>
+
+      <div class="card-body">
+        <el-form :model="form" label-position="top" class="rag-form">
+          <section class="form-section">
+            <div class="form-section__title">
+              <span>01</span>
+              <div><h4>召回与融合</h4><p>控制候选池规模与混合检索策略。</p></div>
+            </div>
+            <div class="form-grid form-grid--four">
+              <el-form-item label="检索模式">
+                <el-select v-model="form.retrievalMode">
+                  <el-option label="混合检索（Dense + BM25 + RRF）" value="HYBRID_RRF" />
+                  <el-option label="仅向量检索（Dense）" value="DENSE_ONLY" />
+                  <el-option label="仅关键词检索（BM25）" value="BM25_ONLY" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Dense TopK"><el-input-number v-model="form.denseTopK" :min="1" :max="100" controls-position="right" /></el-form-item>
+              <el-form-item label="BM25 TopK"><el-input-number v-model="form.sparseTopK" :min="1" :max="100" controls-position="right" /></el-form-item>
+              <el-form-item label="最终证据数"><el-input-number v-model="form.finalTopK" :min="1" :max="30" controls-position="right" /></el-form-item>
+              <el-form-item label="向量相似度阈值"><el-input-number v-model="form.similarityThreshold" :min="0" :max="1" :step="0.01" :precision="2" controls-position="right" /></el-form-item>
+              <el-form-item label="RRF K"><el-input-number v-model="form.rrfK" :min="1" :max="500" controls-position="right" /></el-form-item>
+              <el-form-item label="重排服务"><div class="switch-line"><el-switch v-model="form.rerankerEnabled" active-text="启用" inactive-text="关闭" /></div></el-form-item>
+              <el-form-item label="证据覆盖选择器"><div class="switch-line"><el-switch v-model="form.evidenceSelectorEnabled" active-text="启用" inactive-text="关闭" /></div></el-form-item>
+              <el-form-item label="社区证据上限"><el-input-number v-model="form.mixedSourceCommunityLimit" :min="0" :max="30" controls-position="right" /></el-form-item>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="form-section__title">
+              <span>02</span>
+              <div><h4>来源感知排序</h4><p>各组权重必须分别相加为 1，发布前会由服务端再次校验。</p></div>
+              <el-switch v-model="form.sourceAwareRanking.enabled" active-text="启用排序" inactive-text="关闭排序" />
+            </div>
+            <div class="weight-groups">
+              <div class="weight-group">
+                <h5>检索得分融合</h5>
+                <NumberField v-model="form.sourceAwareRanking.rrfNormalizationFactor" label="RRF 归一化系数" :min="1" :max="100" />
+                <NumberField v-model="form.sourceAwareRanking.denseWeight" label="Dense 权重" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.rrfWeight" label="RRF 权重" :min="0" :max="1" :step="0.01" />
+              </div>
+              <div class="weight-group">
+                <h5>植物知识排序</h5>
+                <NumberField v-model="form.sourceAwareRanking.plantSemanticWeight" label="语义相关性" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.plantTrustWeight" label="可信度" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.plantMatchWeight" label="植物匹配度" :min="0" :max="1" :step="0.01" />
+              </div>
+              <div class="weight-group">
+                <h5>社区内容排序</h5>
+                <NumberField v-model="form.sourceAwareRanking.communitySemanticWeight" label="语义相关性" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.communityTrustWeight" label="可信度" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.communityQualityWeight" label="内容质量" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.communityRecencyWeight" label="新鲜度" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.communityPlantMatchWeight" label="植物匹配度" :min="0" :max="1" :step="0.01" />
+              </div>
+              <div class="weight-group">
+                <h5>社区质量计算</h5>
+                <NumberField v-model="form.sourceAwareRanking.communityEssenceWeight" label="精华系数" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.communityEngagementWeight" label="互动系数" :min="0" :max="1" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.collectWeight" label="收藏权重" :min="0" :max="10" :step="0.1" />
+                <NumberField v-model="form.sourceAwareRanking.commentWeight" label="评论权重" :min="0" :max="10" :step="0.1" />
+                <NumberField v-model="form.sourceAwareRanking.viewWeight" label="浏览权重" :min="0" :max="10" :step="0.01" />
+                <NumberField v-model="form.sourceAwareRanking.engagementNormalization" label="互动归一化" :min="1" :max="100000" />
+                <NumberField v-model="form.sourceAwareRanking.recencyDecayDays" label="新鲜度衰减（天）" :min="1" :max="3650" />
+              </div>
+            </div>
+          </section>
+        </el-form>
+      </div>
+
+      <div class="action-bar">
+        <div class="draft-state">{{ draftRevision ? `草稿版本 v${draftRevision}` : '尚未保存草稿' }}</div>
+        <div>
+          <el-button :disabled="submitting" @click="resetToActive">恢复当前生效配置</el-button>
+          <el-button type="primary" plain :loading="submitting" @click="saveDraft">保存草稿</el-button>
+          <el-button type="warning" :loading="submitting" @click="validateDraft">校验草稿</el-button>
+          <el-button type="primary" :loading="submitting" @click="publishDraft">发布并应用</el-button>
+        </div>
+      </div>
     </div>
-    
-    <el-tabs v-model="activeTab" class="settings-tabs">
-      <!-- 基础配置 -->
-      <el-tab-pane label="基础配置" name="basic">
-        <div class="admin-card">
-          <div class="card-header">
-            <h3 class="card-title">AI服务配置</h3>
-          </div>
-          <div class="card-body">
-            <el-form :model="basicConfig" label-width="150px">
-              <el-form-item label="服务提供商">
-                <el-select v-model="basicConfig.provider" placeholder="选择AI服务提供商">
-                  <el-option label="OpenAI" value="openai" />
-                  <el-option label="百度文心" value="baidu" />
-                  <el-option label="阿里通义" value="alibaba" />
-                  <el-option label="腾讯混元" value="tencent" />
-                </el-select>
-              </el-form-item>
-              
-              <el-form-item label="API密钥">
-                <el-input
-                  v-model="basicConfig.apiKey"
-                  type="password"
-                  placeholder="请输入API密钥"
-                  show-password
-                />
-              </el-form-item>
-              
-              <el-form-item label="API地址">
-                <el-input
-                  v-model="basicConfig.apiUrl"
-                  placeholder="请输入API服务地址"
-                />
-              </el-form-item>
-              
-              <el-form-item label="模型版本">
-                <el-select v-model="basicConfig.model" placeholder="选择模型版本">
-                  <el-option label="GPT-4" value="gpt-4" />
-                  <el-option label="GPT-3.5 Turbo" value="gpt-3.5-turbo" />
-                  <el-option label="文心一言 4.0" value="ernie-4.0" />
-                  <el-option label="通义千问" value="qwen-max" />
-                </el-select>
-              </el-form-item>
-              
-              <el-form-item label="请求超时">
-                <el-input-number
-                  v-model="basicConfig.timeout"
-                  :min="5000"
-                  :max="60000"
-                  :step="1000"
-                  controls-position="right"
-                />
-                <span style="margin-left: 8px; color: #909399;">毫秒</span>
-              </el-form-item>
-              
-              <el-form-item label="最大重试次数">
-                <el-input-number
-                  v-model="basicConfig.maxRetries"
-                  :min="0"
-                  :max="5"
-                  controls-position="right"
-                />
-              </el-form-item>
-              
-              <el-form-item label="启用日志">
-                <el-switch v-model="basicConfig.enableLogging" />
-                <span style="margin-left: 8px; color: #909399;">
-                  记录API调用日志用于调试
-                </span>
-              </el-form-item>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 对话配置 -->
-      <el-tab-pane label="对话配置" name="chat">
-        <div class="admin-card">
-          <div class="card-header">
-            <h3 class="card-title">对话参数</h3>
-          </div>
-          <div class="card-body">
-            <el-form :model="chatConfig" label-width="150px">
-              <el-form-item label="创造性温度">
-                <el-slider
-                  v-model="chatConfig.temperature"
-                  :min="0"
-                  :max="2"
-                  :step="0.1"
-                  show-input
-                  style="margin-right: 20px;"
-                />
-                <div class="config-tip">
-                  值越高回复越有创造性，值越低回复越一致
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="最大令牌数">
-                <el-input-number
-                  v-model="chatConfig.maxTokens"
-                  :min="100"
-                  :max="4000"
-                  :step="100"
-                  controls-position="right"
-                />
-                <div class="config-tip">
-                  单次对话的最大字符数限制
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="上下文长度">
-                <el-input-number
-                  v-model="chatConfig.contextLength"
-                  :min="1"
-                  :max="10"
-                  controls-position="right"
-                />
-                <div class="config-tip">
-                  保留的历史对话轮数
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="系统提示词">
-                <el-input
-                  v-model="chatConfig.systemPrompt"
-                  type="textarea"
-                  :rows="4"
-                  placeholder="请输入系统提示词"
-                />
-                <div class="config-tip">
-                  定义AI助手的角色和行为规范
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="禁用词汇">
-                <el-tag
-                  v-for="word in chatConfig.bannedWords"
-                  :key="word"
-                  closable
-                  @close="removeBannedWord(word)"
-                  style="margin-right: 8px; margin-bottom: 8px;"
-                >
-                  {{ word }}
-                </el-tag>
-                <el-input
-                  v-if="showBannedWordInput"
-                  ref="bannedWordInput"
-                  v-model="newBannedWord"
-                  size="small"
-                  style="width: 120px;"
-                  @keyup.enter="addBannedWord"
-                  @blur="addBannedWord"
-                />
-                <el-button
-                  v-else
-                  size="small"
-                  @click="showBannedWordInput = true"
-                >
-                  + 添加禁用词
-                </el-button>
-              </el-form-item>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 识别配置 -->
-      <el-tab-pane label="识别配置" name="recognition">
-        <div class="admin-card">
-          <div class="card-header">
-            <h3 class="card-title">植物识别参数</h3>
-          </div>
-          <div class="card-body">
-            <el-form :model="recognitionConfig" label-width="150px">
-              <el-form-item label="识别模型">
-                <el-select v-model="recognitionConfig.model" placeholder="选择识别模型">
-                  <el-option label="通用植物识别" value="general" />
-                  <el-option label="多肉植物专用" value="succulent" />
-                  <el-option label="花卉识别" value="flower" />
-                  <el-option label="树木识别" value="tree" />
-                </el-select>
-              </el-form-item>
-              
-              <el-form-item label="置信度阈值">
-                <el-slider
-                  v-model="recognitionConfig.confidenceThreshold"
-                  :min="0.1"
-                  :max="1"
-                  :step="0.05"
-                  show-input
-                  style="margin-right: 20px;"
-                />
-                <div class="config-tip">
-                  低于此值的识别结果将被标记为不确定
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="返回结果数">
-                <el-input-number
-                  v-model="recognitionConfig.topK"
-                  :min="1"
-                  :max="10"
-                  controls-position="right"
-                />
-                <div class="config-tip">
-                  返回最可能的识别结果数量
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="图片预处理">
-                <el-checkbox-group v-model="recognitionConfig.preprocessing">
-                  <el-checkbox label="resize">自动缩放</el-checkbox>
-                  <el-checkbox label="crop">智能裁剪</el-checkbox>
-                  <el-checkbox label="enhance">增强对比度</el-checkbox>
-                  <el-checkbox label="denoise">降噪处理</el-checkbox>
-                </el-checkbox-group>
-              </el-form-item>
-              
-              <el-form-item label="最大图片大小">
-                <el-input-number
-                  v-model="recognitionConfig.maxImageSize"
-                  :min="1"
-                  :max="10"
-                  controls-position="right"
-                />
-                <span style="margin-left: 8px; color: #909399;">MB</span>
-              </el-form-item>
-              
-              <el-form-item label="支持格式">
-                <el-checkbox-group v-model="recognitionConfig.supportedFormats">
-                  <el-checkbox label="jpg">JPG</el-checkbox>
-                  <el-checkbox label="png">PNG</el-checkbox>
-                  <el-checkbox label="webp">WebP</el-checkbox>
-                  <el-checkbox label="bmp">BMP</el-checkbox>
-                </el-checkbox-group>
-              </el-form-item>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-      
-      <!-- 安全配置 -->
-      <el-tab-pane label="安全配置" name="security">
-        <div class="admin-card">
-          <div class="card-header">
-            <h3 class="card-title">安全与审核</h3>
-          </div>
-          <div class="card-body">
-            <el-form :model="securityConfig" label-width="150px">
-              <el-form-item label="内容审核">
-                <el-switch v-model="securityConfig.enableModeration" />
-                <span style="margin-left: 8px; color: #909399;">
-                  自动检测和过滤不当内容
-                </span>
-              </el-form-item>
-              
-              <el-form-item label="审核严格程度">
-                <el-radio-group v-model="securityConfig.moderationLevel">
-                  <el-radio label="low">宽松</el-radio>
-                  <el-radio label="medium">中等</el-radio>
-                  <el-radio label="high">严格</el-radio>
-                </el-radio-group>
-              </el-form-item>
-              
-              <el-form-item label="频率限制">
-                <el-switch v-model="securityConfig.enableRateLimit" />
-                <div class="config-tip">
-                  限制单个用户的请求频率
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="每分钟请求数">
-                <el-input-number
-                  v-model="securityConfig.requestsPerMinute"
-                  :min="1"
-                  :max="100"
-                  controls-position="right"
-                  :disabled="!securityConfig.enableRateLimit"
-                />
-              </el-form-item>
-              
-              <el-form-item label="IP白名单">
-                <el-input
-                  v-model="securityConfig.ipWhitelist"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="每行一个IP地址，支持CIDR格式"
-                />
-              </el-form-item>
-              
-              <el-form-item label="数据加密">
-                <el-switch v-model="securityConfig.enableEncryption" />
-                <span style="margin-left: 8px; color: #909399;">
-                  加密存储用户对话数据
-                </span>
-              </el-form-item>
-              
-              <el-form-item label="日志保留期">
-                <el-input-number
-                  v-model="securityConfig.logRetentionDays"
-                  :min="1"
-                  :max="365"
-                  controls-position="right"
-                />
-                <span style="margin-left: 8px; color: #909399;">天</span>
-              </el-form-item>
-            </el-form>
-          </div>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
-    
-    <!-- 保存按钮 -->
-    <div class="settings-footer">
-      <el-button type="primary" size="large" @click="saveSettings">
-        <el-icon><Check /></el-icon>
-        保存所有设置
-      </el-button>
-      <el-button size="large" @click="resetSettings">
-        <el-icon><Refresh /></el-icon>
-        重置设置
-      </el-button>
-      <el-button type="info" size="large" @click="testConnection">
-        <el-icon><Link /></el-icon>
-        测试连接
-      </el-button>
+
+    <div class="admin-card history-card">
+      <div class="card-header card-header--split">
+        <div><p class="section-kicker">AUDIT TRAIL</p><h3 class="card-title">版本历史与回滚</h3></div>
+        <el-button :icon="Refresh" circle @click="loadPage" />
+      </div>
+      <div class="card-body table-wrap">
+        <el-table :data="revisions" size="small" stripe>
+          <el-table-column prop="revision" label="版本" width="90"><template #default="{ row }">v{{ row.revision }}</template></el-table-column>
+          <el-table-column prop="status" label="状态" width="120"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column prop="description" label="调整说明" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="createdBy" label="创建人" width="130" />
+          <el-table-column prop="createdAt" label="创建时间" width="180"><template #default="{ row }">{{ formatTime(row.createdAt) }}</template></el-table-column>
+          <el-table-column label="操作" width="110" fixed="right"><template #default="{ row }"><el-button link type="danger" :disabled="row.status === 'ACTIVE' || row.status === 'DRAFT' || row.status === 'FAILED' || submitting" @click="rollback(row)">回滚至此</el-button></template></el-table-column>
+        </el-table>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Refresh, Link } from '@element-plus/icons-vue'
+import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { ElInputNumber, ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
+import { createRagConfigDraft, getRagConfigCurrent, getRagConfigRevisions, publishRagConfigDraft, rollbackRagConfig, validateRagConfigDraft } from '@/api/rag-config'
 
-// 响应式数据
-const activeTab = ref('basic')
-const showBannedWordInput = ref(false)
-const newBannedWord = ref('')
-const bannedWordInput = ref(null)
-
-const basicConfig = reactive({
-  provider: 'openai',
-  apiKey: '',
-  apiUrl: 'https://api.openai.com/v1',
-  model: 'gpt-3.5-turbo',
-  timeout: 15000,
-  maxRetries: 3,
-  enableLogging: true
-})
-
-const chatConfig = reactive({
-  temperature: 0.7,
-  maxTokens: 1000,
-  contextLength: 5,
-  systemPrompt: '你是一个专业的植物养护助手，请用友好、专业的语气回答用户关于植物的问题。',
-  bannedWords: ['不当词汇1', '不当词汇2']
-})
-
-const recognitionConfig = reactive({
-  model: 'general',
-  confidenceThreshold: 0.7,
-  topK: 3,
-  preprocessing: ['resize', 'crop'],
-  maxImageSize: 5,
-  supportedFormats: ['jpg', 'png', 'webp']
-})
-
-const securityConfig = reactive({
-  enableModeration: true,
-  moderationLevel: 'medium',
-  enableRateLimit: true,
-  requestsPerMinute: 20,
-  ipWhitelist: '',
-  enableEncryption: true,
-  logRetentionDays: 30
-})
-
-// 方法
-const addBannedWord = () => {
-  if (newBannedWord.value && !chatConfig.bannedWords.includes(newBannedWord.value)) {
-    chatConfig.bannedWords.push(newBannedWord.value)
-    newBannedWord.value = ''
+const NumberField = defineComponent({
+  props: { modelValue: { type: Number, required: true }, label: { type: String, required: true }, min: Number, max: Number, step: Number },
+  emits: ['update:modelValue'],
+  setup (props, { emit }) {
+    return () => h('label', { class: 'number-field' }, [
+      h('span', props.label),
+      h(ElInputNumber, { modelValue: props.modelValue, min: props.min, max: props.max, step: props.step || 1, precision: props.step && props.step < 1 ? 2 : 0, controlsPosition: 'right', onUpdateModelValue: value => emit('update:modelValue', value) })
+    ])
   }
-  showBannedWordInput.value = false
-}
+})
 
-const removeBannedWord = (word) => {
-  const index = chatConfig.bannedWords.indexOf(word)
-  if (index > -1) {
-    chatConfig.bannedWords.splice(index, 1)
+const defaultConfig = () => ({
+  denseTopK: 30, sparseTopK: 30, finalTopK: 8, similarityThreshold: 0.25, retrievalMode: 'HYBRID_RRF', rrfK: 60,
+  rerankerEnabled: false, evidenceSelectorEnabled: true, mixedSourceCommunityLimit: 3,
+  sourceAwareRanking: {
+    enabled: true, rrfNormalizationFactor: 31, denseWeight: 0.55, rrfWeight: 0.45,
+    plantSemanticWeight: 0.7, plantTrustWeight: 0.2, plantMatchWeight: 0.1,
+    communitySemanticWeight: 0.62, communityTrustWeight: 0.15, communityQualityWeight: 0.13, communityRecencyWeight: 0.05, communityPlantMatchWeight: 0.05,
+    communityEssenceWeight: 0.2, communityEngagementWeight: 0.8, collectWeight: 2, commentWeight: 1.5, viewWeight: 0.05, engagementNormalization: 1000, recencyDecayDays: 365
   }
-}
+})
 
-const saveSettings = async () => {
+const loading = ref(false)
+const submitting = ref(false)
+const activeRevision = ref(null)
+const revisions = ref([])
+const draftRevision = ref(null)
+const description = ref('')
+const form = reactive(defaultConfig())
+const hasActive = computed(() => activeRevision.value?.config)
+const unwrap = (response) => {
+  const payload = response?.data ?? response
+  if (payload?.code != null && payload.code !== 200) throw new Error(payload.message || '请求失败')
+  return payload?.code != null ? payload.data : payload
+}
+const clone = value => JSON.parse(JSON.stringify(value))
+const applyConfig = config => Object.assign(form, clone(config || defaultConfig()))
+
+const loadHistory = async () => { revisions.value = unwrap(await getRagConfigRevisions()) || [] }
+const loadPage = async () => {
+  loading.value = true
   try {
-    // 模拟保存API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success('AI设置保存成功')
+    const [currentResponse, historyResponse] = await Promise.all([getRagConfigCurrent(), getRagConfigRevisions()])
+    activeRevision.value = unwrap(currentResponse)
+    revisions.value = unwrap(historyResponse) || []
+    if (!draftRevision.value) applyConfig(activeRevision.value.config)
   } catch (error) {
-    ElMessage.error('设置保存失败')
-  }
+    ElMessage.error(error.message || '加载 RAG 配置失败')
+  } finally { loading.value = false }
 }
 
-const resetSettings = async () => {
+const saveDraft = async () => {
+  submitting.value = true
   try {
-    await ElMessageBox.confirm(
-      '确定要重置所有AI设置吗？此操作不可恢复！',
-      '确认重置',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
-    // 重置为默认值
-    Object.assign(basicConfig, {
-      provider: 'openai',
-      apiKey: '',
-      apiUrl: 'https://api.openai.com/v1',
-      model: 'gpt-3.5-turbo',
-      timeout: 15000,
-      maxRetries: 3,
-      enableLogging: true
-    })
-    
-    Object.assign(chatConfig, {
-      temperature: 0.7,
-      maxTokens: 1000,
-      contextLength: 5,
-      systemPrompt: '你是一个专业的植物养护助手，请用友好、专业的语气回答用户关于植物的问题。',
-      bannedWords: []
-    })
-    
-    Object.assign(recognitionConfig, {
-      model: 'general',
-      confidenceThreshold: 0.7,
-      topK: 3,
-      preprocessing: ['resize', 'crop'],
-      maxImageSize: 5,
-      supportedFormats: ['jpg', 'png', 'webp']
-    })
-    
-    Object.assign(securityConfig, {
-      enableModeration: true,
-      moderationLevel: 'medium',
-      enableRateLimit: true,
-      requestsPerMinute: 20,
-      ipWhitelist: '',
-      enableEncryption: true,
-      logRetentionDays: 30
-    })
-    
-    ElMessage.success('设置已重置为默认值')
-    
-  } catch {
-    // 用户取消操作
-  }
-}
-
-const testConnection = async () => {
-  if (!basicConfig.apiKey) {
-    ElMessage.warning('请先配置API密钥')
-    return
-  }
-  
-  try {
-    ElMessage.info('正在测试连接...')
-    // 模拟连接测试
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    ElMessage.success('AI服务连接测试成功')
+    const view = unwrap(await createRagConfigDraft({ config: clone(form), description: description.value }))
+    draftRevision.value = view.revision
+    ElMessage.success(`草稿 v${view.revision} 已保存`)
+    await loadHistory()
+    return view.revision
   } catch (error) {
-    ElMessage.error('连接测试失败，请检查配置')
-  }
+    ElMessage.error(error.message || '保存草稿失败')
+    return null
+  } finally { submitting.value = false }
 }
-
-// 监听输入框显示状态
-const watchBannedWordInput = () => {
-  if (showBannedWordInput.value) {
-    nextTick(() => {
-      bannedWordInput.value?.focus()
-    })
-  }
+const ensureDraft = async () => draftRevision.value || await saveDraft()
+const validateDraft = async () => {
+  const revision = await ensureDraft()
+  if (!revision) return false
+  submitting.value = true
+  try {
+    const result = unwrap(await validateRagConfigDraft(revision))
+    if (!result.valid) { ElMessage.error((result.errors || ['服务端校验未通过']).join('；')); return false }
+    ElMessage.success(`草稿 v${revision} 校验通过`)
+    await loadHistory()
+    return true
+  } catch (error) {
+    ElMessage.error(error.message || '校验草稿失败')
+    return false
+  } finally { submitting.value = false }
 }
+const publishDraft = async () => {
+  const revision = await ensureDraft()
+  if (!revision || !(await validateDraft())) return
+  try {
+    await ElMessageBox.confirm(`确认发布草稿 v${revision}？发布后新 RAG 请求会立即使用该版本。`, '发布 RAG 配置', { type: 'warning', confirmButtonText: '发布', cancelButtonText: '取消' })
+  } catch { return }
+  submitting.value = true
+  try {
+    const view = unwrap(await publishRagConfigDraft(revision))
+    activeRevision.value = view
+    applyConfig(view.config)
+    draftRevision.value = null
+    description.value = ''
+    ElMessage.success(`v${view.revision} 已发布并应用`)
+    await loadHistory()
+  } catch (error) { ElMessage.error(error.message || '发布失败') } finally { submitting.value = false }
+}
+const rollback = async row => {
+  try {
+    await ElMessageBox.confirm(`确认回滚到 v${row.revision}？当前生效版本会保留在历史中。`, '回滚 RAG 配置', { type: 'warning', confirmButtonText: '确认回滚', cancelButtonText: '取消' })
+  } catch { return }
+  submitting.value = true
+  try {
+    const view = unwrap(await rollbackRagConfig(row.revision))
+    activeRevision.value = view
+    applyConfig(view.config)
+    draftRevision.value = null
+    ElMessage.success(`已回滚并应用 v${view.revision}`)
+    await loadHistory()
+  } catch (error) { ElMessage.error(error.message || '回滚失败') } finally { submitting.value = false }
+}
+const resetToActive = () => {
+  if (!hasActive.value) return
+  applyConfig(activeRevision.value.config)
+  draftRevision.value = null
+  description.value = ''
+  ElMessage.info('已恢复为当前生效配置')
+}
+const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
+const statusText = status => ({ DRAFT: '草稿', VALIDATED: '已校验', ACTIVE: '生效中', SUPERSEDED: '已替换', FAILED: '失败' })[status] || status
+const statusType = status => ({ DRAFT: 'info', VALIDATED: 'warning', ACTIVE: 'success', SUPERSEDED: '', FAILED: 'danger' })[status] || 'info'
+onMounted(loadPage)
 </script>
 
 <style lang="scss" scoped>
-.ai-settings {
-  .settings-tabs {
-    .admin-card {
-      margin-bottom: 0;
-      border: none;
-      box-shadow: none;
-    }
-  }
-  
-  .config-tip {
-    font-size: 12px;
-    color: #909399;
-    margin-top: 4px;
-    line-height: 1.4;
-  }
-  
-  .settings-footer {
-    margin-top: 40px;
-    padding: 20px 0;
-    text-align: center;
-    border-top: 1px solid #e4e7ed;
-    
-    .el-button {
-      margin: 0 8px;
-      min-width: 120px;
-    }
-  }
-}
-
-:deep(.el-tabs__content) {
-  padding-top: 20px;
-}
-
-:deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #303133;
-}
-
-:deep(.el-slider) {
-  width: 200px;
-}
-
-:deep(.el-checkbox-group) {
-  .el-checkbox {
-    margin-bottom: 8px;
-    margin-right: 20px;
-  }
-}
-
-@media (max-width: 768px) {
-  .ai-settings {
-    .settings-footer {
-      .el-button {
-        margin: 4px;
-        width: 100%;
-        max-width: 200px;
-      }
-    }
-  }
-  
-  :deep(.el-form-item__label) {
-    width: 100px !important;
-  }
-  
-  :deep(.el-slider) {
-    width: 150px;
-  }
-}
+.rag-settings { --ink: #24372f; --moss: #2f6a4f; --leaf: #80aa72; --paper: #f8faf5; --line: #dce8da; max-width: 1480px; }
+.hero { display: flex; align-items: end; justify-content: space-between; padding: 6px 2px 22px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.eyebrow, .section-kicker { margin: 0 0 5px; color: var(--moss); font-size: 11px; letter-spacing: .16em; font-weight: 800; }.page-title { margin: 0; color: var(--ink); letter-spacing: -.03em; }.hero-copy { margin: 8px 0 0; color: #697b70; }
+.revision-chip { display: grid; grid-template-columns: auto auto; gap: 2px 12px; align-items: center; padding: 12px 16px; background: var(--ink); color: #fff; border-radius: 3px 18px 3px 18px; box-shadow: 6px 6px 0 #d5e4d0; }.revision-chip span { font-size: 12px; color: #b7d3bd; }.revision-chip strong { font-size: 24px; line-height: 1; }.revision-chip small { grid-column: 1 / -1; color: #9ecfa8; }
+.scope-alert { margin-bottom: 20px; }.config-card, .history-card { border: 1px solid var(--line); box-shadow: none; margin-bottom: 22px; overflow: hidden; }.card-header--split { display: flex; align-items: center; justify-content: space-between; gap: 24px; background: linear-gradient(100deg, #f2f7ef, #fbfcf8); border-bottom: 1px solid var(--line); }.card-title { margin: 0; color: var(--ink); }.description-input { max-width: 440px; }
+.form-section { padding: 25px 0; border-bottom: 1px solid #e8efe6; }.form-section:last-child { border-bottom: 0; padding-bottom: 4px; }.form-section__title { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }.form-section__title > span { width: 29px; height: 29px; display: grid; place-items: center; color: #fff; background: var(--moss); border-radius: 50% 50% 50% 5%; font-size: 12px; font-weight: 800; }.form-section__title > div { flex: 1; }.form-section__title h4 { margin: 0; color: var(--ink); }.form-section__title p { margin: 3px 0 0; font-size: 12px; color: #7a8a7d; }
+.form-grid { display: grid; gap: 2px 18px; }.form-grid--four { grid-template-columns: repeat(4, minmax(150px, 1fr)); }.rag-form :deep(.el-input-number), .rag-form :deep(.el-select) { width: 100%; }.switch-line { height: 32px; display: flex; align-items: center; }.weight-groups { display: grid; grid-template-columns: repeat(4, minmax(210px, 1fr)); gap: 14px; }.weight-group { padding: 16px; background: var(--paper); border-left: 3px solid var(--leaf); }.weight-group h5 { margin: 0 0 14px; color: var(--ink); font-size: 13px; }.number-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; font-size: 12px; color: #607269; }.number-field :deep(.el-input-number) { width: 102px; }
+.action-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 17px 20px; background: #f5f8f2; border-top: 1px solid var(--line); }.draft-state { color: #667c6a; font-size: 13px; font-weight: 600; }.table-wrap { padding-top: 4px; }.history-card :deep(.el-table__header-wrapper th) { color: #536c59; background: #f5f8f2; }
+@media (max-width: 1200px) { .form-grid--four { grid-template-columns: repeat(3, 1fr); }.weight-groups { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .hero, .card-header--split, .action-bar { align-items: stretch; flex-direction: column; }.revision-chip { align-self: flex-start; }.description-input { max-width: none; }.form-grid--four, .weight-groups { grid-template-columns: 1fr; }.action-bar > div:last-child { display: grid; gap: 8px; }.action-bar :deep(.el-button) { margin-left: 0; } }
 </style>

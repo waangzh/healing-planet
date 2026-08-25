@@ -1,6 +1,8 @@
 package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
+import com.healingplanet.ai.config.RagRuntimeConfigProvider;
 import com.healingplanet.ai.domain.DiseaseDetection;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -21,49 +23,53 @@ public class DiseaseKnowledgeRetriever {
     private final KnowledgeDocumentMapper documentMapper;
     private final Reranker reranker;
     private final RagProperties properties;
+    private final RagRuntimeConfigProvider runtimeConfigProvider;
 
     public DiseaseKnowledgeRetriever(@Qualifier("diseaseVectorStore") VectorStore store,
                                      SparseIndexService sparseIndex, KnowledgeDocumentMapper documentMapper,
-                                     Reranker reranker, RagProperties properties) {
+                                     Reranker reranker, RagProperties properties,
+                                     RagRuntimeConfigProvider runtimeConfigProvider) {
         this.store = store;
         this.sparseIndex = sparseIndex;
         this.documentMapper = documentMapper;
         this.reranker = reranker;
         this.properties = properties;
+        this.runtimeConfigProvider = runtimeConfigProvider;
     }
 
     public List<Evidence> retrieve(DiseaseDetection detection, RagQuery query) {
         if (detection.healthy()) return List.of();
+        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         String searchText = searchText(detection, query);
-        List<RrfFusion.DenseHit> dense = properties.getRetrievalMode().usesDense()
-                ? denseSearch(searchText) : List.of();
-        List<SparseIndexService.SparseHit> sparse = properties.getRetrievalMode().usesSparse()
-                ? sparseIndex.search(KnowledgeSource.DISEASE, searchText, properties.getSparseTopK()) : List.of();
-        List<RetrievalCandidate> candidates = RrfFusion.fuse(dense, sparse, properties.getRrfK());
-        Map<String, Double> rerankScores = reranker.rerank(searchText, candidates);
+        List<RrfFusion.DenseHit> dense = config.retrievalMode().usesDense() ? denseSearch(searchText, config) : List.of();
+        List<SparseIndexService.SparseHit> sparse = config.retrievalMode().usesSparse()
+                ? sparseIndex.search(KnowledgeSource.DISEASE, searchText, config.sparseTopK()) : List.of();
+        List<RetrievalCandidate> candidates = RrfFusion.fuse(dense, sparse, config.rrfK());
+        Map<String, Double> rerankScores = rerank(searchText, candidates, config);
         return candidates.stream().map(candidate -> toEvidence(candidate,
-                        rerankScores.get(candidate.document().id()), detection))
+                        rerankScores.get(candidate.document().id()), detection, config))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
-                .limit(Math.min(3, properties.getFinalTopK())).toList();
+                .limit(Math.min(3, config.finalTopK())).toList();
     }
 
-    private List<RrfFusion.DenseHit> denseSearch(String searchText) {
+    private List<RrfFusion.DenseHit> denseSearch(String searchText, RagRuntimeConfig config) {
         SearchRequest request = SearchRequest.builder().query(searchText)
-                .topK(properties.getDenseTopK()).similarityThreshold(properties.getSimilarityThreshold()).build();
+                .topK(config.denseTopK()).similarityThreshold(config.similarityThreshold()).build();
         return store.similaritySearch(request).stream()
                 .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, KnowledgeSource.DISEASE),
                         document.getScore() == null ? 0d : document.getScore())).toList();
     }
 
-    private Evidence toEvidence(RetrievalCandidate candidate, Double rerank, DiseaseDetection detection) {
+    private Evidence toEvidence(RetrievalCandidate candidate, Double rerank, DiseaseDetection detection,
+                                RagRuntimeConfig config) {
         var document = candidate.document();
-        var ranking = properties.getSourceAwareRanking();
-        double rrf = Math.min(1d, candidate.fusionScore() * ranking.getRrfNormalizationFactor());
-        double retrieval = switch (properties.getRetrievalMode()) {
+        var ranking = config.sourceAwareRanking();
+        double rrf = Math.min(1d, candidate.fusionScore() * ranking.rrfNormalizationFactor());
+        double retrieval = switch (config.retrievalMode()) {
             case DENSE_ONLY -> candidate.denseScore() == null ? rrf : candidate.denseScore();
             case BM25_ONLY -> rrf;
             case HYBRID_RRF -> candidate.denseScore() == null ? rrf
-                    : ranking.getDenseWeight() * candidate.denseScore() + ranking.getRrfWeight() * rrf;
+                    : ranking.denseWeight() * candidate.denseScore() + ranking.rrfWeight() * rrf;
         };
         double semantic = rerank == null ? retrieval : rerank;
         double nameMatch = matches(detection.diseaseName(), document.tags()) ? 1d : 0d;
@@ -87,4 +93,11 @@ public class DiseaseKnowledgeRetriever {
 
     private String safe(String value) { return value == null ? "" : value; }
     private double clamp(double value) { return Math.max(0, Math.min(1, value)); }
+
+    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeConfig config) {
+        if (reranker instanceof SnapshotReranker snapshotReranker) {
+            return snapshotReranker.rerank(query, candidates, config);
+        }
+        return reranker.rerank(query, candidates);
+    }
 }

@@ -2,6 +2,7 @@ package com.healingplanet.ai.retrieval;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-class HttpReranker implements Reranker {
+class HttpReranker implements SnapshotReranker {
 
     private final RestClient client;
     private final RagProperties properties;
@@ -23,7 +24,12 @@ class HttpReranker implements Reranker {
 
     @Override
     public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates) {
-        if (!properties.getReranker().isEnabled() || candidates.isEmpty()) return Map.of();
+        return rerank(query, candidates, RagRuntimeConfig.from(properties));
+    }
+
+    @Override
+    public Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeConfig config) {
+        if (!config.rerankerEnabled() || candidates.isEmpty()) return Map.of();
         int configuredTopK = properties.getReranker().getCandidateTopK();
         List<RetrievalCandidate> rerankCandidates = configuredTopK > 0
                 ? candidates.stream().limit(configuredTopK).toList() : candidates;
