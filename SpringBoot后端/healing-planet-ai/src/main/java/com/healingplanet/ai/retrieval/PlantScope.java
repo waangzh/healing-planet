@@ -16,6 +16,6 @@ public record PlantScope(Kind kind, List<String> canonicalPlantIds) {
     static PlantScope conflict(List<String> ids) { return new PlantScope(Kind.CONFLICT, ids); }
 
     boolean filtersPlantKnowledge() {
-        return (kind == Kind.HARD || kind == Kind.CONFLICT) && !canonicalPlantIds.isEmpty();
+        return (kind == Kind.HARD || kind == Kind.SOFT) && !canonicalPlantIds.isEmpty();
     }
 }

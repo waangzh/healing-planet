@@ -25,6 +25,55 @@ import static org.mockito.Mockito.when;
 class RagServiceTest {
 
     @Test
+    void shouldRefuseSpecificUnknownEvenIfRetrieverReturnsAnotherPlantsEvidence() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        ChatClient chatClient = mock(ChatClient.class);
+        QueryRouter queryRouter = mock(QueryRouter.class);
+        RagService service = new RagService(retriever, mock(PromptContextBuilder.class),
+                mock(GenerationPromptBuilder.class), chatClient, queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
+        RagQuery query = RagQuery.of("火星苔藓适合什么光照？");
+        when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, false, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));
+        EntityResolutionDiagnostics unknown = new EntityResolutionDiagnostics("UNKNOWN", "NONE", null,
+                List.of(), 0, 0, 0, 0, "no_indexed_entity_candidate");
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(
+                com.healingplanet.ai.retrieval.RetrievalRequest.class))).thenReturn(new RetrievalResult(
+                List.of(new Evidence("other", EvidenceType.CARE_GUIDE, "g2", "PLANT", "虎尾兰光照",
+                        "虎尾兰适合散射光", 1d, null, 1d, 1d, Map.of(), null)), unknown));
+
+        var response = service.chat(query);
+
+        assertThat(response.answer()).contains("不会使用其它植物的知识代替回答");
+        assertThat(response.evidence()).isEmpty();
+        verify(chatClient, never()).prompt();
+    }
+
+    @Test
+    void shouldDescribeKnownMentionAsConflictInsteadOfUnregisteredPlant() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        ChatClient chatClient = mock(ChatClient.class);
+        QueryRouter queryRouter = mock(QueryRouter.class);
+        RagService service = new RagService(retriever, mock(PromptContextBuilder.class),
+                mock(GenerationPromptBuilder.class), chatClient, queryRouter,
+                new RetrievalMetrics(new SimpleMeterRegistry()));
+        RagQuery query = new RagQuery("虎尾兰需要什么光照？", null, null, "1", null, List.of(), Map.of());
+        when(queryRouter.route(query)).thenReturn(new QueryRouter.RoutingDecision(true, false, false,
+                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE));
+        EntityResolutionDiagnostics conflict = new EntityResolutionDiagnostics("CONFLICT", "EXPLICIT_ID", "1",
+                List.of("1"), 1, 0, 1, 1, "explicit_canonical_plant_id_conflicts_with_query_mention",
+                List.of(), List.of(), List.of("虎尾兰"), "CONFLICT");
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(
+                com.healingplanet.ai.retrieval.RetrievalRequest.class)))
+                .thenReturn(new RetrievalResult(List.of(), conflict));
+
+        var response = service.chat(query);
+
+        assertThat(response.answer()).contains("已选择的植物", "虎尾兰", "不一致").doesNotContain("未收录");
+        verify(chatClient, never()).prompt();
+    }
+
+    @Test
     void shouldReturnOutOfScopeBeforeEntityResolutionOrRetrieval() {
         EvidenceRetriever retriever = mock(EvidenceRetriever.class);
         QueryRouter queryRouter = mock(QueryRouter.class);

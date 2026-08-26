@@ -113,6 +113,32 @@ class GenerationPromptBuilderTest {
         assertThat(prompt).contains("未收录提及", "无法完成涉及它们的比较", "不得外推给未收录提及");
     }
 
+    @Test
+    void conflictShouldNotDescribeKnownMentionAsUnregistered() {
+        RetrievalRequest request = RetrievalRequest.from(
+                new RagQuery("虎尾兰需要什么光照？", null, null, "1", null, java.util.List.of(), java.util.Map.of()),
+                decision(true, false, false, QueryIntent.GENERAL_CARE));
+        String prompt = builder.build(request, java.util.List.of(),
+                new EntityResolutionDiagnostics("CONFLICT", "EXPLICIT_ID", "1", java.util.List.of("1"),
+                        1, 0, 1, 1, "explicit_canonical_plant_id_conflicts_with_query_mention",
+                        java.util.List.of(), java.util.List.of(), java.util.List.of("虎尾兰"), "CONFLICT"));
+
+        assertThat(prompt).contains("文本植物与已选择植物冲突", "虎尾兰", "目录中已知植物")
+                .doesNotContain("实体解析存在未收录提及：虎尾兰");
+    }
+
+    @Test
+    void softScopeShouldRequireIdentityCaveat() {
+        RetrievalRequest request = RetrievalRequest.from(RagQuery.of("虎尾蓝多久浇水？"),
+                decision(true, false, false, QueryIntent.GENERAL_CARE));
+        String prompt = builder.build(request, java.util.List.of(),
+                new EntityResolutionDiagnostics("KNOWN", "FUZZY", "2", java.util.List.of("2"),
+                        0.67, 0.1, 0.57, 1, "", java.util.List.of(), java.util.List.of(),
+                        java.util.List.of(), "SOFT"));
+
+        assertThat(prompt).contains("模糊名称候选", "不得断言用户输入就是该标准植物");
+    }
+
     private QueryRouter.RoutingDecision decision(boolean knowledge, boolean community, boolean state,
                                                    QueryIntent intent) {
         return new QueryRouter.RoutingDecision(knowledge, community, state, intent);

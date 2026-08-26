@@ -43,7 +43,7 @@ public class PlantCatalogIndex {
     }
 
     public void refresh() {
-        snapshot = repository == null ? PlantCatalogSnapshot.empty() : null;
+        snapshot = repository == null ? PlantCatalogSnapshot.empty() : load();
     }
 
     private PlantCatalogSnapshot load() {

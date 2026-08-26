@@ -109,8 +109,12 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         PlantEntityResolver.Resolution entity = trace.time("entity_resolve", "all", "all",
                 () -> metrics.time("entity_resolve", "all", () -> entityResolver.resolve(request)));
         List<RetrievalCandidate> fused = new java.util.ArrayList<>();
-        boolean includePlant = request.sourcePlan().includeKnowledge();
-        boolean includeCommunity = request.sourcePlan().includeCommunity();
+        boolean identityBlocked = entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
+                || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
+                || entity.kind() == PlantEntityResolver.ResolutionKind.CONFLICT;
+        boolean includePlant = request.sourcePlan().includeKnowledge() && !identityBlocked;
+        boolean includeCommunity = request.sourcePlan().includeCommunity() && !identityBlocked
+                && entity.kind() != PlantEntityResolver.ResolutionKind.PARTIAL;
         if (includePlant) {
             fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore, entity, trace, config));
         }

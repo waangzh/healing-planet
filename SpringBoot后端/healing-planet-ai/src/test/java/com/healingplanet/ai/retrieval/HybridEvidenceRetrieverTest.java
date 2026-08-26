@@ -19,11 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class HybridEvidenceRetrieverTest {
     private VectorStore plantStore;
+    private VectorStore communityStore;
     private SparseIndexService sparseIndex;
     private PlantEntityResolver entityResolver;
     private HybridEvidenceRetriever retriever;
@@ -32,7 +34,7 @@ class HybridEvidenceRetrieverTest {
     @BeforeEach
     void setUp() {
         plantStore = mock(VectorStore.class);
-        VectorStore communityStore = mock(VectorStore.class);
+        communityStore = mock(VectorStore.class);
         sparseIndex = mock(SparseIndexService.class);
         entityResolver = mock(PlantEntityResolver.class);
         properties = new RagProperties();
@@ -77,16 +79,72 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
-    void shouldNotTurnUnknownEntityIntoRetrievalHardGate() {
+    void shouldBlockSpeciesKnowledgeForSpecificUnknownEntity() {
         var unknown = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.UNKNOWN, "", Set.of());
         when(entityResolver.resolve(any())).thenReturn(unknown);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("generic", "2")));
+
+        assertThat(retriever.retrieve(RagQuery.of("火星苔藓适合什么光照？"))).isEmpty();
+        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
+        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
+        verify(sparseIndex, never()).search(any(), any(), anyInt());
+    }
+
+    @Test
+    void shouldBlockSpeciesKnowledgeForAmbiguousAndConflictingEntity() {
+        for (PlantEntityResolver.ResolutionKind kind : List.of(
+                PlantEntityResolver.ResolutionKind.AMBIGUOUS,
+                PlantEntityResolver.ResolutionKind.CONFLICT)) {
+            org.mockito.Mockito.reset(plantStore, communityStore, sparseIndex, entityResolver);
+            when(entityResolver.resolve(any())).thenReturn(new PlantEntityResolver.Resolution(kind, "", Set.of()));
+
+            assertThat(retriever.retrieve(RagQuery.of("万年青需要什么光照？"))).as(kind.name()).isEmpty();
+            verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
+            verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
+        }
+    }
+
+    @Test
+    void shouldAllowGenericUnscopedPlantQuery() {
+        var generic = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.GENERIC, "", Set.of());
+        when(entityResolver.resolve(any())).thenReturn(generic);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("generic", "2")));
         when(sparseIndex.search(any(), any(), anyInt())).thenReturn(List.of());
 
-        assertThat(retriever.retrieve(RagQuery.of("火星苔藓适合什么光照？"))).isNotEmpty();
+        assertThat(retriever.retrieve(RagQuery.of("什么植物比较耐阴？"))).isNotEmpty();
         ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
         verify(plantStore).similaritySearch(dense.capture());
         assertThat(dense.getValue().hasFilterExpression()).isFalse();
+    }
+
+    @Test
+    void shouldFilterSoftFuzzyScopeInsteadOfSearchingAllPlants() {
+        var soft = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, "2", List.of("2"),
+                Set.of("虎尾兰"), PlantEntityResolver.ResolutionMethod.FUZZY, 0.67, 0.2, 0.47, 2, "",
+                List.of(), List.of(), List.of(), PlantScope.soft(List.of("2")));
+        when(entityResolver.resolve(any())).thenReturn(soft);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p2", "2")));
+        when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
+
+        retriever.retrieve(RagQuery.of("虎尾蓝多久浇水？"));
+
+        ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore).similaritySearch(dense.capture());
+        assertThat(dense.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "2");
+        verify(sparseIndex).search(KnowledgeSource.PLANT, "虎尾蓝多久浇水？", properties.getSparseTopK(), List.of("2"));
+    }
+
+    @Test
+    void shouldRetrieveOnlyKnownPlantForPartialAndSkipUnscopedCommunity() {
+        var partial = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.PARTIAL, "1", List.of("1"),
+                Set.of("绿萝"), PlantEntityResolver.ResolutionMethod.EXACT_NAME, 1, 0, 1, 1,
+                "partial_entity_unresolved", List.of(), List.of("常春藤"));
+        when(entityResolver.resolve(any())).thenReturn(partial);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1")));
+        when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
+
+        assertThat(retriever.retrieve(RagQuery.of("绿萝和常春藤的光照要求一样吗？"))).isNotEmpty();
+        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
     }
 
     private PlantEntityResolver.Resolution known(String id) {

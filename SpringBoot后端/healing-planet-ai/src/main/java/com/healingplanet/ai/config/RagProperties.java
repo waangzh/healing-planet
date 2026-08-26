@@ -294,6 +294,10 @@ public class RagProperties {
 
     public static class EntityResolution {
         private int candidateTopK = 5;
+        private double fuzzyHardThreshold = 0.90;
+        private double fuzzySoftThreshold = 0.65;
+        private double fuzzyHardMargin = 0.15;
+        private double fuzzySoftMargin = 0.08;
         private boolean llmEnabled = true;
         private String llmModel = "";
         private double llmTemperature = 0;
@@ -309,6 +313,14 @@ public class RagProperties {
 
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
+        public double getFuzzyHardThreshold() { return fuzzyHardThreshold; }
+        public void setFuzzyHardThreshold(double value) { this.fuzzyHardThreshold = value; }
+        public double getFuzzySoftThreshold() { return fuzzySoftThreshold; }
+        public void setFuzzySoftThreshold(double value) { this.fuzzySoftThreshold = value; }
+        public double getFuzzyHardMargin() { return fuzzyHardMargin; }
+        public void setFuzzyHardMargin(double value) { this.fuzzyHardMargin = value; }
+        public double getFuzzySoftMargin() { return fuzzySoftMargin; }
+        public void setFuzzySoftMargin(double value) { this.fuzzySoftMargin = value; }
         public boolean isLlmEnabled() { return llmEnabled; }
         public void setLlmEnabled(boolean llmEnabled) { this.llmEnabled = llmEnabled; }
         public String getLlmModel() { return llmModel; }

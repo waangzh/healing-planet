@@ -96,6 +96,10 @@ app:
       initialize-schema: ${QDRANT_INITIALIZE_SCHEMA:true}
     entity-resolution:
       candidate-top-k: ${RAG_ENTITY_CANDIDATE_TOP_K:5}
+      fuzzy-hard-threshold: ${RAG_ENTITY_FUZZY_HARD_THRESHOLD:0.90}
+      fuzzy-soft-threshold: ${RAG_ENTITY_FUZZY_SOFT_THRESHOLD:0.65}
+      fuzzy-hard-margin: ${RAG_ENTITY_FUZZY_HARD_MARGIN:0.15}
+      fuzzy-soft-margin: ${RAG_ENTITY_FUZZY_SOFT_MARGIN:0.08}
       llm-enabled: ${RAG_ENTITY_LLM_ENABLED:true}
       llm-model: ${RAG_ENTITY_LLM_MODEL:Qwen/Qwen3.5-4B}
       llm-temperature: ${RAG_ENTITY_LLM_TEMPERATURE:0.0}

@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ class PlantEntityResolverTest {
                 plant("1", "Epipremnum aureum", "绿萝", "黄金葛", "金边绿萝"),
                 plant("2", "Sansevieria trifasciata", "虎尾兰", "虎皮兰"),
                 plant("3", "Monstera deliciosa", "龟背竹"),
+                plant("4", "Dracaena angolensis", "虎尾竹"),
                 plant("20", "Anthurium andraeanum", "红掌", "万年青"),
                 plant("21", "Spathiphyllum wallisii", "白掌", "万年青")
         ));
@@ -86,15 +88,75 @@ class PlantEntityResolverTest {
     }
 
     @Test
-    void shouldUseIndexedFuzzyCandidatesButNeverAutoLinkTwoCharacterNames() {
-        when(sparseIndex.searchEntityNames(any(), any(Integer.class))).thenAnswer(invocation -> {
-            String window = invocation.getArgument(0, String.class);
-            return window.contains("绿箩") ? List.of(new SparseIndexService.SparseHit(entityDocument("1"), 0.91)) : List.of();
-        });
-        var typo = resolve(RagQuery.of("绿箩需要什么光照？"));
+    void shouldUseOneIndexedSearchAndKeepOrdinaryFuzzyCandidateSoft() {
+        when(sparseIndex.searchEntityNames(any(), any(Integer.class)))
+                .thenReturn(List.of(new SparseIndexService.SparseHit(entityDocument("2"), 3.2)));
+
+        var typo = resolve(RagQuery.of("虎尾蓝多久浇水？"));
+
         assertThat(typo.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(typo.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.FUZZY);
+        assertThat(typo.scope().kind()).isEqualTo(PlantScope.Kind.SOFT);
+        verify(sparseIndex, times(1)).searchEntityNames("虎尾蓝多久浇水?", 5);
         verify(disambiguator, never()).disambiguate(any(), any(), any());
+    }
+
+    @Test
+    void shouldRejectWeakTwoCharacterFuzzyCandidate() {
+        when(sparseIndex.searchEntityNames(any(), any(Integer.class)))
+                .thenReturn(List.of(new SparseIndexService.SparseHit(entityDocument("1"), 3.2)));
+
+        var typo = resolve(RagQuery.of("绿箩需要什么光照？"));
+
+        assertThat(typo.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(typo.rejectionReason()).isEqualTo("fuzzy_score_below_threshold");
+    }
+
+    @Test
+    void shouldPromoteOnlyHighConfidenceFuzzyCandidateToHardScope() {
+        when(sparseIndex.searchEntityNames(any(), any(Integer.class)))
+                .thenReturn(List.of(new SparseIndexService.SparseHit(entityDocument("1"), 4.8)));
+
+        var typo = resolve(RagQuery.of("Epipremnum aureu 的湿度要求"));
+
+        assertThat(typo.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(typo.scope().kind()).isEqualTo(PlantScope.Kind.HARD);
+        assertThat(typo.top1Score()).isGreaterThanOrEqualTo(0.9);
+    }
+
+    @Test
+    void shouldPreserveKnownAndUnknownCoordinatedOperandsAsPartial() {
+        var resolution = resolve(RagQuery.of("绿萝和常春藤的浇水方式一样吗？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.PARTIAL);
+        assertThat(resolution.canonicalPlantIds()).containsExactly("1");
+        assertThat(resolution.unresolvedMentions()).containsExactly("常春藤");
+        assertThat(resolution.scope().kind()).isEqualTo(PlantScope.Kind.HARD);
+    }
+
+    @Test
+    void shouldDetectUnknownOperandOnEitherSideWithoutMisreadingTopicConjunctions() {
+        assertThat(resolve(RagQuery.of("常春藤和绿萝的浇水方式一样吗？")).unresolvedMentions())
+                .containsExactly("常春藤");
+        assertThat(resolve(RagQuery.of("绿萝和花友的光照建议怎么结合？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+        assertThat(resolve(RagQuery.of("绿萝的湿度要求和光照经验分别是什么？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
+    }
+
+    @Test
+    void shouldDisambiguateCloseFuzzyCandidatesInsteadOfChoosingByCount() {
+        when(sparseIndex.searchEntityNames(any(), any(Integer.class))).thenReturn(List.of(
+                new SparseIndexService.SparseHit(entityDocument("2"), 3.2),
+                new SparseIndexService.SparseHit(entityDocument("4"), 3.1)));
+        when(disambiguator.disambiguate(any(), any(), any()))
+                .thenReturn(PlantEntityDisambiguator.Decision.ambiguous("llm_ambiguous"));
+
+        var resolution = resolve(RagQuery.of("虎尾蓝多久浇水？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.AMBIGUOUS);
+        assertThat(resolution.rejectionReason()).isEqualTo("llm_ambiguous");
+        verify(disambiguator).disambiguate(any(), any(), any());
     }
 
     @Test
@@ -103,6 +165,9 @@ class PlantEntityResolverTest {
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.CONFLICT);
         assertThat(resolution.scope()).isEqualTo(new PlantScope(PlantScope.Kind.CONFLICT, List.of("1")));
         assertThat(resolution.rejectionReason()).contains("conflicts");
+        assertThat(resolution.unresolvedMentions()).isEmpty();
+        assertThat(resolution.conflictingMentions()).containsExactly("虎尾兰");
+        assertThat(resolution.scope().filtersPlantKnowledge()).isFalse();
     }
 
     @Test

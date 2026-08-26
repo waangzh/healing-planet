@@ -67,6 +67,10 @@ public class RagService {
         if (validation != null) return new RagResponse(validation, List.of());
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
+        String entityGuard = entityGuardAnswer(retrieval.entityResolution());
+        if (entityGuard != null) {
+            return new RagResponse(entityGuard, List.of(), retrieval.entityResolution(), retrieval.retrievalTrace());
+        }
         if (missingStateEvidence(decision, evidence)) {
             return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
                     retrieval.entityResolution(), retrieval.retrievalTrace());
@@ -95,6 +99,10 @@ public class RagService {
         if (validation != null) return new RagStream(List.of(), Flux.just(validation));
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
+        String entityGuard = entityGuardAnswer(retrieval.entityResolution());
+        if (entityGuard != null) {
+            return new RagStream(List.of(), retrieval.entityResolution(), retrieval.retrievalTrace(), Flux.just(entityGuard));
+        }
         if (missingStateEvidence(decision, evidence)) {
             return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
                     Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
@@ -116,7 +124,9 @@ public class RagService {
     }
 
     public List<Evidence> search(RagQuery query) {
-        return retriever.retrieve(RetrievalRequest.from(query, queryRouter.route(query)));
+        RetrievalResult result = retriever.retrieveWithDiagnostics(
+                RetrievalRequest.from(query, queryRouter.route(query)));
+        return entityGuardAnswer(result.entityResolution()) == null ? result.evidence() : List.of();
     }
 
     String userPrompt(String query, List<Evidence> evidence, EntityResolutionDiagnostics entityResolution) {
@@ -139,6 +149,23 @@ public class RagService {
             return "植物名称识别服务暂时不可用，请稍后重试。";
         }
         return "当前知识库中没有足够证据回答这个问题。";
+    }
+
+    private String entityGuardAnswer(EntityResolutionDiagnostics resolution) {
+        if (resolution == null) return null;
+        if (isEntityResolutionDependencyFailure(resolution.rejectionReason())) return null;
+        if ("CONFLICT".equals(resolution.resolutionKind())) {
+            String mentions = resolution.conflictingMentions().isEmpty() ? "文本中的植物"
+                    : String.join("、", resolution.conflictingMentions());
+            return "当前已选择的植物与问题中提到的“" + mentions + "”不一致，请确认这次要询问哪株植物。";
+        }
+        if ("AMBIGUOUS".equals(resolution.resolutionKind())) {
+            return "当前植物名称可能对应多个已收录植物，请提供更完整的名称或学名后再试。";
+        }
+        if ("UNKNOWN".equals(resolution.resolutionKind())) {
+            return "当前植物目录中未能可靠识别问题里的具体植物，因此不会使用其它植物的知识代替回答。";
+        }
+        return null;
     }
 
     private String outOfScopeAnswer() {

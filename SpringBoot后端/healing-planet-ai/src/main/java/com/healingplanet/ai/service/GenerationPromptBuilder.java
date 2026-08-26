@@ -38,14 +38,25 @@ public class GenerationPromptBuilder {
 
     public String build(RetrievalRequest request, List<Evidence> evidence,
                         com.healingplanet.ai.domain.EntityResolutionDiagnostics entityResolution) {
-        String resolutionPolicy = entityResolution == null || entityResolution.unresolvedMentions().isEmpty()
+        String unresolvedPolicy = entityResolution == null || entityResolution.unresolvedMentions().isEmpty()
                 ? "" : """
                         实体解析存在未收录提及：%s。
                         - 明确说明这些提及没有当前知识库的可靠资料，因此无法完成涉及它们的比较或并列结论。
                         - 仍可回答已解析植物的相关问题，但必须把结论限定在已解析植物，不得外推给未收录提及；比较问题应先说明无法确认两者是否相同，再给出已解析植物的证据。
                         - 未收录只表示当前知识库没有可靠资料，不表示该对象不是植物。
                         """.formatted(String.join("、", entityResolution.unresolvedMentions()));
-        return BASE_PROMPT + "\n" + resolutionPolicy
+        String conflictPolicy = entityResolution == null || entityResolution.conflictingMentions().isEmpty()
+                ? "" : """
+                        实体解析发现文本植物与已选择植物冲突：文本提及 %s。
+                        - 这些提及是目录中已知植物，不得描述为“未收录”或“没有该植物资料”。
+                        - 在用户确认要询问哪株植物前，不得使用任一植物的养护证据作答。
+                        """.formatted(String.join("、", entityResolution.conflictingMentions()));
+        String softPolicy = entityResolution != null && "SOFT".equals(entityResolution.scopeKind())
+                ? """
+                        当前植物身份来自模糊名称候选，置信度不足以视为精确实体。
+                        - 回答必须明确说明当前按最接近的目录植物限定检索，不得断言用户输入就是该标准植物。
+                        """ : "";
+        return BASE_PROMPT + "\n" + unresolvedPolicy + conflictPolicy + softPolicy
                 + intentPolicy(request.routing(), request.sourcePlan(), evidence);
     }
 
