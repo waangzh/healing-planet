@@ -24,6 +24,8 @@ spring:
         max-concurrency: 8
     publisher-confirm-type: correlated
     publisher-returns: true
+    template:
+      mandatory: true
   redis:
     host: localhost
     port: 6379
@@ -41,6 +43,14 @@ app:
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     connect-timeout-millis: ${RAG_ADMIN_CONNECT_TIMEOUT_MILLIS:3000}
     read-timeout-millis: ${RAG_ADMIN_READ_TIMEOUT_MILLIS:10000}
+  post-index-outbox:
+    # 帖子事务只写 outbox；发布器经 RabbitMQ confirm 后再置为 PUBLISHED。
+    enabled: ${POST_INDEX_OUTBOX_ENABLED:true}
+    publish-fixed-delay-millis: ${POST_INDEX_OUTBOX_PUBLISH_FIXED_DELAY_MILLIS:5000}
+    batch-size: ${POST_INDEX_OUTBOX_BATCH_SIZE:50}
+    lease-millis: ${POST_INDEX_OUTBOX_LEASE_MILLIS:30000}
+    initial-retry-delay-millis: ${POST_INDEX_OUTBOX_INITIAL_RETRY_DELAY_MILLIS:5000}
+    max-retry-delay-millis: ${POST_INDEX_OUTBOX_MAX_RETRY_DELAY_MILLIS:300000}
 
 mybatis-plus:
   configuration:

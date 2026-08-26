@@ -15,6 +15,7 @@ import com.green.vo.ProfileVO;
 import com.green.service.ITagService;
 import com.green.service.ITopicTagService;
 import com.green.service.IUmsUserService;
+import com.green.outbox.PostIndexOutboxService;
 import com.vdurmont.emoji.EmojiParser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +46,8 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
     private ITopicTagService topicTagService;
     @Autowired
     private TopicTagMapper topicTagMapper;
+    @Autowired
+    private PostIndexOutboxService postIndexOutboxService;
 
     /**
      * 查询话题
@@ -118,9 +121,7 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
             }
             topicTagService.createTopicTag(topic.getId(), tags);
         }
-
-
-
+        postIndexOutboxService.recordUpsert(topic.getId());
         return topic;
     }
 
@@ -178,6 +179,7 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
      * @param postDTO
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void update(PostDTO postDTO) {
         Post post = this.baseMapper.selectById(postDTO.getId());
         // 更新
@@ -210,7 +212,7 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
                     .build();
             topicTagService.save(topicTag);
         }
-
+        postIndexOutboxService.recordUpsert(postDTO.getId());
     }
 
     /**
@@ -283,6 +285,7 @@ public class IPostServiceImpl extends ServiceImpl<PostMapper, Post> implements I
 
         // 删除文章
         this.removeByIds(ids);
+        ids.forEach(postIndexOutboxService::recordDelete);
     }
 
 

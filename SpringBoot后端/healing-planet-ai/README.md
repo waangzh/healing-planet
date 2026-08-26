@@ -184,7 +184,7 @@ curl -X POST http://localhost:8010/internal/index/full \
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 
-生产环境不应靠定时全量扫描同步帖子。社区服务应在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件，并由独立发布器投递以下契约；消费者据此调用上面的内部接口：
+生产环境不应靠定时全量扫描同步帖子。社区服务已在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件；部署时需先执行 [`V1__post_index_outbox.sql`](../healing-planet-sys/service/src/main/resources/db/migration/V1__post_index_outbox.sql)。独立发布器在 RabbitMQ publisher confirm 后更新 outbox 状态，消费者成功调用下面的内部接口后才标记 `DELIVERED`；失败会回写同一条 outbox 记录并延迟重试。事件载荷遵循以下契约：
 
 ```json
 {
@@ -195,7 +195,7 @@ curl -X POST http://localhost:8010/internal/index/full \
 }
 ```
 
-投递可使用现有 RabbitMQ，但确认/重试必须以 outbox 记录为准，而不是直接在帖子事务中发消息。这样消息重复、延迟或消费者重试不会导致重复向量化；全量扫描仅保留为 outbox 故障后的补偿工具。
+RabbitMQ 使用持久化 exchange/queue，并为无效消息保留死信队列。确认/重试以 outbox 记录为准，而不是直接在帖子事务中发消息。这样消息重复、延迟或消费者重试不会导致重复向量化；全量扫描仅保留为 outbox 故障后的补偿工具。
 
 ## API 接口
 
