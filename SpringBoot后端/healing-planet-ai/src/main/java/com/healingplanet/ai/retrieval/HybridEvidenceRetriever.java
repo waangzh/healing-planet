@@ -108,25 +108,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         }
         PlantEntityResolver.Resolution entity = trace.time("entity_resolve", "all", "all",
                 () -> metrics.time("entity_resolve", "all", () -> entityResolver.resolve(request)));
-        if (entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
-                || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
-                || entity.kind() == PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN) {
-            metrics.recordCandidates("selected", "all", 0);
-            return new RetrievalPayload(List.of(), entity.diagnostics());
-        }
-
         List<RetrievalCandidate> fused = new java.util.ArrayList<>();
         boolean includePlant = request.sourcePlan().includeKnowledge();
         boolean includeCommunity = request.sourcePlan().includeCommunity();
         if (includePlant) {
-            if (entity.hasResolvedEntities() && entity.canonicalPlantIds().size() > 1) {
-                for (String canonicalPlantId : entity.canonicalPlantIds()) {
-                    fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore,
-                            PlantEntityResolver.Resolution.forCanonicalPlantId(canonicalPlantId), trace, config));
-                }
-            } else {
-                fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore, entity, trace, config));
-            }
+            fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore, entity, trace, config));
         }
         if (includeCommunity) {
             fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.COMMUNITY, communityStore, entity, trace, config));
@@ -190,19 +176,16 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                         document.getScore() == null ? 0d : document.getScore()))
                 .toList();
         trace.dense(denseRaw, scope);
-        List<RrfFusion.DenseHit> dense = metrics.time("dense_search", sourceTag,
-                () -> denseRaw.stream()
-                .filter(hit -> entityResolver.matches(entity, hit.document()))
-                .toList());
+        List<RrfFusion.DenseHit> dense = denseRaw;
         List<SparseIndexService.SparseHit> sparseRaw = config.retrievalMode().usesSparse()
                 ? trace.time("sparse_search", sourceTag, scope,
                     () -> metrics.time("sparse_search", sourceTag,
-                            () -> sparseIndex.search(source, query, config.sparseTopK())))
+                            () -> sparseIndex.search(source, query, config.sparseTopK(),
+                                    source == KnowledgeSource.PLANT && entity.scope().filtersPlantKnowledge()
+                                            ? entity.canonicalPlantIds() : List.of())))
                 : List.of();
         trace.sparse(sparseRaw, scope);
-        List<SparseIndexService.SparseHit> sparse = sparseRaw.stream()
-                        .filter(hit -> entityResolver.matches(entity, hit.document()))
-                        .toList();
+        List<SparseIndexService.SparseHit> sparse = sparseRaw;
         metrics.recordCandidates("dense", sourceTag, dense.size());
         metrics.recordCandidates("sparse", sourceTag, sparse.size());
         List<RetrievalCandidate> result = trace.time("rrf_fusion", sourceTag, scope,
@@ -220,9 +203,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         SearchRequest.Builder requestBuilder = SearchRequest.builder().query(query)
                 .topK(config.denseTopK())
                 .similarityThreshold(config.similarityThreshold());
-        if (source == KnowledgeSource.PLANT && entity.hasResolvedEntities()) {
-            requestBuilder.filterExpression(new FilterExpressionBuilder()
-                    .eq("canonicalPlantId", entity.canonicalPlantId()).build());
+        if (source == KnowledgeSource.PLANT && entity.scope().filtersPlantKnowledge()) {
+            FilterExpressionBuilder filters = new FilterExpressionBuilder();
+            requestBuilder.filterExpression(entity.canonicalPlantIds().size() == 1
+                    ? filters.eq("canonicalPlantId", entity.canonicalPlantId()).build()
+                    : filters.in("canonicalPlantId", entity.canonicalPlantIds().toArray()).build());
         }
         SearchRequest request = requestBuilder.build();
         return trace.time("dense_search", sourceTag, scope,

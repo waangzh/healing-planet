@@ -1,360 +1,200 @@
 package com.healingplanet.ai.retrieval;
 
-import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.RagQuery;
-import com.healingplanet.ai.ingestion.KnowledgeRepository;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
+/** Closed-set entity linker backed by an immutable catalog and indexed fuzzy lookup. */
 @Component
 public class PlantEntityResolver {
-
-    private static final Pattern CARE_ANCHOR = Pattern.compile(
-            "浇水|补水|施肥|修剪|光照|阳光|温度|湿度|肥料|土壤|养护|黄叶|发黄|枯黄|叶片|晒|太阳|浇|补|"
-                    + "根腐|出现|处理|频率|耐阴|喜阴|弱光|强光|直射|状态|异常|判断");
-    private static final Pattern LEADING_MENTION_NOISE = Pattern.compile(
-            "^(?:请问|想问下|我想问|帮我看看|帮我看下|我的|我这盆|这盆|家里的|一盆|一株|这株)+");
-    private static final Pattern LEADING_TIME_CONTEXT = Pattern.compile(
-            "^(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常)(?:给)?");
-    private static final Pattern TRAILING_MENTION_NOISE = Pattern.compile(
-            "(?:(?:每|一)(?:天|周|星期|个星期|月)|平时|平常|应该|应当|需要|适合|是否|"
-                    + "是不是|怎么|如何|多久|多长时间|在什么情况下|什么情况下|要不要|"
-                    + "可以不可以|耐不耐|能不能|不能|能|一直|老|该|什么|的|建议|"
-                    + "出现|处理|频率|日常|状态|异常|判断|情况|里|吗)+$");
-
-    private final PlantCatalogIndex catalogIndex;
-    private final PlantAliasMatcher aliasMatcher;
-    private final PlantCandidateGenerator candidateGenerator;
+    private final PlantCatalogIndex catalog;
+    private final PlantEntityCandidateRetriever candidateRetriever;
     private final PlantEntityDisambiguator disambiguator;
 
-    public PlantEntityResolver(KnowledgeRepository repository) {
-        this(new PlantCatalogIndex(repository, new PlantAliasMatcher()), new PlantAliasMatcher(),
-                new PlantCandidateGenerator(null, null, new RagProperties(), null), null);
-    }
-
     @Autowired
-    public PlantEntityResolver(PlantCatalogIndex catalogIndex,
-                               PlantAliasMatcher aliasMatcher,
-                               PlantCandidateGenerator candidateGenerator,
+    public PlantEntityResolver(PlantCatalogIndex catalog, PlantEntityCandidateRetriever candidateRetriever,
                                PlantEntityDisambiguator disambiguator) {
-        this.catalogIndex = catalogIndex;
-        this.aliasMatcher = aliasMatcher;
-        this.candidateGenerator = candidateGenerator;
+        this.catalog = catalog;
+        this.candidateRetriever = candidateRetriever;
         this.disambiguator = disambiguator;
-    }
-
-    PlantEntityResolver(KnowledgeRepository repository,
-                        VectorStore entityStore,
-                        SparseIndexService sparseIndex,
-                        RagProperties ragProperties,
-                        RetrievalMetrics metrics) {
-        this(repository, entityStore, sparseIndex, ragProperties, metrics, null);
-    }
-
-    PlantEntityResolver(KnowledgeRepository repository,
-                        VectorStore entityStore,
-                        SparseIndexService sparseIndex,
-                        RagProperties ragProperties,
-                        RetrievalMetrics metrics,
-                        PlantEntityDisambiguator disambiguator) {
-        this(new PlantCatalogIndex(repository, new PlantAliasMatcher()), new PlantAliasMatcher(),
-                new PlantCandidateGenerator(entityStore, sparseIndex, ragProperties, metrics), disambiguator);
     }
 
     public Resolution resolve(RetrievalRequest request) {
         RagQuery query = request.query();
-        List<PlantCatalogEntry> entries = catalogIndex.entries();
-        if (query.canonicalPlantId() != null && !query.canonicalPlantId().isBlank()) {
-            return entries.stream()
-                    .filter(entry -> query.canonicalPlantId().equals(entry.canonicalPlantId()))
-                    .findFirst().map(entry -> Resolution.known(entry, ResolutionMethod.EXPLICIT_ID,
-                            1, 0, 1))
-                    .orElseGet(() -> Resolution.unknown("canonical_plant_id_not_found", 0, 0, 0));
-        }
+        PlantCatalogSnapshot snapshot = catalog.snapshot();
+        String normalized = PlantCatalogIndex.normalize(query.query());
+        List<PlantMention> mentions = snapshot.mentionMatcher().find(normalized);
+        String explicitId = query.canonicalPlantId() == null ? "" : query.canonicalPlantId().trim();
+        if (!explicitId.isBlank()) return resolveExplicit(explicitId, mentions, snapshot);
+        if (!mentions.isEmpty()) return resolveMentions(query.query(), mentions, snapshot);
+        if (request.routing().outOfDomain()) return Resolution.outOfDomain();
+        if (request.routing().entityRequirement() == QueryRouter.EntityRequirement.OPTIONAL) return Resolution.generic();
 
-        String normalizedQuery = normalize(query.query());
-        String mentionQuery = stripLeadingMentionNoise(normalizedQuery);
-        String namedSubject = extractPotentialMention(query.query());
-        PlantAliasMatcher.MatchResult aliasMatch = aliasMatcher.match(
-                normalizedQuery, mentionQuery, namedSubject, entries);
-        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.KNOWN) {
-            return Resolution.known(aliasMatch.entries(), aliasMatch.alias()
-                            ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
-                    1, 0, aliasMatch.candidateCount(), aliasMatch.mention());
+        List<PlantEntityCandidateRetriever.Candidate> candidates = candidateRetriever.retrieve(normalized, snapshot);
+        if (candidates.isEmpty()) return Resolution.unknown("no_indexed_entity_candidate", 0, 0, 0);
+        if (candidates.size() == 1 && candidates.get(0).mention().length() >= 3) {
+            PlantEntityCandidateRetriever.Candidate candidate = candidates.get(0);
+            return Resolution.known(List.of(candidate.entry()), ResolutionMethod.FUZZY, candidate.score(), 0,
+                    1, candidate.mention());
         }
-        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.PARTIAL) {
-            return Resolution.partial(aliasMatch.entries(), aliasMatch.unresolvedMentions(), aliasMatch.alias()
-                            ? ResolutionMethod.ALIAS : ResolutionMethod.EXACT_NAME,
-                    1, 0, aliasMatch.candidateCount());
-        }
-        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.CANDIDATES) {
-            return resolveAliasCandidates(query.query(), aliasMatch);
-        }
-        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.AMBIGUOUS) {
-            return Resolution.ambiguous(1, 1, aliasMatch.candidateCount(), aliasMatch.reason());
-        }
-        if (aliasMatch.status() == PlantAliasMatcher.MatchStatus.UNKNOWN) {
-            return Resolution.unknown(aliasMatch.reason(), 1, 0, aliasMatch.candidateCount());
-        }
+        return disambiguateCandidates(query.query(), candidates, "fuzzy_candidates");
+    }
 
-        QueryRouter.RoutingDecision route = request.routing();
-        boolean catalogNameMentioned = aliasMatcher.containsCatalogName(normalizedQuery, entries);
-        if (route.entityRequirement() == QueryRouter.EntityRequirement.OPTIONAL && !catalogNameMentioned) {
-            return Resolution.generic();
+    private Resolution resolveExplicit(String explicitId, List<PlantMention> mentions, PlantCatalogSnapshot snapshot) {
+        PlantCatalogEntry entry = snapshot.byId().get(explicitId);
+        if (entry == null) return Resolution.unknown("canonical_plant_id_not_found", 0, 0, 0);
+        boolean conflicts = mentions.stream().flatMap(mention -> mention.bindings().stream())
+                .anyMatch(binding -> !explicitId.equals(binding.canonicalPlantId()));
+        return conflicts ? Resolution.conflict(entry, mentions) : Resolution.known(entry, ResolutionMethod.EXPLICIT_ID,
+                1, 0, 1);
+    }
+
+    private Resolution resolveMentions(String rawQuery, List<PlantMention> mentions, PlantCatalogSnapshot snapshot) {
+        List<PlantCatalogEntry> resolved = new ArrayList<>();
+        for (PlantMention mention : mentions) {
+            List<PlantCatalogEntry> entries = mention.bindings().stream()
+                    .map(binding -> snapshot.byId().get(binding.canonicalPlantId())).distinct().toList();
+            if (entries.size() == 1) {
+                resolved.add(entries.get(0));
+                continue;
+            }
+            List<PlantEntityCandidateRetriever.Candidate> candidates = entries.stream()
+                    .map(entry -> new PlantEntityCandidateRetriever.Candidate(entry, mention.text(), 1)).toList();
+            Resolution choice = disambiguateCandidates(rawQuery, candidates, "alias_collision");
+            if (choice.kind() != ResolutionKind.KNOWN) return choice;
+            if (mentions.size() == 1) return choice;
+            resolved.addAll(choice.entries(snapshot));
         }
+        List<PlantCatalogEntry> distinct = resolved.stream().distinct().toList();
+        PlantNameType type = mentions.stream().flatMap(mention -> mention.bindings().stream())
+                .map(PlantNameBinding::type).findFirst().orElse(PlantNameType.COMMON_NAME);
+        return Resolution.known(distinct, method(type), 1, 0, distinct.size(), mentions.get(0).text());
+    }
 
-        // A locally extracted subject is the complete mention span. An unmatched
-        // span must not be reduced to a known suffix by semantic retrieval.
-        if (!namedSubject.isBlank()
-                && (isUnregisteredCompoundMention(namedSubject, entries)
-                || route.entityRequirement() == QueryRouter.EntityRequirement.REQUIRED
-                && isReliableLocalMention(namedSubject, entries))) {
-            return Resolution.unknown("entity_not_in_catalog", 0, 0, 0);
+    private Resolution disambiguateCandidates(String rawQuery, List<PlantEntityCandidateRetriever.Candidate> candidates,
+                                              String reason) {
+        double top = candidates.isEmpty() ? 0 : candidates.get(0).score();
+        double second = candidates.size() < 2 ? 0 : candidates.get(1).score();
+        if (disambiguator == null) return Resolution.ambiguous(top, second, candidates.size(), reason);
+        List<PlantEntityDisambiguator.CandidateOption> options = candidates.stream()
+                .map(candidate -> new PlantEntityDisambiguator.CandidateOption(candidate.entry().canonicalPlantId(),
+                        candidate.entry().names(), 0, candidate.score())).toList();
+        PlantEntityDisambiguator.Decision decision = disambiguator.disambiguate(rawQuery,
+                candidates.isEmpty() ? "" : candidates.get(0).mention(), options);
+        if (decision == null || !decision.attempted() || decision.unavailable() || decision.ambiguous()) {
+            return Resolution.ambiguous(top, second, candidates.size(), decision == null ? reason : decision.reason());
         }
-
-        boolean entitySearchAllowed = !route.outOfDomain();
-        List<PlantCandidateGenerator.Candidate> ranked = candidateGenerator.generate(
-                query.query(), normalizedQuery, entries, aliasMatcher.contextualEntryIds(normalizedQuery, entries),
-                entitySearchAllowed);
-        String catalogMention = aliasMatcher.catalogMention(normalizedQuery, ranked);
-        Resolution llmResolution = resolveWithLlm(query.query(),
-                catalogMention.isBlank() ? namedSubject : catalogMention, ranked, entitySearchAllowed);
-        if (llmResolution != null) return llmResolution;
-
-        if (route.outOfDomain()) return Resolution.outOfDomain();
-        String rejectionReason = namedSubject.isBlank()
-                ? "plant_query_without_confirmed_entity"
-                : "no_acceptable_entity_candidate";
-        return Resolution.unknown(rejectionReason, topScore(ranked), secondScore(ranked), ranked.size());
+        if (!decision.known()) return Resolution.unknown(decision.reason(), top, second, candidates.size());
+        return candidates.stream().filter(candidate -> decision.canonicalPlantId()
+                        .equals(candidate.entry().canonicalPlantId())).findFirst()
+                .map(candidate -> Resolution.known(List.of(candidate.entry()), ResolutionMethod.LLM,
+                        decision.confidence(), second, candidates.size(), candidate.mention()))
+                .orElseGet(() -> Resolution.ambiguous(top, second, candidates.size(), "llm_invalid_candidate"));
     }
 
     public boolean matches(Resolution resolution, KnowledgeDocument document) {
-        if (resolution.kind() == ResolutionKind.GENERIC) return true;
-        if (resolution.kind() == ResolutionKind.UNKNOWN || resolution.kind() == ResolutionKind.AMBIGUOUS
-                || resolution.kind() == ResolutionKind.OUT_OF_DOMAIN) return false;
-        if (resolution.canonicalPlantIds().contains(document.canonicalPlantId())) return true;
-        if (document.canonicalPlantId() != null && !document.canonicalPlantId().isBlank()) return false;
-
-        String searchable = normalize(document.plantName() + " " + document.title() + " " + document.content());
-        return resolution.names().stream().anyMatch(searchable::contains);
+        return !resolution.scope().filtersPlantKnowledge()
+                || resolution.canonicalPlantIds().contains(document.canonicalPlantId());
     }
 
-    private String extractPotentialMention(String query) {
-        String normalized = normalize(query).replaceAll("[？?。，,;；！!]", "");
-        Matcher anchor = CARE_ANCHOR.matcher(normalized);
-        while (anchor.find()) {
-            String candidate = normalized.substring(0, anchor.start());
-            candidate = LEADING_MENTION_NOISE.matcher(candidate).replaceFirst("");
-            candidate = LEADING_TIME_CONTEXT.matcher(candidate).replaceFirst("");
-            candidate = candidate.replaceFirst("^给", "");
-            candidate = TRAILING_MENTION_NOISE.matcher(candidate).replaceFirst("");
-            if (!candidate.isBlank() && candidate.length() <= 30) return candidate;
-        }
-        return "";
+    private ResolutionMethod method(PlantNameType type) {
+        return switch (type) {
+            case ALIAS -> ResolutionMethod.ALIAS;
+            case SCIENTIFIC_NAME -> ResolutionMethod.SCIENTIFIC_NAME;
+            case COMMON_NAME -> ResolutionMethod.EXACT_NAME;
+        };
     }
 
-    private String stripLeadingMentionNoise(String query) {
-        return LEADING_MENTION_NOISE.matcher(query).replaceFirst("");
-    }
-
-    private boolean isUnregisteredCompoundMention(String mention, List<PlantCatalogEntry> entries) {
-        boolean exact = entries.stream().anyMatch(entry -> entry.names().contains(mention));
-        if (exact) return false;
-        return entries.stream().flatMap(entry -> entry.names().stream())
-                .filter(name -> name.length() >= 2)
-                .anyMatch(mention::endsWith);
-    }
-
-    private boolean isReliableLocalMention(String mention, List<PlantCatalogEntry> entries) {
-        if (!mention.matches("[\\p{IsHan}]{2,}")) return false;
-        int longestCatalogName = entries.stream().flatMap(entry -> entry.names().stream())
-                .filter(name -> name.matches("[\\p{IsHan}]+"))
-                .mapToInt(String::length).max().orElse(4);
-        return mention.length() <= longestCatalogName + 4;
-    }
-
-    private double topScore(List<PlantCandidateGenerator.Candidate> ranked) {
-        return ranked.isEmpty() ? 0 : ranked.get(0).vectorScore() > 0
-                ? ranked.get(0).vectorScore() : ranked.get(0).characterScore();
-    }
-
-    private double secondScore(List<PlantCandidateGenerator.Candidate> ranked) {
-        if (ranked.size() < 2) return 0;
-        PlantCandidateGenerator.Candidate second = ranked.get(1);
-        return ranked.get(0).vectorScore() > 0 ? second.vectorScore() : second.characterScore();
-    }
-
-    private Resolution resolveAliasCandidates(String rawQuery, PlantAliasMatcher.MatchResult match) {
-        if (disambiguator == null) {
-            return Resolution.ambiguous(1, 1, match.candidateCount(), match.reason());
-        }
-        List<PlantEntityDisambiguator.CandidateOption> options = match.entries().stream()
-                .map(entry -> new PlantEntityDisambiguator.CandidateOption(
-                        entry.canonicalPlantId(), entry.names(), 0, 1))
-                .toList();
-        PlantEntityDisambiguator.Decision decision = disambiguator.disambiguate(
-                rawQuery, match.mention(), options);
-        if (decision == null || !decision.attempted()) {
-            return Resolution.ambiguous(1, 1, match.candidateCount(), match.reason());
-        }
-        if (decision.unavailable() || decision.ambiguous()) {
-            return Resolution.ambiguous(1, 1, match.candidateCount(), decision.reason());
-        }
-        if (!decision.known()) {
-            return Resolution.unknown(decision.reason(), 1, 1, match.candidateCount());
-        }
-        return match.entries().stream()
-                .filter(entry -> entry.canonicalPlantId().equals(decision.canonicalPlantId()))
-                .findFirst()
-                .map(entry -> Resolution.known(entry, ResolutionMethod.LLM,
-                        decision.confidence(), 0, match.candidateCount()))
-                .orElseGet(() -> Resolution.ambiguous(1, 1, match.candidateCount(),
-                        "llm_returned_invalid_candidate"));
-    }
-
-    private Resolution resolveWithLlm(String rawQuery, String namedSubject,
-                                      List<PlantCandidateGenerator.Candidate> ranked,
-                                      boolean entitySearchAllowed) {
-        if (!entitySearchAllowed || disambiguator == null || ranked.isEmpty()) return null;
-        if (namedSubject.isBlank()
-                && ranked.stream().noneMatch(PlantCandidateGenerator.Candidate::hasExactCatalogName)) return null;
-        List<PlantEntityDisambiguator.CandidateOption> options = ranked.stream()
-                .map(candidate -> new PlantEntityDisambiguator.CandidateOption(
-                        candidate.entry().canonicalPlantId(),
-                        candidate.entry().names(),
-                        candidate.vectorScore(),
-                        Math.max(candidate.characterScore(), candidate.sparseScore())))
-                .toList();
-        PlantEntityDisambiguator.Decision decision = disambiguator.disambiguate(rawQuery, namedSubject, options);
-        if (decision == null) {
-            return Resolution.unknown("llm_empty_response", topScore(ranked), secondScore(ranked), ranked.size());
-        }
-        if (!decision.attempted()) return null;
-        if (decision.ambiguous()) {
-            return Resolution.ambiguous(topScore(ranked), secondScore(ranked), ranked.size(), decision.reason());
-        }
-        if (!decision.known()) {
-            return Resolution.unknown(decision.reason(), topScore(ranked), secondScore(ranked), ranked.size());
-        }
-        return ranked.stream()
-                .filter(candidate -> candidate.entry().canonicalPlantId().equals(decision.canonicalPlantId()))
-                .findFirst()
-                .map(candidate -> Resolution.known(candidate.entry(), ResolutionMethod.LLM,
-                        decision.confidence(), ranked.size() > 1 ? topComparableScore(ranked, candidate) : 0, ranked.size()))
-                .orElse(null);
-    }
-
-    private double topComparableScore(List<PlantCandidateGenerator.Candidate> ranked,
-                                      PlantCandidateGenerator.Candidate selected) {
-        return ranked.stream()
-                .filter(candidate -> candidate != selected)
-                .findFirst()
-                .map(candidate -> candidate.vectorScore() > 0 ? candidate.vectorScore() : candidate.characterScore())
-                .orElse(0d);
-    }
-
-    private String normalize(String value) {
-        if (value == null) return "";
-        return Normalizer.normalize(value, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
-    }
-
-    public enum ResolutionKind { GENERIC, KNOWN, PARTIAL, AMBIGUOUS, UNKNOWN, OUT_OF_DOMAIN }
-
-    public enum ResolutionMethod { EXPLICIT_ID, EXACT_NAME, ALIAS, EDIT_DISTANCE, LEXICAL, VECTOR, HYBRID, LLM, NONE }
+    public enum ResolutionKind { GENERIC, KNOWN, PARTIAL, AMBIGUOUS, UNKNOWN, OUT_OF_DOMAIN, CONFLICT }
+    public enum ResolutionMethod { EXPLICIT_ID, EXACT_NAME, SCIENTIFIC_NAME, ALIAS, FUZZY, LLM, NONE }
 
     public record Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
-                             Set<String> names,
-                             ResolutionMethod method, double top1Score, double top2Score,
+                             Set<String> names, ResolutionMethod method, double top1Score, double top2Score,
                              double scoreMargin, int candidateCount, String rejectionReason,
                              List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations,
-                             List<String> unresolvedMentions) {
-        public boolean hasResolvedEntities() {
-            return !canonicalPlantIds.isEmpty();
+                             List<String> unresolvedMentions, PlantScope scope) {
+        public Resolution {
+            canonicalPlantIds = canonicalPlantIds == null ? List.of() : List.copyOf(canonicalPlantIds);
+            names = names == null ? Set.of() : Set.copyOf(names);
+            aliasNormalizations = aliasNormalizations == null ? List.of() : List.copyOf(aliasNormalizations);
+            unresolvedMentions = unresolvedMentions == null ? List.of() : List.copyOf(unresolvedMentions);
+            scope = scope == null ? scopeFor(kind, canonicalPlantIds) : scope;
         }
 
         public Resolution(ResolutionKind kind, String canonicalPlantId, Set<String> names) {
-            this(kind, canonicalPlantId,
-                    canonicalPlantId == null || canonicalPlantId.isBlank() ? List.of() : List.of(canonicalPlantId),
-                    names, ResolutionMethod.NONE, 0, 0, 0, 0, "", List.of(), List.of());
+            this(kind, canonicalPlantId, canonicalPlantId == null || canonicalPlantId.isBlank() ? List.of()
+                    : List.of(canonicalPlantId), names, ResolutionMethod.NONE, 0, 0, 0, 0, "", List.of(),
+                    List.of(), null);
         }
-
         public Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
                           Set<String> names, ResolutionMethod method, double top1Score, double top2Score,
                           double scoreMargin, int candidateCount, String rejectionReason) {
-            this(kind, canonicalPlantId, canonicalPlantIds, names, method, top1Score, top2Score,
-                    scoreMargin, candidateCount, rejectionReason, List.of(), List.of());
+            this(kind, canonicalPlantId, canonicalPlantIds, names, method, top1Score, top2Score, scoreMargin,
+                    candidateCount, rejectionReason, List.of(), List.of(), null);
         }
-
-        static Resolution generic() {
-            return rejected(ResolutionKind.GENERIC, "generic_plant_query", 0, 0, 0);
+        public Resolution(ResolutionKind kind, String canonicalPlantId, List<String> canonicalPlantIds,
+                          Set<String> names, ResolutionMethod method, double top1Score, double top2Score,
+                          double scoreMargin, int candidateCount, String rejectionReason,
+                          List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations,
+                          List<String> unresolvedMentions) {
+            this(kind, canonicalPlantId, canonicalPlantIds, names, method, top1Score, top2Score, scoreMargin,
+                    candidateCount, rejectionReason, aliasNormalizations, unresolvedMentions, null);
         }
-        static Resolution known(PlantCatalogEntry entry, ResolutionMethod method,
-                                double top1Score, double top2Score, int candidateCount) {
-            return known(List.of(entry), method, top1Score, top2Score, candidateCount, "");
+        public boolean hasResolvedEntities() { return !canonicalPlantIds.isEmpty(); }
+        static Resolution known(PlantCatalogEntry entry, ResolutionMethod method, double top1, double top2, int count) {
+            return known(List.of(entry), method, top1, top2, count, "");
         }
         static Resolution known(List<PlantCatalogEntry> entries, ResolutionMethod method,
-                                double top1Score, double top2Score, int candidateCount) {
-            return known(entries, method, top1Score, top2Score, candidateCount, "");
-        }
-        static Resolution known(List<PlantCatalogEntry> entries, ResolutionMethod method,
-                                double top1Score, double top2Score, int candidateCount, String matchedAlias) {
+                                double top1, double top2, int count, String matchedName) {
             List<String> ids = entries.stream().map(PlantCatalogEntry::canonicalPlantId).distinct().toList();
             Set<String> names = entries.stream().flatMap(entry -> entry.names().stream())
                     .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-            List<EntityResolutionDiagnostics.AliasNormalization> aliasNormalizations = method == ResolutionMethod.ALIAS
-                    && matchedAlias != null && !matchedAlias.isBlank()
-                    ? entries.stream().map(entry -> new EntityResolutionDiagnostics.AliasNormalization(
-                            matchedAlias, entry.canonicalPlantId(), entry.canonicalPlantName())).toList()
-                    : List.of();
-            return new Resolution(ResolutionKind.KNOWN, ids.get(0), ids, Set.copyOf(names), method,
-                    top1Score, top2Score, top1Score - top2Score, candidateCount, "", aliasNormalizations, List.of());
+            List<EntityResolutionDiagnostics.AliasNormalization> aliases = method == ResolutionMethod.ALIAS
+                    ? entries.stream().map(entry -> new EntityResolutionDiagnostics.AliasNormalization(matchedName,
+                    entry.canonicalPlantId(), entry.canonicalPlantName())).toList() : List.of();
+            return new Resolution(ResolutionKind.KNOWN, ids.get(0), ids, names, method, top1, top2,
+                    top1 - top2, count, "", aliases, List.of(), PlantScope.hard(ids));
         }
-        static Resolution partial(List<PlantCatalogEntry> entries, List<String> unresolved,
-                                  ResolutionMethod method, double top1Score, double top2Score,
-                                  int candidateCount) {
-            List<String> ids = entries.stream().map(PlantCatalogEntry::canonicalPlantId).distinct().toList();
-            Set<String> names = entries.stream().flatMap(entry -> entry.names().stream())
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-            return new Resolution(ResolutionKind.PARTIAL, ids.isEmpty() ? "" : ids.get(0), ids,
-                    Set.copyOf(names), method, top1Score, top2Score, top1Score - top2Score,
-                    candidateCount, "comparison_entity_unresolved", List.of(), unresolved);
+        static Resolution conflict(PlantCatalogEntry explicit, List<PlantMention> mentions) {
+            return new Resolution(ResolutionKind.CONFLICT, explicit.canonicalPlantId(), List.of(explicit.canonicalPlantId()),
+                    explicit.names(), ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1,
+                    "explicit_canonical_plant_id_conflicts_with_query_mention", List.of(),
+                    mentions.stream().map(PlantMention::text).toList(), PlantScope.conflict(List.of(explicit.canonicalPlantId())));
         }
-        public static Resolution forCanonicalPlantId(String canonicalPlantId) {
-            return new Resolution(ResolutionKind.KNOWN, canonicalPlantId, List.of(canonicalPlantId), Set.of(),
-                    ResolutionMethod.EXPLICIT_ID, 1, 0, 1, 1, "", List.of(), List.of());
+        static Resolution generic() { return rejected(ResolutionKind.GENERIC, "generic_plant_query", 0, 0, 0); }
+        static Resolution ambiguous(double top1, double top2, int count, String reason) {
+            return rejected(ResolutionKind.AMBIGUOUS, reason, top1, top2, count);
+        }
+        static Resolution unknown(String reason, double top1, double top2, int count) {
+            return rejected(ResolutionKind.UNKNOWN, reason, top1, top2, count);
+        }
+        static Resolution outOfDomain() { return rejected(ResolutionKind.OUT_OF_DOMAIN, "out_of_plant_domain", 0, 0, 0); }
+        public static Resolution forCanonicalPlantId(String id) {
+            return new Resolution(ResolutionKind.KNOWN, id, List.of(id), Set.of(), ResolutionMethod.EXPLICIT_ID,
+                    1, 0, 1, 1, "", List.of(), List.of(), PlantScope.hard(List.of(id)));
+        }
+        List<PlantCatalogEntry> entries(PlantCatalogSnapshot snapshot) {
+            return canonicalPlantIds.stream().map(snapshot.byId()::get).filter(java.util.Objects::nonNull).toList();
         }
         public EntityResolutionDiagnostics diagnostics() {
-            return new EntityResolutionDiagnostics(kind.name(), method.name(),
-                    canonicalPlantId == null || canonicalPlantId.isBlank() ? null : canonicalPlantId,
-                    canonicalPlantIds,
-                    top1Score, top2Score, scoreMargin, candidateCount, rejectionReason, aliasNormalizations,
-                    unresolvedMentions);
+            return new EntityResolutionDiagnostics(kind.name(), method.name(), canonicalPlantId == null || canonicalPlantId.isBlank()
+                    ? null : canonicalPlantId, canonicalPlantIds, top1Score, top2Score, scoreMargin, candidateCount,
+                    rejectionReason, aliasNormalizations, unresolvedMentions);
         }
-        static Resolution ambiguous(double top1Score, double top2Score, int candidateCount, String reason) {
-            return rejected(ResolutionKind.AMBIGUOUS, reason, top1Score, top2Score, candidateCount);
+        private static Resolution rejected(ResolutionKind kind, String reason, double top1, double top2, int count) {
+            return new Resolution(kind, "", List.of(), Set.of(), ResolutionMethod.NONE, top1, top2, top1 - top2,
+                    count, reason, List.of(), List.of(), scopeFor(kind, List.of()));
         }
-        static Resolution unknown(String reason, double top1Score, double top2Score, int candidateCount) {
-            return rejected(ResolutionKind.UNKNOWN, reason, top1Score, top2Score, candidateCount);
-        }
-        static Resolution outOfDomain() {
-            return rejected(ResolutionKind.OUT_OF_DOMAIN, "out_of_plant_domain", 0, 0, 0);
-        }
-        private static Resolution rejected(ResolutionKind kind, String reason,
-                                           double top1Score, double top2Score, int candidateCount) {
-            return new Resolution(kind, "", List.of(), Set.of(), ResolutionMethod.NONE, top1Score, top2Score,
-                    top1Score - top2Score, candidateCount, reason, List.of(), List.of());
+        private static PlantScope scopeFor(ResolutionKind kind, List<String> ids) {
+            return kind == ResolutionKind.KNOWN || kind == ResolutionKind.PARTIAL ? PlantScope.hard(ids)
+                    : kind == ResolutionKind.CONFLICT ? PlantScope.conflict(ids) : PlantScope.none();
         }
     }
 }

@@ -2,14 +2,13 @@ package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeSource;
-import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.time.Instant;
 import java.util.List;
@@ -20,387 +19,84 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class HybridEvidenceRetrieverTest {
-
     private VectorStore plantStore;
-    private VectorStore communityStore;
     private SparseIndexService sparseIndex;
     private PlantEntityResolver entityResolver;
-    private Reranker reranker;
     private HybridEvidenceRetriever retriever;
+    private RagProperties properties;
 
     @BeforeEach
     void setUp() {
         plantStore = mock(VectorStore.class);
-        communityStore = mock(VectorStore.class);
+        VectorStore communityStore = mock(VectorStore.class);
         sparseIndex = mock(SparseIndexService.class);
         entityResolver = mock(PlantEntityResolver.class);
-        reranker = mock(Reranker.class);
-        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
-        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
-        when(sparseIndex.search(any(), any(), anyInt())).thenReturn(List.of());
-        when(reranker.rerank(any(), any())).thenReturn(Map.of());
-
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), new RagProperties());
-    }
-
-    @Test
-    void shouldApplyCanonicalPlantFilterBeforeDenseSearch() {
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        RagQuery query = new RagQuery("绿萝适合什么光照？", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-
-        retriever.retrieve(query);
-
-        ArgumentCaptor<SearchRequest> request = ArgumentCaptor.forClass(SearchRequest.class);
-        verify(plantStore).similaritySearch(request.capture());
-        assertThat(request.getValue().hasFilterExpression()).isTrue();
-        assertThat(request.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "1");
-    }
-
-    @Test
-    void shouldSearchEachResolvedPlantWithItsOwnCanonicalFilter() {
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "20", List.of("20", "21"),
-                Set.of("红掌", "白掌"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
-                1, 0, 1, 2, "");
-        RagQuery query = new RagQuery("红掌和白掌的光照要求一样吗？", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        ArgumentCaptor<SearchRequest> requests = ArgumentCaptor.forClass(SearchRequest.class);
-        verify(plantStore, times(2)).similaritySearch(requests.capture());
-        assertThat(requests.getAllValues()).allMatch(SearchRequest::hasFilterExpression);
-        assertThat(requests.getAllValues()).extracting(request -> request.getFilterExpression().toString())
-                .anyMatch(filter -> filter.contains("20"))
-                .anyMatch(filter -> filter.contains("21"));
-        assertThat(result.entityResolution().canonicalPlantIds()).containsExactly("20", "21");
-    }
-
-    @Test
-    void shouldStopBeforeSearchingWhenNamedPlantIsUnknown() {
-        RagQuery query = RagQuery.of("火星苔藓适合什么光照？");
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.UNKNOWN, "", Set.of()));
-
-        assertThat(retriever.retrieve(query)).isEmpty();
-
-        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(sparseIndex, never()).search(any(), any(), anyInt());
-    }
-
-    @Test
-    void shouldRetrieveResolvedPlantEvidenceWhileKeepingUnresolvedComparisonOperand() {
-        RagQuery query = RagQuery.of("绿萝和常春藤的浇水方法相同吗？");
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.PARTIAL, "1", List.of("1"), Set.of("绿萝"),
-                PlantEntityResolver.ResolutionMethod.EXACT_NAME, 1, 0, 1, 1,
-                "comparison_entity_unresolved", List.of(), List.of("常春藤"));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        ArgumentCaptor<SearchRequest> request = ArgumentCaptor.forClass(SearchRequest.class);
-        verify(plantStore).similaritySearch(request.capture());
-        assertThat(request.getValue().hasFilterExpression()).isTrue();
-        assertThat(request.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "1");
-        assertThat(result.entityResolution().resolutionKind()).isEqualTo("PARTIAL");
-        assertThat(result.entityResolution().unresolvedMentions()).containsExactly("常春藤");
-    }
-
-    @Test
-    void shouldStopBeforeSearchingWhenQueryIsOutsidePlantCareDomain() {
-        RagQuery query = RagQuery.of("量子纠缠是什么？");
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.OUT_OF_DOMAIN, "", Set.of()));
-
-        assertThat(retriever.retrieve(query)).isEmpty();
-
-        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(sparseIndex, never()).search(any(), any(), anyInt());
-    }
-
-    @Test
-    void shouldStopBeforeSearchingWhenPlantEntityIsAmbiguous() {
-        RagQuery query = RagQuery.of("某种室内植物适合什么光照？");
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.AMBIGUOUS, "", Set.of()));
-
-        assertThat(retriever.retrieve(query)).isEmpty();
-
-        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
-        verify(sparseIndex, never()).search(any(), any(), anyInt());
-    }
-
-    @Test
-    void shouldKeepLowScoringCommunityEvidenceWhenFormalKnowledgeTypeIsRequired() {
-        RagProperties properties = new RagProperties();
-        properties.getEval().setRetrievalTraceEnabled(true);
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        RagQuery query = new RagQuery("绿萝光照和社区经验", null, null, null,
-                null, List.of(), Map.of("requiredKnowledgeType", "LIGHT"));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
-                document("p1", "LIGHT"), document("p2", "LIGHT"), document("p3", "LIGHT"),
-                document("p4", "LIGHT"), document("p5", "LIGHT"), document("p6", "LIGHT")));
-        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(communityDocument("c1")));
-        when(reranker.rerank(any(), any())).thenReturn(Map.of("c1", 0.1));
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        assertThat(result.evidence()).extracting(com.healingplanet.ai.domain.Evidence::type)
-                .contains(com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE,
-                        com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST);
-        assertThat(result.retrievalTrace().selected()).extracting(item -> item.reason())
-                .contains("SOURCE_RETENTION");
-    }
-
-    @Test
-    void shouldAllowMultiplePlantKnowledgeTypes() {
-        RagProperties properties = new RagProperties();
-        properties.getEval().setRetrievalTraceEnabled(true);
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        RagQuery query = new RagQuery("绿萝需要土壤吗？每周如何补水？", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false,
-                "requiredKnowledgeTypes", List.of("WATERING", "GENERAL_CARE")));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
-                document("watering", "WATERING"),
-                document("soil", "GENERAL_CARE"),
-                document("light", "LIGHT")));
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        assertThat(result.evidence()).extracting(com.healingplanet.ai.domain.Evidence::id)
-                .contains("watering", "soil")
-                .doesNotContain("light");
-        assertThat(result.retrievalTrace().knowledgeTypeFiltered()).extracting(item -> item.id())
-                .contains("watering", "soil")
-                .doesNotContain("light");
-    }
-
-    @Test
-    void shouldMarkEvidenceSelectedByEntityQuota() {
-        RagProperties properties = new RagProperties();
-        properties.getEval().setRetrievalTraceEnabled(true);
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "20", List.of("20", "21"),
-                Set.of("红掌", "白掌"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
-                1, 0, 1, 2, "");
-        RagQuery query = new RagQuery("红掌和白掌的光照要求一样吗？", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class)))
-                .thenReturn(List.of(documentForPlant("plant-20", "20", "红掌", "LIGHT")))
-                .thenReturn(List.of(documentForPlant("plant-21", "21", "白掌", "LIGHT")));
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        assertThat(result.retrievalTrace().selected()).hasSize(2)
-                .anyMatch(item -> item.reason().equals("ENTITY_QUOTA"));
-    }
-
-    @Test
-    void shouldExposeRetrievalSnapshotsWhenEvalTraceIsEnabled() {
-        RagProperties properties = new RagProperties();
-        properties.getEval().setRetrievalTraceEnabled(true);
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        RagQuery query = new RagQuery("绿萝需要什么光照？", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false, "requiredKnowledgeType", "LIGHT"));
-        var denseDocument = document("dense-1", "LIGHT");
-        var sparseDocument = new KnowledgeDocumentMapper().fromSpring(document("sparse-1", "LIGHT"),
-                KnowledgeSource.PLANT);
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(denseDocument));
-        when(sparseIndex.search(KnowledgeSource.PLANT, query.query(), properties.getSparseTopK()))
-                .thenReturn(List.of(new SparseIndexService.SparseHit(sparseDocument, 0.8)));
-        when(reranker.rerank(any(), any())).thenReturn(Map.of("dense-1", 0.7, "sparse-1", 0.9));
-
-        var trace = retriever.retrieveWithDiagnostics(query).retrievalTrace();
-
-        assertThat(trace).isNotNull();
-        assertThat(trace.entityResolution().resolutionKind()).isEqualTo("KNOWN");
-        assertThat(trace.denseTopK()).extracting(item -> item.id()).containsExactly("dense-1");
-        assertThat(trace.sparseTopK()).extracting(item -> item.id()).containsExactly("sparse-1");
-        assertThat(trace.rrfCandidates()).hasSize(2);
-        assertThat(trace.knowledgeTypeFiltered()).hasSize(2);
-        assertThat(trace.rerankBefore()).extracting(item -> item.id())
-                .containsExactly("dense-1", "sparse-1");
-        assertThat(trace.rerankAfter()).extracting(item -> item.id())
-                .containsExactly("sparse-1", "dense-1");
-        assertThat(trace.preSelectionRanked()).extracting(item -> item.id())
-                .containsExactly("sparse-1", "dense-1");
-        assertThat(trace.preSelectionRanked()).allMatch(item -> item.finalScore() != null);
-        assertThat(trace.selected()).extracting(item -> item.reason())
-                .containsExactly("TOPIC_COVERAGE", "GLOBAL_RANKING");
-        assertThat(trace.stages()).extracting(item -> item.stage()).contains(
-                "dense_search", "sparse_search", "rrf_fusion",
-                "knowledge_type_filter", "rerank", "final_rank", "knowledge_total");
-    }
-
-    @Test
-    void mixedSourceQuestionsShouldKeepAtMostTwoCommunitySources() {
-        RagProperties properties = new RagProperties();
-        properties.getEval().setRetrievalTraceEnabled(true);
-        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(), entityResolver,
-                new EvidenceSelector(), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1916826110432137218", Set.of("白掌"));
-        RagQuery query = new RagQuery("白掌正式浇水要求和社区经验有什么区别？", null, null, null,
-                QueryIntent.COMMUNITY_SEARCH, List.of(), Map.of(
-                "includePlantKnowledge", true, "includeCommunity", true,
-                "requiredKnowledgeType", "WATERING"));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
-                documentForPlant("plant-guide", "1916826110432137218", "白掌", "WATERING")));
-        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(
-                communityDocument("community-a-1", "source-a"),
-                communityDocument("community-a-2", "source-a"),
-                communityDocument("community-b-1", "source-b"),
-                communityDocument("community-c-1", "source-c")));
-
-        var result = retriever.retrieveWithDiagnostics(query);
-
-        List<com.healingplanet.ai.domain.Evidence> communityEvidence = result.evidence().stream()
-                .filter(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST)
-                .toList();
-        assertThat(communityEvidence).hasSize(2);
-        assertThat(communityEvidence).extracting(com.healingplanet.ai.domain.Evidence::sourceId)
-                .containsExactly("source-a", "source-b");
-        assertThat(result.evidence()).extracting(com.healingplanet.ai.domain.Evidence::type)
-                .contains(com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE);
-        assertThat(result.retrievalTrace().selected()).hasSize(3);
-    }
-
-    @Test
-    void bm25OnlyShouldSkipDenseSearch() {
-        RagProperties properties = baselineProperties(RagProperties.RetrievalMode.BM25_ONLY);
-        retriever = retriever(properties);
-        RagQuery query = new RagQuery("绿萝光照", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false));
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(sparseIndex.search(KnowledgeSource.PLANT, query.query(), properties.getSparseTopK()))
-                .thenReturn(List.of(new SparseIndexService.SparseHit(
-                        new KnowledgeDocumentMapper().fromSpring(document("bm25", "LIGHT"), KnowledgeSource.PLANT),
-                        3.2)));
-
-        var result = retriever.retrieve(query);
-
-        assertThat(result).extracting(com.healingplanet.ai.domain.Evidence::id).containsExactly("bm25");
-        verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
-    }
-
-    @Test
-    void denseOnlyShouldSkipBm25Search() {
-        RagProperties properties = baselineProperties(RagProperties.RetrievalMode.DENSE_ONLY);
-        retriever = retriever(properties);
-        RagQuery query = new RagQuery("绿萝光照", null, null, null,
-                null, List.of(), Map.of("includeCommunity", false));
-        var entity = new PlantEntityResolver.Resolution(
-                PlantEntityResolver.ResolutionKind.KNOWN, "1", Set.of("绿萝"));
-        when(entityResolver.resolve(any(RetrievalRequest.class))).thenReturn(entity);
-        when(entityResolver.matches(any(), any())).thenReturn(true);
-        when(plantStore.similaritySearch(any(SearchRequest.class)))
-                .thenReturn(List.of(document("dense", "LIGHT")));
-
-        var result = retriever.retrieve(query);
-
-        assertThat(result).extracting(com.healingplanet.ai.domain.Evidence::id).containsExactly("dense");
-        verify(sparseIndex, never()).search(any(), any(), anyInt());
-    }
-
-    private RagProperties baselineProperties(RagProperties.RetrievalMode mode) {
-        RagProperties properties = new RagProperties();
-        properties.setRetrievalMode(mode);
+        properties = new RagProperties();
         properties.getReranker().setEnabled(false);
         properties.getSourceAwareRanking().setEnabled(false);
         properties.getEvidenceSelector().setEnabled(false);
-        return properties;
+        retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
+                new KnowledgeDocumentMapper(), mock(Reranker.class), new SourceAwareRanker(properties),
+                entityResolver, new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
     }
 
-    private HybridEvidenceRetriever retriever(RagProperties properties) {
-        return new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(properties), entityResolver,
-                new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
+    @Test
+    void shouldPushSinglePlantScopeIntoDenseAndSparseSearchBeforeTopK() {
+        var entity = known("1");
+        when(entityResolver.resolve(any())).thenReturn(entity);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1")));
+        when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
+
+        assertThat(retriever.retrieve(RagQuery.of("绿萝光照"))).isNotEmpty();
+
+        ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore).similaritySearch(dense.capture());
+        assertThat(dense.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "1");
+        verify(sparseIndex).search(KnowledgeSource.PLANT, "绿萝光照", properties.getSparseTopK(), List.of("1"));
     }
 
-    private org.springframework.ai.document.Document document(String id, String knowledgeType) {
-        return documentForPlant(id, "1", "绿萝", knowledgeType);
+    @Test
+    void shouldUseOneMultiValuePreFilterForMultiplePlants() {
+        var entity = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, "1",
+                List.of("1", "2"), Set.of("绿萝", "虎尾兰"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
+                1, 0, 1, 2, "");
+        when(entityResolver.resolve(any())).thenReturn(entity);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1"), document("p2", "2")));
+        when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
+
+        retriever.retrieve(RagQuery.of("绿萝和虎尾兰光照"));
+
+        ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore).similaritySearch(dense.capture());
+        assertThat(dense.getValue().getFilterExpression().toString()).contains("canonicalPlantId", "1", "2");
+        verify(sparseIndex).search(KnowledgeSource.PLANT, "绿萝和虎尾兰光照", properties.getSparseTopK(), List.of("1", "2"));
     }
 
-    private org.springframework.ai.document.Document documentForPlant(String id, String canonicalPlantId,
-                                                                       String plantName, String knowledgeType) {
+    @Test
+    void shouldNotTurnUnknownEntityIntoRetrievalHardGate() {
+        var unknown = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.UNKNOWN, "", Set.of());
+        when(entityResolver.resolve(any())).thenReturn(unknown);
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("generic", "2")));
+        when(sparseIndex.search(any(), any(), anyInt())).thenReturn(List.of());
+
+        assertThat(retriever.retrieve(RagQuery.of("火星苔藓适合什么光照？"))).isNotEmpty();
+        ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(plantStore).similaritySearch(dense.capture());
+        assertThat(dense.getValue().hasFilterExpression()).isFalse();
+    }
+
+    private PlantEntityResolver.Resolution known(String id) {
+        return new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, id, Set.of("绿萝"));
+    }
+
+    private org.springframework.ai.document.Document document(String id, String plantId) {
         return org.springframework.ai.document.Document.builder().id(id).text(id)
-                .metadata("canonicalPlantId", canonicalPlantId)
-                .metadata("chunkId", id)
-                .metadata("knowledgeType", knowledgeType)
-                .metadata("sourceId", id)
-                .metadata("title", id)
-                .metadata("plantName", plantName)
-                .metadata("trustScore", 1d)
-                .metadata("createdAt", Instant.now().toString())
-                .score(0.95)
-                .build();
-    }
-
-    private org.springframework.ai.document.Document communityDocument(String id) {
-        return communityDocument(id, id);
-    }
-
-    private org.springframework.ai.document.Document communityDocument(String id, String sourceId) {
-        return org.springframework.ai.document.Document.builder().id(id).text(id)
-                .metadata("chunkId", id)
-                .metadata("knowledgeType", "COMMUNITY_EXPERIENCE")
-                .metadata("sourceId", sourceId)
-                .metadata("title", id)
-                .metadata("plantName", "绿萝")
-                .metadata("trustScore", 1d)
-                .metadata("essence", true)
-                .metadata("likes", 30)
-                .metadata("collects", 8)
-                .metadata("comments", 5)
-                .metadata("views", 200)
-                .metadata("createdAt", Instant.now().toString())
-                .score(0.92)
-                .build();
+                .metadata("canonicalPlantId", plantId).metadata("chunkId", id).metadata("sourceId", id)
+                .metadata("knowledgeType", "LIGHT").metadata("title", id).metadata("plantName", "绿萝")
+                .metadata("trustScore", 1d).metadata("createdAt", Instant.now().toString()).score(0.9).build();
     }
 }

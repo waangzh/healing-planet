@@ -2,7 +2,6 @@ package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -12,8 +11,6 @@ import java.util.regex.Pattern;
 
 @Component
 public class QueryRouter {
-    private final PlantCatalogIndex catalogIndex;
-
     private static final Set<String> STATE_TERMS = Set.of(
             "我的", "我这盆", "这盆", "这株", "这棵", "家里的", "过去一周", "过去7天", "过去24小时", "近24", "近7",
             "最近土壤", "最近温度", "最近湿度", "传感器", "土壤湿度", "温度适合", "环境异常",
@@ -89,15 +86,6 @@ public class QueryRouter {
     private static final Pattern TOPIC_FRAME_CLAUSE = Pattern.compile(
             ".*(?:日常养护|平时养护|平常养护)(?:时|中)?$");
 
-    public QueryRouter() {
-        this(PlantCatalogIndex.empty());
-    }
-
-    @Autowired
-    public QueryRouter(PlantCatalogIndex catalogIndex) {
-        this.catalogIndex = catalogIndex;
-    }
-
     public RoutingDecision route(RagQuery query) {
         String text = query.query() == null ? "" : query.query().toLowerCase(Locale.ROOT);
         RoutingDecision decision;
@@ -130,9 +118,8 @@ public class QueryRouter {
                 || GENERIC_CARE_CONCEPT_QUERY.matcher(compactText).matches();
         boolean genericCommunity = decision.community()
                 && GENERIC_COMMUNITY_QUERY.matcher(compactText).matches();
-        boolean catalogBacked = canonicalPlantId != null && !canonicalPlantId.isBlank()
-                || catalogIndex.containsRegisteredMention(compactText);
-        boolean plantDomain = catalogBacked || genericPlant || isPlantDomainQuery(compactText);
+        boolean plantDomain = canonicalPlantId != null && !canonicalPlantId.isBlank()
+                || genericPlant || isPlantDomainQuery(compactText);
         QueryDomain domain = plantDomain ? QueryDomain.PLANT
                 : isClearlyOutOfDomain(compactText) ? QueryDomain.OUT_OF_DOMAIN : QueryDomain.UNKNOWN;
         boolean generic = genericPlant || genericCommunity;

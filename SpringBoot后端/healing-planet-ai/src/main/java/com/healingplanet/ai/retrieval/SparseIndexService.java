@@ -22,6 +22,7 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -171,6 +172,12 @@ public class SparseIndexService {
     }
 
     public synchronized List<SparseHit> search(KnowledgeSource source, String query, int topK) {
+        return search(source, query, topK, List.of());
+    }
+
+    /** Applies canonicalPlantId constraints inside Lucene before Top-K is selected. */
+    public synchronized List<SparseHit> search(KnowledgeSource source, String query, int topK,
+                                               List<String> canonicalPlantIds) {
         try {
             if (!DirectoryReader.indexExists(directories.get(source))) return List.of();
             try (DirectoryReader reader = DirectoryReader.open(directories.get(source))) {
@@ -178,7 +185,16 @@ public class SparseIndexService {
                 searcher.setSimilarity(similarity);
                 var parser = new QueryParser("searchText", analyzer);
                 var parsed = parser.parse(QueryParser.escape(query));
-                ScoreDoc[] hits = searcher.search(parsed, topK).scoreDocs;
+                org.apache.lucene.search.Query searchQuery = parsed;
+                if (canonicalPlantIds != null && !canonicalPlantIds.isEmpty()) {
+                    BooleanQuery.Builder filtered = new BooleanQuery.Builder().add(parsed, BooleanClause.Occur.MUST);
+                    BooleanQuery.Builder ids = new BooleanQuery.Builder();
+                    canonicalPlantIds.forEach(id -> ids.add(new TermQuery(new Term("canonicalPlantId", id)),
+                            BooleanClause.Occur.SHOULD));
+                    filtered.add(ids.build(), BooleanClause.Occur.FILTER);
+                    searchQuery = filtered.build();
+                }
+                ScoreDoc[] hits = searcher.search(searchQuery, topK).scoreDocs;
                 List<SparseHit> result = new ArrayList<>(hits.length);
                 for (ScoreDoc hit : hits) {
                     result.add(new SparseHit(fromLucene(reader.storedFields().document(hit.doc)), hit.score));
@@ -187,6 +203,30 @@ public class SparseIndexService {
             }
         } catch (Exception e) {
             throw new IllegalStateException("稀疏检索失败", e);
+        }
+    }
+
+    /** Indexed typo lookup for plant names. Query text is a bounded window, never a catalog scan. */
+    public synchronized List<SparseHit> searchEntityNames(String normalizedName, int topK) {
+        if (normalizedName == null || normalizedName.length() < 3) return List.of();
+        try {
+            Directory directory = directories.get(KnowledgeSource.PLANT_ENTITY);
+            if (!DirectoryReader.indexExists(directory)) return List.of();
+            try (DirectoryReader reader = DirectoryReader.open(directory)) {
+                IndexSearcher searcher = new IndexSearcher(reader);
+                searcher.setSimilarity(similarity);
+                int edits = normalizedName.length() <= 4 ? 1 : 2;
+                FuzzyQuery fuzzy = new FuzzyQuery(new Term("entityName", normalizedName), edits, 1,
+                        Math.max(32, topK * 8), true);
+                ScoreDoc[] hits = searcher.search(fuzzy, topK).scoreDocs;
+                List<SparseHit> result = new ArrayList<>(hits.length);
+                for (ScoreDoc hit : hits) {
+                    result.add(new SparseHit(fromLucene(reader.storedFields().document(hit.doc)), hit.score));
+                }
+                return result;
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("植物实体模糊检索失败", e);
         }
     }
 
@@ -200,6 +240,12 @@ public class SparseIndexService {
         document.add(new StringField("id", source.id(), Field.Store.YES));
         document.add(new TextField("searchText", source.title() + "\n" + source.content() + "\n" +
                 source.plantName() + "\n" + String.join(" ", source.tags()), Field.Store.NO));
+        if (source.source() == KnowledgeSource.PLANT_ENTITY) {
+            String names = source.attributes().getOrDefault("normalizedNames", "");
+            for (String name : names.split("\\|")) {
+                if (!name.isBlank()) document.add(new StringField("entityName", name, Field.Store.NO));
+            }
+        }
         put(document, "source", source.source().name());
         put(document, "sourceId", source.sourceId());
         put(document, "title", source.title());

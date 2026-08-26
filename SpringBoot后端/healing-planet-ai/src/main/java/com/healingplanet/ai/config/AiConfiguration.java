@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import io.micrometer.observation.ObservationRegistry;
@@ -31,9 +32,15 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Clock;
 import java.util.Map;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import io.qdrant.client.grpc.Collections.PayloadSchemaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Configuration
 public class AiConfiguration {
+    private static final Logger log = LoggerFactory.getLogger(AiConfiguration.class);
 
     @Bean("ragClock")
     @Profile("!eval")
@@ -49,6 +56,26 @@ public class AiConfiguration {
             builder.withApiKey(qdrant.getApiKey());
         }
         return new QdrantClient(builder.build());
+    }
+
+    /** Safe for existing collections: Qdrant keeps an already-created keyword field index. */
+    @Bean
+    ApplicationRunner canonicalPlantIdPayloadIndexes(QdrantClient client, RagProperties properties) {
+        return ignored -> {
+            for (String collection : List.of(properties.getQdrant().getPlantCollection(),
+                    properties.getQdrant().getDiseaseCollection())) {
+                try {
+                    if (!client.collectionExistsAsync(collection).get(10, TimeUnit.SECONDS)) continue;
+                    if (client.getCollectionInfoAsync(collection).get(10, TimeUnit.SECONDS)
+                            .containsPayloadSchema("canonicalPlantId")) continue;
+                    client.createPayloadIndexAsync(collection, "canonicalPlantId", PayloadSchemaType.Keyword,
+                            null, null, null, Duration.ofSeconds(10)).get(10, TimeUnit.SECONDS);
+                } catch (Exception exception) {
+                    log.warn("Unable to ensure canonicalPlantId payload index for Qdrant collection {}", collection,
+                            exception);
+                }
+            }
+        };
     }
 
     @Bean("plantVectorStore")
