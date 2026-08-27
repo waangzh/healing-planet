@@ -10,12 +10,15 @@ import java.util.Objects;
 public record SourcePlan(SourceRequirement knowledge, SourceRequirement community, SourceRequirement state) {
 
     public enum SourceRequirement {
-        OFF,
-        OPTIONAL,
+        /** Access is denied by an explicit user, permission, or safety constraint. */
+        FORBIDDEN,
+        /** The source may participate in broad retrieval and later evidence selection. */
+        ALLOWED,
+        /** The query cannot be answered safely without attempting this source. */
         REQUIRED;
 
         public boolean enabled() {
-            return this != OFF;
+            return this != FORBIDDEN;
         }
 
         public boolean required() {
@@ -24,19 +27,9 @@ public record SourcePlan(SourceRequirement knowledge, SourceRequirement communit
     }
 
     public SourcePlan {
-        knowledge = Objects.requireNonNullElse(knowledge, SourceRequirement.OFF);
-        community = Objects.requireNonNullElse(community, SourceRequirement.OFF);
-        state = Objects.requireNonNullElse(state, SourceRequirement.OFF);
-    }
-
-    public static SourcePlan of(boolean knowledge, boolean community, boolean state) {
-        return new SourcePlan(knowledge ? SourceRequirement.OPTIONAL : SourceRequirement.OFF,
-                community ? SourceRequirement.OPTIONAL : SourceRequirement.OFF,
-                state ? SourceRequirement.REQUIRED : SourceRequirement.OFF);
-    }
-
-    public static SourcePlan off() {
-        return new SourcePlan(SourceRequirement.OFF, SourceRequirement.OFF, SourceRequirement.OFF);
+        knowledge = Objects.requireNonNullElse(knowledge, SourceRequirement.FORBIDDEN);
+        community = Objects.requireNonNullElse(community, SourceRequirement.FORBIDDEN);
+        state = Objects.requireNonNullElse(state, SourceRequirement.FORBIDDEN);
     }
 
     public boolean includeKnowledge() {

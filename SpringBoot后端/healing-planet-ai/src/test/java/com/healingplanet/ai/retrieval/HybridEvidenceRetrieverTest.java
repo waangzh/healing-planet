@@ -3,6 +3,9 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.domain.QueryIntent;
+import com.healingplanet.ai.query.QueryAnalysis;
+import com.healingplanet.ai.query.RetrievalConstraints;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -53,7 +56,7 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1")));
         when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
 
-        assertThat(retriever.retrieve(RagQuery.of("绿萝光照"))).isNotEmpty();
+        assertThat(retriever.retrieve(request("绿萝光照"))).isNotEmpty();
 
         ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
         verify(plantStore).similaritySearch(dense.capture());
@@ -70,7 +73,7 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1"), document("p2", "2")));
         when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
 
-        retriever.retrieve(RagQuery.of("绿萝和虎尾兰光照"));
+        retriever.retrieve(request("绿萝和虎尾兰光照"));
 
         ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
         verify(plantStore).similaritySearch(dense.capture());
@@ -84,7 +87,7 @@ class HybridEvidenceRetrieverTest {
         when(entityResolver.resolve(any())).thenReturn(unknown);
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("generic", "2")));
 
-        assertThat(retriever.retrieve(RagQuery.of("火星苔藓适合什么光照？"))).isEmpty();
+        assertThat(retriever.retrieve(request("火星苔藓适合什么光照？"))).isEmpty();
         verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
         verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
         verify(sparseIndex, never()).search(any(), any(), anyInt());
@@ -98,7 +101,7 @@ class HybridEvidenceRetrieverTest {
             org.mockito.Mockito.reset(plantStore, communityStore, sparseIndex, entityResolver);
             when(entityResolver.resolve(any())).thenReturn(new PlantEntityResolver.Resolution(kind, "", Set.of()));
 
-            assertThat(retriever.retrieve(RagQuery.of("万年青需要什么光照？"))).as(kind.name()).isEmpty();
+            assertThat(retriever.retrieve(request("万年青需要什么光照？"))).as(kind.name()).isEmpty();
             verify(plantStore, never()).similaritySearch(any(SearchRequest.class));
             verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
         }
@@ -111,7 +114,7 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("generic", "2")));
         when(sparseIndex.search(any(), any(), anyInt())).thenReturn(List.of());
 
-        assertThat(retriever.retrieve(RagQuery.of("什么植物比较耐阴？"))).isNotEmpty();
+        assertThat(retriever.retrieve(request("什么植物比较耐阴？"))).isNotEmpty();
         ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
         verify(plantStore).similaritySearch(dense.capture());
         assertThat(dense.getValue().hasFilterExpression()).isFalse();
@@ -126,7 +129,7 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p2", "2")));
         when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
 
-        retriever.retrieve(RagQuery.of("虎尾蓝多久浇水？"));
+        retriever.retrieve(request("虎尾蓝多久浇水？"));
 
         ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
         verify(plantStore).similaritySearch(dense.capture());
@@ -143,12 +146,37 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1")));
         when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
 
-        assertThat(retriever.retrieve(RagQuery.of("绿萝和常春藤的光照要求一样吗？"))).isNotEmpty();
+        assertThat(retriever.retrieve(request("绿萝和常春藤的光照要求一样吗？"))).isNotEmpty();
         verify(communityStore, never()).similaritySearch(any(SearchRequest.class));
+    }
+
+    @Test
+    void topicHintMustBoostButNeverFilterAnOtherwiseRelevantCandidate() {
+        when(entityResolver.resolve(any())).thenReturn(known("1"));
+        org.springframework.ai.document.Document temperatureGuide = org.springframework.ai.document.Document.builder()
+                .id("temperature").text("temperature")
+                .metadata("canonicalPlantId", "1").metadata("chunkId", "temperature")
+                .metadata("sourceId", "temperature").metadata("knowledgeType", "TEMPERATURE")
+                .metadata("title", "temperature").metadata("plantName", "绿萝")
+                .metadata("trustScore", 1d).metadata("createdAt", Instant.now().toString()).score(0.9).build();
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(temperatureGuide));
+        when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
+
+        assertThat(retriever.retrieve(request("绿萝光照"))).isNotEmpty();
     }
 
     private PlantEntityResolver.Resolution known(String id) {
         return new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, id, Set.of("绿萝"));
+    }
+
+    private RetrievalRequest request(String text) {
+        RagQuery query = RagQuery.of(text);
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.ALLOWED, SourcePlan.SourceRequirement.ALLOWED);
+        return new RetrievalRequest(query, new QueryAnalysis(QueryIntent.GENERAL_CARE, Set.of(),
+                KnowledgeTopicClassifier.classify(text), false, 0.9d), RetrievalConstraints.defaults(),
+                new RetrievalPlan(sourcePlan, true, true, false, Set.of(),
+                        KnowledgeTopicClassifier.classify(text), text), null, text);
     }
 
     private org.springframework.ai.document.Document document(String id, String plantId) {

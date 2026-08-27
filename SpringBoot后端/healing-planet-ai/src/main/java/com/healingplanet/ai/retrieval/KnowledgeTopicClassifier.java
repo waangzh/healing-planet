@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
  * retriever. Rules are grouped by concept so routing and entity parsing share
  * one interpretation of care-related phrases.
  */
-final class KnowledgeTopicClassifier {
+public final class KnowledgeTopicClassifier {
     private static final List<TopicRule> RULES = List.of(
             new TopicRule("LIGHT", Pattern.compile(
                     "光照|日照|采光|光线|阳光|太阳|明亮|阴暗|背阴|遮阴|散射光?|直射光?|弱光|强光|烈日|暴晒|曝晒|晒")),
@@ -32,7 +32,7 @@ final class KnowledgeTopicClassifier {
     private KnowledgeTopicClassifier() {
     }
 
-    static Set<String> classify(String query) {
+    public static Set<String> classify(String query) {
         String text = normalize(query);
         Set<String> topics = new LinkedHashSet<>();
         for (TopicRule rule : RULES) {

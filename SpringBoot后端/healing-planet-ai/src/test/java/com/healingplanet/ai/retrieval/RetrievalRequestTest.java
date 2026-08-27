@@ -8,8 +8,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class RetrievalRequestTest {
-    private final QueryRouter router = new QueryRouter();
-
     @Test
     void shouldRecognizeHumiditySynonymsAsHumidityTopic() {
         assertThat(List.of(
@@ -38,7 +36,6 @@ class RetrievalRequestTest {
     }
 
     private List<String> requiredKnowledgeTypes(String query) {
-        RetrievalRequest request = RetrievalRequest.from(RagQuery.of(query), router.route(RagQuery.of(query)));
-        return request.requiredKnowledgeTypes().stream().toList();
+        return KnowledgeTopicClassifier.classify(query).stream().toList();
     }
 }

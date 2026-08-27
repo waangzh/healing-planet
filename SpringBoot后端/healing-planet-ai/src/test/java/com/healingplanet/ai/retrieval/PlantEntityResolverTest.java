@@ -198,7 +198,7 @@ class PlantEntityResolverTest {
     }
 
     private PlantEntityResolver.Resolution resolve(RagQuery query) {
-        return resolver.resolve(RetrievalRequest.from(query, new QueryRouter().route(query)));
+        return resolver.resolveQuery(query);
     }
 
     private KnowledgeRepository.PlantEntityRow plant(String id, String scientific, String common, String... aliases) {

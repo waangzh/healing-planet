@@ -45,12 +45,12 @@ public class EvidenceSelector {
 
         SelectionState state = new SelectionState(maxEvidenceItems, request.sourcePlan(),
                 config.mixedSourceCommunityLimit());
-        Set<String> requiredTypes = request.requiredKnowledgeTypes();
+        Set<String> topicHints = request.topicHints();
 
         retainSourceCoverage(ranked, state);
-        retainRequiredTopicCoverage(ranked, requiredTypes, state);
+        retainTopicHintCoverage(ranked, topicHints, state);
         retainEntityCoverage(ranked, canonicalPlantIds, state);
-        if (requiredTypes.isEmpty() && request.routing().intent() == com.healingplanet.ai.domain.QueryIntent.GENERAL_CARE) {
+        if (topicHints.isEmpty() && request.analysis().intentHint() == com.healingplanet.ai.domain.QueryIntent.GENERAL_CARE) {
             retainBroadCareCoverage(ranked, state);
         }
         ranked.forEach(evidence -> state.add(evidence, "GLOBAL_RANKING"));
@@ -80,11 +80,11 @@ public class EvidenceSelector {
         }
     }
 
-    private void retainRequiredTopicCoverage(List<Evidence> ranked, Set<String> requiredTypes,
-                                             SelectionState state) {
-        for (String type : requiredTypes) {
+    private void retainTopicHintCoverage(List<Evidence> ranked, Set<String> topicHints,
+                                         SelectionState state) {
+        for (String type : topicHints) {
             ranked.stream().filter(this::isPlant).filter(evidence -> type.equals(knowledgeType(evidence)))
-                    .findFirst().ifPresent(evidence -> state.add(evidence, "TOPIC_COVERAGE"));
+                    .findFirst().ifPresent(evidence -> state.add(evidence, "TOPIC_HINT_COVERAGE"));
         }
     }
 

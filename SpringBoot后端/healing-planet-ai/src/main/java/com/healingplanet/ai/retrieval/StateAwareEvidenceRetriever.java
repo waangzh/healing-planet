@@ -5,8 +5,8 @@ import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
 import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.Evidence;
-import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.RetrievalTrace;
+import com.healingplanet.ai.query.StateNeed;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -16,24 +16,20 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 @Primary
 @Service
 public class StateAwareEvidenceRetriever implements EvidenceRetriever {
-    private final QueryRouter router;
     private final HybridEvidenceRetriever knowledgeRetriever;
     private final PlantStateRetriever stateRetriever;
     private final RetrievalMetrics metrics;
     private final RagProperties properties;
     private final RagRuntimeConfigProvider runtimeConfigProvider;
 
-    @Autowired
-    public StateAwareEvidenceRetriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,
-                                       PlantStateRetriever stateRetriever, RetrievalMetrics metrics,
-                                       RagProperties properties, RagRuntimeConfigProvider runtimeConfigProvider) {
-        this.router = router;
+    public StateAwareEvidenceRetriever(HybridEvidenceRetriever knowledgeRetriever, PlantStateRetriever stateRetriever,
+                                       RetrievalMetrics metrics, RagProperties properties,
+                                       RagRuntimeConfigProvider runtimeConfigProvider) {
         this.knowledgeRetriever = knowledgeRetriever;
         this.stateRetriever = stateRetriever;
         this.metrics = metrics;
@@ -41,30 +37,15 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         this.runtimeConfigProvider = runtimeConfigProvider;
     }
 
-    StateAwareEvidenceRetriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,
+    StateAwareEvidenceRetriever(HybridEvidenceRetriever knowledgeRetriever,
                                 PlantStateRetriever stateRetriever, RetrievalMetrics metrics) {
-        this(router, knowledgeRetriever, stateRetriever, metrics, new RagProperties(),
+        this(knowledgeRetriever, stateRetriever, metrics, new RagProperties(),
                 new RagRuntimeConfigProvider(new RagProperties()));
     }
 
-    StateAwareEvidenceRetriever(QueryRouter router, HybridEvidenceRetriever knowledgeRetriever,
+    StateAwareEvidenceRetriever(HybridEvidenceRetriever knowledgeRetriever,
                                 PlantStateRetriever stateRetriever, RetrievalMetrics metrics, RagProperties properties) {
-        this(router, knowledgeRetriever, stateRetriever, metrics, properties, new RagRuntimeConfigProvider(properties));
-    }
-
-    @Override
-    public List<Evidence> retrieve(RagQuery query) {
-        return retrieveWithDiagnostics(query).evidence();
-    }
-
-    @Override
-    public RetrievalResult retrieveWithDiagnostics(RagQuery query) {
-        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
-        RetrievalTraceCollector trace = new RetrievalTraceCollector(
-                properties.getEval().isRetrievalTraceEnabled());
-        RetrievalRequest request = trace.time("query_route", "all", "all",
-                () -> RetrievalRequest.from(query, router.route(query)));
-        return retrieveWithDiagnostics(request, trace, runtimeSnapshot);
+        this(knowledgeRetriever, stateRetriever, metrics, properties, new RagRuntimeConfigProvider(properties));
     }
 
     @Override
@@ -82,7 +63,6 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     private RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RetrievalTraceCollector trace,
                                                     RagRuntimeSnapshot runtimeSnapshot) {
-        RagRuntimeConfig config = runtimeSnapshot.config();
         RetrievalPayload payload = trace.time("retrieve_total", "all", "all",
                 () -> metrics.time("retrieve_total", "all", () -> retrieveTimed(request, trace, runtimeSnapshot)));
         RetrievalResult result = payload.result();
@@ -100,19 +80,14 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     private RetrievalPayload retrieveTimed(RetrievalRequest request, RetrievalTraceCollector trace,
                                            RagRuntimeSnapshot runtimeSnapshot) {
-        RagRuntimeConfig config = runtimeSnapshot.config();
-        if (request.routing().outOfDomain()) {
-            return new RetrievalPayload(new RetrievalResult(List.of(), null), request);
-        }
-        QueryRouter.RoutingDecision route = request.routing();
-        List<Evidence> state = route.state()
+        List<Evidence> state = request.plan().searchState()
                 ? trace.time("state_search", "state", "all",
                         () -> metrics.time("state_search", "state", () -> stateRetriever.retrieve(request.query())))
                 : List.of();
-        state = state.stream().filter(item -> stateEvidenceRequired(route.stateEvidenceNeed(), item)).toList();
+        state = state.stream().filter(item -> stateEvidenceRequired(request.stateNeeds(), item)).toList();
         RetrievalRequest routed = routedRequest(request, state);
         List<Evidence> result = new ArrayList<>(state);
-        RetrievalResult knowledge = route.knowledge() || route.community()
+        RetrievalResult knowledge = routed.plan().searchKnowledge() || routed.plan().searchCommunity()
                 ? knowledgeRetriever.retrieveWithDiagnostics(routed, runtimeSnapshot) : new RetrievalResult(List.of(), null);
         if (knowledge == null) {
             knowledge = knowledgeRetriever.retrieveWithDiagnostics(routed);
@@ -126,15 +101,12 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
                 knowledge.retrievalTrace()), routed);
     }
 
-    private boolean stateEvidenceRequired(QueryRouter.StateEvidenceNeed need, Evidence evidence) {
-        return switch (Objects.requireNonNullElse(need, QueryRouter.StateEvidenceNeed.STATE_DECISION)) {
-            case STATE_FACT_HISTORY -> evidence.type() == com.healingplanet.ai.domain.EvidenceType.SENSOR_HISTORY;
-            case STATE_FACT_CURRENT, STATE_FRESHNESS -> evidence.type() == com.healingplanet.ai.domain.EvidenceType.LIVE_STATE;
-            case STATE_DECISION -> evidence.type() == com.healingplanet.ai.domain.EvidenceType.LIVE_STATE;
-            case STATE_DECISION_WITH_HISTORY -> evidence.type() == com.healingplanet.ai.domain.EvidenceType.LIVE_STATE
-                    || evidence.type() == com.healingplanet.ai.domain.EvidenceType.SENSOR_HISTORY;
-            case NONE -> false;
-        };
+    private boolean stateEvidenceRequired(Set<StateNeed> needs, Evidence evidence) {
+        boolean liveRequired = needs.contains(StateNeed.CURRENT) || needs.contains(StateNeed.FRESHNESS)
+                || needs.contains(StateNeed.DECISION_SUPPORT);
+        return evidence.type() == com.healingplanet.ai.domain.EvidenceType.LIVE_STATE && liveRequired
+                || evidence.type() == com.healingplanet.ai.domain.EvidenceType.SENSOR_HISTORY
+                && needs.contains(StateNeed.HISTORY);
     }
 
     private RetrievalRequest routedRequest(RetrievalRequest request, List<Evidence> state) {

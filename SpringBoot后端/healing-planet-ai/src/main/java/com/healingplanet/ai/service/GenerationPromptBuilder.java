@@ -2,9 +2,8 @@ package com.healingplanet.ai.service;
 
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.Evidence;
-import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalRequest;
-import com.healingplanet.ai.retrieval.SourcePlan;
+import com.healingplanet.ai.query.StateNeed;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -28,12 +27,8 @@ public class GenerationPromptBuilder {
             11. 状态决策安全规则：若状态证据标明“已超过30分钟，不能视为实时读数”，陈旧性优先于阈值判断；不得基于该读数输出“现在需要/不需要浇水”或其他即时处理结论。只能说明该读数距当前的分钟数、它已失去实时决策资格，并要求刷新读数后再判断。
             """;
 
-    public String build(QueryRouter.RoutingDecision decision) {
-        return BASE_PROMPT + "\n" + intentPolicy(decision, decision.sourcePlan(), List.of());
-    }
-
     public String build(RetrievalRequest request, List<Evidence> evidence) {
-        return BASE_PROMPT + "\n" + intentPolicy(request.routing(), request.sourcePlan(), evidence);
+        return BASE_PROMPT + "\n" + evidencePolicy(request, evidence);
     }
 
     public String build(RetrievalRequest request, List<Evidence> evidence,
@@ -57,65 +52,67 @@ public class GenerationPromptBuilder {
                         - 回答必须明确说明当前按最接近的目录植物限定检索，不得断言用户输入就是该标准植物。
                         """ : "";
         return BASE_PROMPT + "\n" + unresolvedPolicy + conflictPolicy + softPolicy
-                + intentPolicy(request.routing(), request.sourcePlan(), evidence);
+                + evidencePolicy(request, evidence);
     }
 
-    private String intentPolicy(QueryRouter.RoutingDecision decision, SourcePlan sourcePlan,
-                                List<Evidence> evidence) {
-        if (decision.intent() == QueryIntent.PERSONAL_CARE) {
-            String stateRule = switch (decision.stateEvidenceNeed()) {
-                case STATE_DECISION_WITH_HISTORY -> """
-                        - 当前问题需要历史支撑时，必须同时说明当前值和最相关的近24小时趋势；不能只引用其中一项。
-                        """;
-                case STATE_FACT_HISTORY -> """
-                        - 回答历史趋势题时，除趋势方向外，若证据给出了对应窗口平均值，也要一并说明。
-                        """;
-                case STATE_DECISION -> """
-                        - 若当前读数仍在已配置范围内，且数据未过期，不得仅因缺少上次操作时间而拒答；应直接说明当前值仍在范围内，因此不建议立即重复处理。
-                        """;
-                default -> "";
-            };
+    private String evidencePolicy(RetrievalRequest request, List<Evidence> evidence) {
+        EvidenceProfile profile = EvidenceProfile.from(evidence);
+        if (profile.hasCurrentState() || profile.hasHistory()) {
+            String stateRule = request.stateNeeds().contains(StateNeed.DECISION_SUPPORT)
+                    && request.stateNeeds().contains(StateNeed.HISTORY) ? """
+                    - 当前问题需要历史支撑时，必须同时说明当前值和最相关的近24小时趋势；不能只引用其中一项。
+                    """ : request.stateNeeds().contains(StateNeed.HISTORY) ? """
+                    - 回答历史趋势题时，除趋势方向外，若证据给出了对应窗口平均值，也要一并说明。
+                    """ : request.stateNeeds().contains(StateNeed.DECISION_SUPPORT) ? """
+                    - 若当前读数仍在已配置范围内，且数据未过期，不得仅因缺少上次操作时间而拒答；应直接说明当前值仍在范围内，因此不建议立即重复处理。
+                    """ : "";
             return """
-                    当前意图：PERSONAL_CARE。
-                    - 可以结合实时状态、历史趋势、阈值和正式指南推导，但只使用当前问题相关的传感器项与指南。
+                    当前证据：实时状态或传感器历史。
+                    - 可以结合实际状态、历史趋势、阈值和正式指南推导，但只使用当前问题相关的传感器项与指南。
                     - 不得枚举无关传感器，不得把缺失数据视为正常。
                     - 仅当用户询问数据时效性，或时效性会改变当前结论时，说明采集时间与陈旧状态。
                     %s""".formatted(stateRule);
         }
-        boolean hasFormalEvidence = evidence.stream().anyMatch(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.CARE_GUIDE);
-        boolean hasCommunityEvidence = evidence.stream().anyMatch(item -> item.type() == com.healingplanet.ai.domain.EvidenceType.COMMUNITY_POST);
-        if (evidence.isEmpty()) {
-            hasFormalEvidence = sourcePlan.includeKnowledge();
-            hasCommunityEvidence = sourcePlan.includeCommunity();
+        if (profile.hasFormalKnowledge() && profile.hasCommunity()) {
+            return mixedSourcePolicy();
         }
-        if (hasFormalEvidence && hasCommunityEvidence) {
-            return """
-                    当前证据：正式指南与社区经验并存。
-                    - 分别以“正式指南”和“社区经验”陈述对应内容并分别引用，不得混写来源。
-                    - 社区内容必须明确标注为帖子作者或社区用户的个人经验，不得表述为正式结论。
-                    - 两类证据冲突时，以正式指南为准，并明确说明这一优先级。
-                    - “正式指南”部分只能使用正式养护证据；即使社区说法与指南相近，也不得把社区证据补入或改写成正式指南。
-                    - 若某个来源中的证据先给出判断、再给出直接对应的具体表现或例子，回答时保留这条最关键的具体表现，不要只复述抽象判断。
-                    - 每一部分只回答用户在该来源下明确询问的事实。
-                    """;
-        }
-        if (hasCommunityEvidence) {
-            return """
-                    当前证据：社区经验。
-                    - 仅回答用户明确询问的社区内容，并明确标注为帖子作者或社区用户的个人经验。
-                    - 不得把社区经验升级为正式指南、通用结论或确定性建议。
-                    - 不得把“容易出现”“耐阴”“有助于”“建议先观察”等表述加强成确定因果、绝对禁忌或普遍适用规则。
-                    - 若社区证据用具体现象解释结论，优先带出最关键的现象，不要只重复抽象标签。
-                    - 用户没有要求来源比较时，不主动补充正式养护知识或当前植株状态。
-                    """;
-        }
-        if (decision.intent() == QueryIntent.DISEASE_DIAGNOSIS) {
-            return """
-                    当前意图：DISEASE_DIAGNOSIS。
-                    - 视觉结果只能表述为候选观察，不能单独作为确诊或处理依据。
-                    - 处理建议必须有可信病害知识支持；状态与一致性证据只用于问题相关的辅助判断。
-                    """;
-        }
+        if (profile.hasCommunity()) return communityPolicy();
+        if (request.analysis().intentHint() == QueryIntent.DISEASE_DIAGNOSIS) return diseasePolicy();
+        return generalCarePolicy();
+    }
+
+    private String mixedSourcePolicy() {
+        return """
+                当前证据：正式指南与社区经验并存。
+                - 分别以“正式指南”和“社区经验”陈述对应内容并分别引用，不得混写来源。
+                - 社区内容必须明确标注为帖子作者或社区用户的个人经验，不得表述为正式结论。
+                - 两类证据冲突时，以正式指南为准，并明确说明这一优先级。
+                - “正式指南”部分只能使用正式养护证据；即使社区说法与指南相近，也不得把社区证据补入或改写成正式指南。
+                - 若某个来源中的证据先给出判断、再给出直接对应的具体表现或例子，回答时保留这条最关键的具体表现，不要只复述抽象判断。
+                - 每一部分只回答用户在该来源下明确询问的事实。
+                """;
+    }
+
+    private String communityPolicy() {
+        return """
+                当前证据：社区经验。
+                - 仅回答用户明确询问的社区内容，并明确标注为帖子作者或社区用户的个人经验。
+                - 不得把社区经验升级为正式指南、通用结论或确定性建议。
+                - 不得把“容易出现”“耐阴”“有助于”“建议先观察”等表述加强成确定因果、绝对禁忌或普遍适用规则。
+                - 若社区证据用具体现象解释结论，优先带出最关键的现象，不要只重复抽象标签。
+                - 用户没有要求来源比较时，不主动补充正式养护知识或当前植株状态。
+                """;
+    }
+
+    private String diseasePolicy() {
+        return """
+                当前意图：DISEASE_DIAGNOSIS。
+                - 视觉结果只能表述为候选观察，不能单独作为确诊或处理依据。
+                - 处理建议必须有可信病害知识支持；状态与一致性证据只用于问题相关的辅助判断。
+                """;
+    }
+
+    private String generalCarePolicy() {
         return """
                 当前意图：GENERAL_CARE。
                 - 仅使用与问题主题直接相关的正式养护知识回答。
@@ -123,4 +120,5 @@ public class GenerationPromptBuilder {
                 - 不得引用或扩写问题未涉及的养护主题。
                 """;
     }
+
 }

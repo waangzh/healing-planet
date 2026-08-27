@@ -10,11 +10,14 @@ import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.RagResponse;
 import com.healingplanet.ai.domain.RetrievalTrace;
 import com.healingplanet.ai.retrieval.EvidenceRetriever;
-import com.healingplanet.ai.retrieval.QueryRouter;
 import com.healingplanet.ai.retrieval.RetrievalResult;
 import com.healingplanet.ai.retrieval.RetrievalMetrics;
 import com.healingplanet.ai.retrieval.RetrievalRequest;
+import com.healingplanet.ai.retrieval.RetrievalRequestFactory;
 import com.healingplanet.ai.domain.EvidenceType;
+import com.healingplanet.ai.evaluation.Answerability;
+import com.healingplanet.ai.evaluation.AnswerabilityEvaluator;
+import com.healingplanet.ai.query.StateNeed;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,103 +32,77 @@ public class RagService {
     private final PromptContextBuilder contextBuilder;
     private final GenerationPromptBuilder promptBuilder;
     private final ChatClient chatClient;
-    private final QueryRouter queryRouter;
+    private final RetrievalRequestFactory requestFactory;
+    private final AnswerabilityEvaluator answerabilityEvaluator;
     private final RetrievalMetrics metrics;
     private final RagRuntimeConfigProvider runtimeConfigProvider;
     private final RagChatOptions chatOptions;
 
     @Autowired
     public RagService(EvidenceRetriever retriever, PromptContextBuilder contextBuilder,
-                      GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter,
+                      GenerationPromptBuilder promptBuilder, ChatClient chatClient,
+                      RetrievalRequestFactory requestFactory, AnswerabilityEvaluator answerabilityEvaluator,
                       RetrievalMetrics metrics, RagRuntimeConfigProvider runtimeConfigProvider,
                       RagChatOptions chatOptions) {
         this.retriever = retriever;
         this.contextBuilder = contextBuilder;
         this.promptBuilder = promptBuilder;
         this.chatClient = chatClient;
-        this.queryRouter = queryRouter;
+        this.requestFactory = requestFactory;
+        this.answerabilityEvaluator = answerabilityEvaluator;
         this.metrics = metrics;
         this.runtimeConfigProvider = runtimeConfigProvider;
         this.chatOptions = chatOptions;
     }
 
-    public RagService(EvidenceRetriever retriever, PromptContextBuilder contextBuilder,
-                      GenerationPromptBuilder promptBuilder, ChatClient chatClient, QueryRouter queryRouter,
-                      RetrievalMetrics metrics) {
-        this(retriever, contextBuilder, promptBuilder, chatClient, queryRouter, metrics,
-                new RagRuntimeConfigProvider(new RagProperties()), new RagChatOptions());
-    }
-
     public RagResponse chat(RagQuery query) {
         RagRuntimeConfig config = runtimeConfigProvider.snapshot();
-        QueryRouter.RoutingDecision decision = queryRouter.route(query);
-        RetrievalRequest request = RetrievalRequest.from(query, decision);
-        if (decision.outOfDomain()) {
-            return new RagResponse(outOfScopeAnswer(), List.of(), null, routingOnlyTrace(request));
-        }
-        String validation = validateStateQuery(query, decision);
+        RetrievalRequest request = requestFor(query);
+        String validation = validateStateQuery(query, request);
         if (validation != null) return new RagResponse(validation, List.of());
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
-        String entityGuard = entityGuardAnswer(retrieval.entityResolution());
-        if (entityGuard != null) {
-            return new RagResponse(entityGuard, List.of(), retrieval.entityResolution(), retrieval.retrievalTrace());
-        }
-        if (missingStateEvidence(decision, evidence)) {
-            return new RagResponse("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。", evidence,
-                    retrieval.entityResolution(), retrieval.retrievalTrace());
-        }
-        String staleStateDecision = staleStateDecisionAnswer(decision, evidence);
-        if (staleStateDecision != null) {
-            return new RagResponse(staleStateDecision, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
-        }
-        if (evidence.isEmpty()) return new RagResponse(emptyEvidenceAnswer(retrieval), List.of(),
-                retrieval.entityResolution(), retrieval.retrievalTrace());
+        AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
+                retrieval.entityResolution());
+        RetrievalTrace trace = withAnswerability(retrieval.retrievalTrace(), assessment);
+        String safeAnswer = safeAnswer(request, retrieval, evidence, assessment);
+        if (safeAnswer != null) return new RagResponse(safeAnswer,
+                assessment.result() == Answerability.ENTITY_AMBIGUOUS
+                        || assessment.result() == Answerability.ENTITY_CONFLICT
+                        || assessment.result() == Answerability.ENTITY_UNKNOWN ? List.of() : evidence,
+                retrieval.entityResolution(), trace);
         String answer = metrics.time("answer_generation", "llm", () ->
                 chatClient.prompt().options(chatOptions.from(config))
                         .system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).call().content());
-        return new RagResponse(answer, evidence, retrieval.entityResolution(), retrieval.retrievalTrace());
+        return new RagResponse(answer, evidence, retrieval.entityResolution(), trace);
     }
 
     public RagStream stream(RagQuery query) {
         RagRuntimeConfig config = runtimeConfigProvider.snapshot();
-        QueryRouter.RoutingDecision decision = queryRouter.route(query);
-        RetrievalRequest request = RetrievalRequest.from(query, decision);
-        if (decision.outOfDomain()) {
-            return new RagStream(List.of(), null, routingOnlyTrace(request), Flux.just(outOfScopeAnswer()));
-        }
-        String validation = validateStateQuery(query, decision);
+        RetrievalRequest request = requestFor(query);
+        String validation = validateStateQuery(query, request);
         if (validation != null) return new RagStream(List.of(), Flux.just(validation));
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
-        String entityGuard = entityGuardAnswer(retrieval.entityResolution());
-        if (entityGuard != null) {
-            return new RagStream(List.of(), retrieval.entityResolution(), retrieval.retrievalTrace(), Flux.just(entityGuard));
-        }
-        if (missingStateEvidence(decision, evidence)) {
-            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
-                    Flux.just("暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。"));
-        }
-        String staleStateDecision = staleStateDecisionAnswer(decision, evidence);
-        if (staleStateDecision != null) {
-            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
-                    Flux.just(staleStateDecision));
-        }
-        if (evidence.isEmpty()) {
-            return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(),
-                    Flux.just(emptyEvidenceAnswer(retrieval)));
-        }
+        AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
+                retrieval.entityResolution());
+        RetrievalTrace trace = withAnswerability(retrieval.retrievalTrace(), assessment);
+        String safeAnswer = safeAnswer(request, retrieval, evidence, assessment);
+        if (safeAnswer != null) return new RagStream(
+                assessment.result() == Answerability.ENTITY_AMBIGUOUS
+                        || assessment.result() == Answerability.ENTITY_CONFLICT
+                        || assessment.result() == Answerability.ENTITY_UNKNOWN ? List.of() : evidence,
+                retrieval.entityResolution(), trace, Flux.just(safeAnswer));
         Flux<String> content = metrics.timeFlux("answer_generation", "llm", () ->
                 chatClient.prompt().options(chatOptions.from(config))
                         .system(promptBuilder.build(request, evidence, retrieval.entityResolution()))
                         .user(userPrompt(query.query(), evidence, retrieval.entityResolution())).stream().content());
-        return new RagStream(evidence, retrieval.entityResolution(), retrieval.retrievalTrace(), content);
+        return new RagStream(evidence, retrieval.entityResolution(), trace, content);
     }
 
     public List<Evidence> search(RagQuery query) {
-        RetrievalResult result = retriever.retrieveWithDiagnostics(
-                RetrievalRequest.from(query, queryRouter.route(query)));
+        RetrievalResult result = retriever.retrieveWithDiagnostics(requestFor(query));
         return entityGuardAnswer(result.entityResolution()) == null ? result.evidence() : List.of();
     }
 
@@ -172,35 +149,23 @@ public class RagService {
         return "这个问题不属于当前植物养护知识库的可回答范围。";
     }
 
-    private RetrievalTrace routingOnlyTrace(RetrievalRequest request) {
-        return new RetrievalTrace(request.routingSnapshot(), null, List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of());
-    }
-
     private boolean isEntityResolutionDependencyFailure(String reason) {
-        return reason.startsWith("llm_disambiguation_")
+        return reason != null && (reason.startsWith("llm_disambiguation_")
                 || reason.equals("llm_connect_timeout") || reason.equals("llm_read_timeout")
                 || reason.equals("llm_connection_failed") || reason.startsWith("llm_http_")
-                || reason.equals("llm_invalid_json");
+                || reason.equals("llm_invalid_json"));
     }
 
-    private String validateStateQuery(RagQuery query, QueryRouter.RoutingDecision decision) {
-        if (!decision.state()) return null;
+    private String validateStateQuery(RagQuery query, RetrievalRequest request) {
+        if (!request.plan().searchState()) return null;
         if (query.userId() == null) return "个体化状态分析需要 userId，用于校验植物归属。";
         if (query.plantInstanceId() == null) return "个体化状态分析需要 plantInstanceId，请先选择要分析的植物。";
         return null;
     }
 
-    private boolean missingStateEvidence(QueryRouter.RoutingDecision decision, List<Evidence> evidence) {
-        if (!decision.state()) return false;
-        EvidenceType required = decision.stateEvidenceNeed() == QueryRouter.StateEvidenceNeed.STATE_FACT_HISTORY
-                ? EvidenceType.SENSOR_HISTORY : EvidenceType.LIVE_STATE;
-        return evidence.stream().noneMatch(item -> item.type() == required);
-    }
-
-    private String staleStateDecisionAnswer(QueryRouter.RoutingDecision decision, List<Evidence> evidence) {
-        if (decision.intent() != com.healingplanet.ai.domain.QueryIntent.PERSONAL_CARE
-                || !requiresImmediateStateDecision(decision.stateEvidenceNeed())) return null;
+    private String staleStateDecisionAnswer(RetrievalRequest request, List<Evidence> evidence) {
+        if (!request.stateNeeds().contains(StateNeed.DECISION_SUPPORT)
+                && !request.stateNeeds().contains(StateNeed.FRESHNESS)) return null;
         for (int index = 0; index < evidence.size(); index++) {
             Evidence item = evidence.get(index);
             if (item.type() != EvidenceType.LIVE_STATE || !Boolean.TRUE.equals(item.metadata().get("stale"))) continue;
@@ -214,10 +179,29 @@ public class RagService {
         return null;
     }
 
-    private boolean requiresImmediateStateDecision(QueryRouter.StateEvidenceNeed need) {
-        return need == QueryRouter.StateEvidenceNeed.STATE_DECISION
-                || need == QueryRouter.StateEvidenceNeed.STATE_DECISION_WITH_HISTORY
-                || need == QueryRouter.StateEvidenceNeed.STATE_FRESHNESS;
+    private RetrievalRequest requestFor(RagQuery query) {
+        return requestFactory.create(query);
+    }
+
+    private String safeAnswer(RetrievalRequest request, RetrievalResult retrieval, List<Evidence> evidence,
+                              AnswerabilityEvaluator.Assessment assessment) {
+        if (retrieval.entityResolution() != null
+                && isEntityResolutionDependencyFailure(retrieval.entityResolution().rejectionReason())) {
+            return "植物名称识别服务暂时不可用，请稍后重试。";
+        }
+        return switch (assessment.result()) {
+            case ANSWERABLE -> null;
+            case ENTITY_CONFLICT, ENTITY_AMBIGUOUS, ENTITY_UNKNOWN -> entityGuardAnswer(retrieval.entityResolution());
+            case STATE_UNAVAILABLE -> "暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。";
+            case STATE_STALE -> staleStateDecisionAnswer(request, evidence);
+            case OUT_OF_SCOPE -> outOfScopeAnswer();
+            case INSUFFICIENT_EVIDENCE -> emptyEvidenceAnswer(retrieval);
+        };
+    }
+
+    private RetrievalTrace withAnswerability(RetrievalTrace trace, AnswerabilityEvaluator.Assessment assessment) {
+        return trace == null ? null : trace.withAnswerability(new RetrievalTrace.AnswerabilitySnapshot(
+                assessment.result().name(), assessment.reason()));
     }
 
     public record RagStream(List<Evidence> evidence, EntityResolutionDiagnostics entityResolution,

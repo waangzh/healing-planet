@@ -4,6 +4,8 @@ import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.query.QueryAnalysis;
+import com.healingplanet.ai.query.RetrievalConstraints;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,7 +24,7 @@ class EvidenceSelectorTest {
                 Map.of("includeCommunity", false, "requiredKnowledgeTypes", List.of("LIGHT", "HUMIDITY")));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.OFF, Set.of("LIGHT", "HUMIDITY")), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN, Set.of("LIGHT", "HUMIDITY")), List.of(
                 guide("light-best", "plant-1", "LIGHT", 0.95),
                 guide("light-duplicate", "plant-1", "LIGHT", 0.90),
                 guide("humidity-best", "plant-1", "HUMIDITY", 0.85)), 6, List.of("plant-1"));
@@ -30,7 +32,7 @@ class EvidenceSelectorTest {
         assertThat(result.evidence()).extracting(Evidence::id)
                 .containsExactly("light-best", "humidity-best");
         assertThat(result.reasons()).containsEntry("light-best", "SOURCE_RETENTION")
-                .containsEntry("humidity-best", "TOPIC_COVERAGE");
+                .containsEntry("humidity-best", "TOPIC_HINT_COVERAGE");
     }
 
     @Test
@@ -39,7 +41,7 @@ class EvidenceSelectorTest {
                 Map.of("includeCommunity", false));
 
         EvidenceSelector.Selection result = selector.select(request(query,
-                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.OFF, Set.of()), List.of(
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN, Set.of()), List.of(
                 guide("general-1", "plant-1", "GENERAL_CARE", 0.99),
                 guide("general-2", "plant-1", "GENERAL_CARE", 0.98),
                 guide("light", "plant-1", "LIGHT", 0.80),
@@ -109,9 +111,10 @@ class EvidenceSelectorTest {
 
     private RetrievalRequest request(RagQuery query, SourcePlan.SourceRequirement knowledge,
                                      SourcePlan.SourceRequirement community, Set<String> types) {
-        SourcePlan sourcePlan = new SourcePlan(knowledge, community, SourcePlan.SourceRequirement.OFF);
-        QueryRouter.RoutingDecision routing = new QueryRouter.RoutingDecision(sourcePlan,
-                QueryIntent.GENERAL_CARE, QueryRouter.StateEvidenceNeed.NONE);
-        return new RetrievalRequest(query, routing, sourcePlan, query.query(), types);
+        SourcePlan statePlan = new SourcePlan(knowledge, community, SourcePlan.SourceRequirement.FORBIDDEN);
+        QueryIntent intent = query.intent() == null ? QueryIntent.GENERAL_CARE : query.intent();
+        return new RetrievalRequest(query, new QueryAnalysis(intent, Set.of(), types, false, 0.9d),
+                RetrievalConstraints.defaults(), new RetrievalPlan(statePlan, statePlan.includeKnowledge(),
+                statePlan.includeCommunity(), false, Set.of(), types, query.query()), null, query.query());
     }
 }

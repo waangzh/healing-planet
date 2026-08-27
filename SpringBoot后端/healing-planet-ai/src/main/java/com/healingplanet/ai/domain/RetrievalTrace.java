@@ -14,8 +14,9 @@ public record RetrievalTrace(
         List<CandidateSnapshot> rerankAfter,
         List<CandidateSnapshot> preSelectionRanked,
         List<SelectionSnapshot> selected,
-        List<StageSnapshot> stages
-) {
+        List<StageSnapshot> stages,
+        AnswerabilitySnapshot answerability
+    ) {
     public RetrievalTrace {
         denseTopK = copy(denseTopK);
         sparseTopK = copy(sparseTopK);
@@ -28,11 +29,27 @@ public record RetrievalTrace(
         stages = copy(stages);
     }
 
+    public RetrievalTrace(RoutingSnapshot routing, EntityResolutionDiagnostics entityResolution,
+                          List<CandidateSnapshot> denseTopK, List<CandidateSnapshot> sparseTopK,
+                          List<CandidateSnapshot> rrfCandidates, List<CandidateSnapshot> knowledgeTypeFiltered,
+                          List<CandidateSnapshot> rerankBefore, List<CandidateSnapshot> rerankAfter,
+                          List<CandidateSnapshot> preSelectionRanked, List<SelectionSnapshot> selected,
+                          List<StageSnapshot> stages) {
+        this(routing, entityResolution, denseTopK, sparseTopK, rrfCandidates, knowledgeTypeFiltered, rerankBefore,
+                rerankAfter, preSelectionRanked, selected, stages, null);
+    }
+
     public RetrievalTrace withRouting(RoutingSnapshot value, List<StageSnapshot> precedingStages) {
         List<StageSnapshot> combined = new ArrayList<>(copy(precedingStages));
         combined.addAll(stages);
         return new RetrievalTrace(value, entityResolution, denseTopK, sparseTopK, rrfCandidates,
-                knowledgeTypeFiltered, rerankBefore, rerankAfter, preSelectionRanked, selected, combined);
+                knowledgeTypeFiltered, rerankBefore, rerankAfter, preSelectionRanked, selected, combined,
+                answerability);
+    }
+
+    public RetrievalTrace withAnswerability(AnswerabilitySnapshot value) {
+        return new RetrievalTrace(routing, entityResolution, denseTopK, sparseTopK, rrfCandidates,
+                knowledgeTypeFiltered, rerankBefore, rerankAfter, preSelectionRanked, selected, stages, value);
     }
 
     private static <T> List<T> copy(List<T> values) {
@@ -53,7 +70,10 @@ public record RetrievalTrace(
             String requiredKnowledgeTypes,
             String knowledgeRequirement,
             String communityRequirement,
-            String stateRequirement
+            String stateRequirement,
+            String stateNeeds,
+            String topicHints,
+            Double plantDomainConfidence
     ) { }
 
     public record CandidateSnapshot(
@@ -81,6 +101,8 @@ public record RetrievalTrace(
             String reason,
             Double finalScore
     ) { }
+
+    public record AnswerabilitySnapshot(String result, String reason) { }
 
     public record StageSnapshot(
             String stage,

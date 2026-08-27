@@ -81,7 +81,7 @@ class SparseIndexServiceTest {
                 new PlantEntityCandidateRetriever(index, properties), mock(PlantEntityDisambiguator.class), properties);
         RagQuery query = RagQuery.of("虎尾蓝多久浇水？");
 
-        var resolution = resolver.resolve(RetrievalRequest.from(query, new QueryRouter().route(query)));
+        var resolution = resolver.resolveQuery(query);
 
         assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.KNOWN);
         assertThat(resolution.canonicalPlantId()).isEqualTo("2");

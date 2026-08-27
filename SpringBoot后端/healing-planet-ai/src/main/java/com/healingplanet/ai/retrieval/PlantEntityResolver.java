@@ -4,6 +4,7 @@ import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.query.QueryLexicon;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -36,18 +37,29 @@ public class PlantEntityResolver {
     }
 
     public Resolution resolve(RetrievalRequest request) {
-        RagQuery query = request.query();
+        if (request.entityResolution() != null) return request.entityResolution();
+        return resolveQuery(request.query());
+    }
+
+    /** Entity ownership is independent of query routing and can be resolved once upstream. */
+    public Resolution resolveQuery(RagQuery query) {
         PlantCatalogSnapshot snapshot = catalog.snapshot();
         String normalized = PlantCatalogIndex.normalize(query.query());
         List<PlantMention> mentions = snapshot.mentionMatcher().find(normalized);
         String explicitId = query.canonicalPlantId() == null ? "" : query.canonicalPlantId().trim();
         if (!explicitId.isBlank()) return resolveExplicit(explicitId, mentions, snapshot);
         if (!mentions.isEmpty()) return resolveMentions(query.query(), normalized, mentions, snapshot);
-        if (request.routing().outOfDomain()) return Resolution.outOfDomain();
-        if (request.routing().entityRequirement() == QueryRouter.EntityRequirement.OPTIONAL) return Resolution.generic();
-
         List<PlantEntityCandidateRetriever.Candidate> candidates = candidateRetriever.retrieve(normalized, snapshot);
+        if (candidates.isEmpty()) {
+            return isGenericOrNonEntityQuery(normalized) ? Resolution.generic()
+                    : Resolution.unknown("no_indexed_entity_candidate", 0, 0, 0);
+        }
         return resolveFuzzy(query.query(), candidates);
+    }
+
+    private boolean isGenericOrNonEntityQuery(String normalized) {
+        return normalized.contains("什么植物") || normalized.contains("哪些植物") || normalized.contains("哪种植物")
+                || normalized.startsWith("植物") || !QueryLexicon.containsAny(normalized, QueryLexicon.PLANT_DOMAIN);
     }
 
     private Resolution resolveExplicit(String explicitId, List<PlantMention> mentions, PlantCatalogSnapshot snapshot) {
