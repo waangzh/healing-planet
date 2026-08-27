@@ -36,35 +36,21 @@
 ## 架构概览
 
 ```text
-                         ┌─────────────────────────────────────────────┐
-  POST /api/rag/chat ───▶│ QueryRouter（意图路由）                       │
-  POST /api/rag/diagnose─▶  GENERAL_CARE / PERSONAL_CARE /               │
-                         │  COMMUNITY_SEARCH / DISEASE_DIAGNOSIS         │
-                         └───────────────┬─────────────────────────────┘
-                                         │
-              ┌──────────────────────────┼──────────────────────────┐
-              ▼                          ▼                          ▼
-   ┌────────────────────┐   ┌────────────────────────┐   ┌─────────────────────┐
-   │ 稠密检索            │   │ 稀疏检索                │   │ 状态/视觉证据        │
-   │ BGE-M3 + Qdrant    │   │ Lucene BM25 中文 n-gram  │   │ PlantStateClient    │
-   └────────────────────┘   └────────────────────────┘   │ DiseaseDetectorClient│
-              │                          │              └─────────────────────┘
-              └──────────┬───────────────┘                          │
-                         ▼                                          ▼
-                 ┌──────────────┐                    ┌─────────────────────────┐
-                 │ RRF 融合      │                    │ PlantStateAnalyzer      │
-                 │ + BGE reranker│                    │ SensorConsistencyAnalyzer│
-                 └──────┬───────┘                    └────────────┬────────────┘
-                        └───────────────┬─────────────────────────┘
-                                        ▼
-                        ┌───────────────────────────────┐
-                        │ PromptContextBuilder（证据分区）│
-                        └───────────────┬───────────────┘
-                                        ▼
-                        ┌───────────────────────────────┐
-                        │ OpenAI 兼容 LLM（带 [E1] 引用）│
-                        └───────────────────────────────┘
+Query
+  -> QueryAnalyzer + ExplicitConstraintParser
+  -> PlantEntityResolver
+  -> RetrievalPlanner（每个请求只生成一次计划）
+  -> StateAwareEvidenceRetriever
+       -> Dense + BM25 + RRF + 可选 reranker
+       -> PlantStateClient / PlantStateAnalyzer
+  -> SourceAwareRanker + EvidenceSelector
+  -> AnswerabilityEvaluator
+  -> GenerationPromptBuilder + PromptContextBuilder
+  -> OpenAI 兼容 LLM（带 [E1] 引用）
 ```
+
+显式来源禁止、权限、实体冲突和安全规则仍是 hard constraint；领域、主题和来源相关性预测只作为
+planning / coverage hint。宽召回之后由 Evidence 的相关性、必需来源覆盖和状态完整性决定是否可回答。
 
 ## 核心特性
 
@@ -82,7 +68,9 @@
 
 ### 第二阶段 · 个体化状态感知
 
-- 规则型 Query Router 区分普通养护、社区检索和个体化状态问题；调用方也可显式传 `intent`。
+- `QueryAnalyzer` 只产生可复用的 soft hint；普通的“温度/湿度/现在/它”不会单独升级为状态检索。
+- `CURRENT / HISTORY / FRESHNESS / DECISION_SUPPORT` 是可组合需求；纯历史问题不会被强制追加实时状态。
+- 调用方显式传入的 `COMMUNITY_SEARCH` 作为兼容信号，将社区来源设为 `REQUIRED`，不会被静默忽略。
 - `GET /internal/plant-state/{plantInstanceId}` 聚合最新读数、近 24 小时 / 7 天统计与趋势、设备阈值。
 - AI 服务使用有限超时的内部 HTTP 客户端按需拉取，不把瞬时状态写入向量库。
 - `PlantStateAnalyzer` 将原始指标确定性转换为 `LIVE_STATE` 与 `SENSOR_HISTORY` Evidence。
@@ -315,8 +303,10 @@ src/main/java/com/healingplanet/ai/
 │   └── ...
 ├── config/                           # 配置（AiConfiguration、RagProperties）
 ├── domain/                           # 领域模型（Evidence、RagResponse 等）
+├── query/                            # Query Analysis、显式约束、可组合状态需求
 ├── ingestion/                        # 知识文档摄取与转换
-├── retrieval/                        # 混合检索、重排序、状态/一致性分析
+├── retrieval/                        # 实体解析、检索计划、混合检索、排序与 Evidence 选择
+├── evaluation/                       # 检索后 Answerability / Safe Outcome
 └── service/                          # RAG 编排、多模态诊断、提示构建
 ```
 
@@ -326,7 +316,7 @@ src/main/java/com/healingplanet/ai/
 mvn test
 ```
 
-单元测试只覆盖关键纯逻辑：语义文档转换、RRF 融合、路由、状态分析和提示注入隔离。外部 MySQL、Qdrant、IoT、embedding、reranker 与 LLM 的连通性由部署环境健康检查负责。
+单元测试覆盖 Query Analysis、显式约束、实体解析、RRF、topic coverage、状态分析、Evidence relevance、Answerability 和提示注入隔离。外部 MySQL、Qdrant、IoT、embedding、reranker 与 LLM 的连通性由部署环境健康检查负责。
 
 ## 可观测性
 

@@ -151,7 +151,7 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
-    void topicHintMustBoostButNeverFilterAnOtherwiseRelevantCandidate() {
+    void topicHintCoverageMustNotCreateAFakeRerankScore() {
         when(entityResolver.resolve(any())).thenReturn(known("1"));
         org.springframework.ai.document.Document temperatureGuide = org.springframework.ai.document.Document.builder()
                 .id("temperature").text("temperature")
@@ -162,7 +162,11 @@ class HybridEvidenceRetrieverTest {
         when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(temperatureGuide));
         when(sparseIndex.search(any(), any(), any(Integer.class), any())).thenReturn(List.of());
 
-        assertThat(retriever.retrieve(request("绿萝光照"))).isNotEmpty();
+        var evidence = retriever.retrieve(request("绿萝光照"));
+
+        assertThat(evidence).hasSize(1);
+        assertThat(evidence.get(0).rerankScore()).isNull();
+        assertThat(evidence.get(0).finalScore()).isGreaterThan(0.05d);
     }
 
     private PlantEntityResolver.Resolution known(String id) {

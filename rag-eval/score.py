@@ -40,12 +40,18 @@ RETRIEVAL_TOP_K = 10
 CITATION_PATTERN = re.compile(r"\[E(\d+)\]")
 SAFE_REFUSAL_OUTCOMES = {
     "INSUFFICIENT_KNOWLEDGE", "STATE_UNAVAILABLE", "REQUIRE_USER_ID", "REQUIRE_PLANT_INSTANCE",
-    "OUT_OF_SCOPE",
+    "OUT_OF_SCOPE", "SAFE_REFUSAL",
 }
 ROUTING_TRACE_FIELDS = {
     "schemaVersion", "includeKnowledge", "includeCommunity", "includeState", "inputIntent", "resolvedIntent", "domain",
     "entityRequirement", "stateEvidenceNeed", "searchQuery", "knowledgeRequirement",
-    "communityRequirement", "stateRequirement",
+    "communityRequirement", "stateRequirement", "stateNeeds", "topicHints", "plantDomainConfidence",
+}
+SOURCE_REQUIREMENTS = {"ALLOWED", "FORBIDDEN", "REQUIRED"}
+STATE_NEEDS = {"CURRENT", "HISTORY", "FRESHNESS", "DECISION_SUPPORT"}
+ANSWERABILITY_RESULTS = {
+    "ANSWERABLE", "INSUFFICIENT_EVIDENCE", "ENTITY_AMBIGUOUS", "ENTITY_CONFLICT", "ENTITY_UNKNOWN",
+    "STATE_UNAVAILABLE", "STATE_STALE", "OUT_OF_SCOPE", "REQUIRE_USER_ID", "REQUIRE_PLANT_INSTANCE",
 }
 ENTITY_DEPENDENCY_FAILURES = {
     "llm_connect_timeout", "llm_read_timeout", "llm_connection_failed", "llm_invalid_json",
@@ -144,20 +150,20 @@ def load_judgments(path: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"Judge 结果 {path}:{line_number} 不是有效 JSON：{exc}") from exc
             if not isinstance(row, dict) or not row.get("case_id"):
                 raise ValueError(f"Judge 结果 {path}:{line_number} 必须包含非空 case_id")
-            if row.get("schema_version") == 3:
+            if row.get("schema_version") == 4:
                 metric_name = row.get("metric")
                 status = row.get("status")
                 if metric_name not in JUDGE_RESPONSE_CONTRACTS:
-                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 metric 无效")
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v4 metric 无效")
                 if not isinstance(row.get("content_fingerprint"), str) \
                         or not isinstance(row.get("input_fingerprint"), str):
-                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 fingerprint 无效")
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v4 fingerprint 无效")
                 if status not in {"ok", "error"}:
-                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 status 无效")
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v4 status 无效")
                 if status == "ok" and not isinstance(row.get("result"), dict):
-                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 result 无效")
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v4 result 无效")
                 if status == "error" and not isinstance(row.get("error"), str):
-                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v3 error 无效")
+                    raise ValueError(f"Judge 结果 {path}:{line_number} 的 v4 error 无效")
             rows.append(row)
     return rows
 
@@ -197,6 +203,22 @@ def predict_outcome(raw: dict[str, Any]) -> str:
     if rejection_reason.startswith(("llm_disambiguation_", "llm_http_")) \
             or rejection_reason in ENTITY_DEPENDENCY_FAILURES:
         return "ENTITY_RESOLUTION_UNAVAILABLE"
+    answerability = retrieval_trace(raw).get("answerability")
+    structured_result = answerability.get("result") if isinstance(answerability, dict) else None
+    structured_outcomes = {
+        "ANSWERABLE": "ANSWER",
+        "INSUFFICIENT_EVIDENCE": "INSUFFICIENT_KNOWLEDGE",
+        "STATE_UNAVAILABLE": "STATE_UNAVAILABLE",
+        "STATE_STALE": "SAFE_REFUSAL",
+        "OUT_OF_SCOPE": "OUT_OF_SCOPE",
+        "ENTITY_AMBIGUOUS": "INSUFFICIENT_KNOWLEDGE",
+        "ENTITY_CONFLICT": "INSUFFICIENT_KNOWLEDGE",
+        "ENTITY_UNKNOWN": "INSUFFICIENT_KNOWLEDGE",
+        "REQUIRE_USER_ID": "REQUIRE_USER_ID",
+        "REQUIRE_PLANT_INSTANCE": "REQUIRE_PLANT_INSTANCE",
+    }
+    if structured_result in structured_outcomes:
+        return structured_outcomes[structured_result]
     answer = normalized_text(raw["answer"])
     if "个体化状态分析需要userid" in answer:
         return "REQUIRE_USER_ID"
@@ -204,9 +226,6 @@ def predict_outcome(raw: dict[str, Any]) -> str:
         return "REQUIRE_PLANT_INSTANCE"
     if "无法获取这盆植物的最新状态" in answer and "不能可靠判断" in answer:
         return "STATE_UNAVAILABLE"
-    routing = retrieval_trace(raw).get("routing")
-    if isinstance(routing, dict) and routing.get("domain") == "OUT_OF_DOMAIN":
-        return "OUT_OF_SCOPE"
     if "不属于当前植物养护知识库的可回答范围" in answer:
         return "OUT_OF_SCOPE"
     if "当前知识库中没有足够证据" in answer:
@@ -303,10 +322,32 @@ def validate_routing_trace_contract(raw_rows: list[dict[str, Any]]) -> None:
         missing = sorted(field for field in ROUTING_TRACE_FIELDS if field not in routing)
         if missing:
             invalid.append(f"{raw.get('case_id', '<unknown>')} 缺少 {', '.join(missing)}")
-        elif routing.get("schemaVersion") != 3:
-            invalid.append(f"{raw.get('case_id', '<unknown>')} schemaVersion 不是 3")
+        elif routing.get("schemaVersion") != 4:
+            invalid.append(f"{raw.get('case_id', '<unknown>')} schemaVersion 不是 4")
+        source_values = [routing.get(name) for name in (
+            "knowledgeRequirement", "communityRequirement", "stateRequirement")]
+        if any(value not in SOURCE_REQUIREMENTS for value in source_values):
+            invalid.append(f"{raw.get('case_id', '<unknown>')} 来源要求未使用 ALLOWED/FORBIDDEN/REQUIRED")
+        state_needs = routing.get("stateNeeds")
+        parsed_needs = set(state_needs.split(",")) if isinstance(state_needs, str) and state_needs else set()
+        if not parsed_needs.issubset(STATE_NEEDS):
+            invalid.append(f"{raw.get('case_id', '<unknown>')} stateNeeds 非法")
+        topic_hints = routing.get("topicHints")
+        if topic_hints is not None and not isinstance(topic_hints, str):
+            invalid.append(f"{raw.get('case_id', '<unknown>')} topicHints 非法")
+        confidence = routing.get("plantDomainConfidence")
+        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not 0 <= confidence <= 1:
+            invalid.append(f"{raw.get('case_id', '<unknown>')} plantDomainConfidence 非法")
+        if routing.get("domain") not in {"PLANT_HINT", "UNKNOWN_HINT"}:
+            invalid.append(f"{raw.get('case_id', '<unknown>')} domain 不是 soft hint")
+        answerability = retrieval_trace(raw).get("answerability")
+        if not isinstance(answerability, dict) or not isinstance(answerability.get("result"), str) \
+                or not isinstance(answerability.get("reason"), str):
+            invalid.append(f"{raw.get('case_id', '<unknown>')} 缺少 answerability result/reason")
+        elif answerability.get("result") not in ANSWERABILITY_RESULTS:
+            invalid.append(f"{raw.get('case_id', '<unknown>')} answerability result 非法")
     if invalid:
-        raise ValueError("原始结果不满足 Routing Trace v3；请使用新版服务重新执行 run_eval.py：" + "; ".join(invalid))
+        raise ValueError("原始结果不满足 Retrieval Trace v4；请使用新版服务重新执行 run_eval.py：" + "; ".join(invalid))
 
 
 def expected_source_requirement(golden: dict[str, Any]) -> dict[str, str] | None:
@@ -317,6 +358,12 @@ def expected_source_requirement(golden: dict[str, Any]) -> dict[str, str] | None
     if any(not isinstance(mode, str) or not mode for mode in expected.values()):
         return None
     return expected
+
+
+def answerability_result(raw: dict[str, Any]) -> str | None:
+    answerability = retrieval_trace(raw).get("answerability")
+    result = answerability.get("result") if isinstance(answerability, dict) else None
+    return result if isinstance(result, str) and result else None
 
 
 def propagation_is_consistent(raw: dict[str, Any]) -> bool | None:
@@ -738,8 +785,8 @@ def source_fingerprint(case: dict[str, Any], raw: dict[str, Any]) -> str:
 
 
 def judgment_cache_key(item: dict[str, Any]) -> tuple[Any, ...]:
-    if item.get("schema_version") == 3:
-        return 3, item.get("case_id"), item.get("metric"), item.get("input_fingerprint")
+    if item.get("schema_version") == 4:
+        return 4, item.get("case_id"), item.get("metric"), item.get("input_fingerprint")
     return item.get("schema_version"), item.get("case_id"), item.get("input_fingerprint")
 
 
@@ -752,7 +799,7 @@ def merge_judgments(existing: list[dict[str, Any]], updated: list[dict[str, Any]
 def judgment_row(task: JudgeTask, settings: JudgeSettings, result: dict[str, Any] | None,
                  error: str | None) -> dict[str, Any]:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "case_id": task.case_id,
         "metric": task.metric,
         "content_fingerprint": task.content_fingerprint,
@@ -782,10 +829,10 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
     faithfulness_prompt = prompt_text("faithfulness-judge.txt")
     context_prompt = prompt_text("context-judge.txt")
     golden_by_id = {case["id"]: case for case in golden_rows}
-    existing_v3 = [item for item in existing if item.get("schema_version") == 3]
+    existing_v4 = [item for item in existing if item.get("schema_version") == 4]
     cached = {
         (item.get("case_id"), item.get("metric"), item.get("input_fingerprint")): item
-        for item in existing_v3 if item.get("status") == "ok"
+        for item in existing_v4 if item.get("status") == "ok"
     }
     updated: list[dict[str, Any]] = []
     failures = 0
@@ -793,7 +840,7 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
     candidates = [raw for raw in raw_rows if golden_by_id[raw["case_id"]].get("expected_outcome", "ANSWER") == "ANSWER"
                   and predict_outcome(raw) == "ANSWER"]
     LOG.info("Judge 启动 candidates=%s existing_cache=%s refresh=%s max_concurrent=%s model=%s endpoint=%s",
-             len(candidates), len(existing_v3), refresh, settings.max_concurrent, settings.model,
+             len(candidates), len(existing_v4), refresh, settings.max_concurrent, settings.model,
              safe_endpoint(settings.url))
 
     for raw in candidates:
@@ -821,10 +868,10 @@ def run_judges(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]]
                 LOG.warning("case=%s metric=%s Judge 失败: %s", task.case_id, task.metric, exc)
             updated.append(row)
             if on_task_complete:
-                # 运行中保留旧行；全部任务完成后再由最终写入统一为 v3，避免中断时损失旧结果。
+                # 运行中保留旧行；全部任务完成后再由最终写入统一为 v4，避免中断时损失旧结果。
                 on_task_complete(merge_judgments(existing, updated))
 
-    judgments = merge_judgments(existing_v3, updated)
+    judgments = merge_judgments(existing_v4, updated)
     LOG.info("Judge 完成 records=%s failures=%s", len(judgments), failures)
     return judgments, failures
 
@@ -847,7 +894,7 @@ def judgment_index(golden_by_id: dict[str, dict[str, Any]], raw_by_id: dict[str,
     for item in judgments:
         case_id = item.get("case_id")
         metric_name = item.get("metric")
-        if item.get("schema_version") != 3 or item.get("status") != "ok" \
+        if item.get("schema_version") != 4 or item.get("status") != "ok" \
                 or not isinstance(case_id, str) or case_id not in raw_by_id \
                 or metric_name not in JUDGE_RESPONSE_CONTRACTS \
                 or item.get("content_fingerprint") != expected_content.get((case_id, metric_name)) \
@@ -855,10 +902,10 @@ def judgment_index(golden_by_id: dict[str, dict[str, Any]], raw_by_id: dict[str,
             continue
         indexed.setdefault(case_id, {"case_id": case_id})[metric_name] = item["result"]
 
-    # v2 仅用于未启用 --judge 时的只读兼容；只填补没有 v3 结果的 metric。
+    # 旧聚合格式仅用于未启用 --judge 时的只读兼容；只填补没有 v4 结果的 metric。
     for item in judgments:
         case_id = item.get("case_id")
-        if item.get("schema_version") == 3 or item.get("status") not in {"ok", "partial_error"} \
+        if item.get("schema_version") == 4 or item.get("status") not in {"ok", "partial_error"} \
                 or not isinstance(case_id, str) or case_id not in raw_by_id \
                 or item.get("source_fingerprint") != source_fingerprint(golden_by_id[case_id], raw_by_id[case_id]):
             continue
@@ -905,6 +952,7 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
     domain_hits = domain_total = 0
     entity_requirement_hits = entity_requirement_total = 0
     source_requirement_hits = source_requirement_total = 0
+    answerability_hits = answerability_total = 0
     propagation_consistency_failures = 0
     request_errors = 0
     dependency_failures = 0
@@ -936,6 +984,8 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
             "community": routing.get("communityRequirement"),
             "state": routing.get("stateRequirement"),
         } if routing else None
+        expected_answerability = golden.get("expected_answerability")
+        actual_answerability = answerability_result(raw)
         propagation_consistent = propagation_is_consistent(raw)
         if predicted == "ERROR":
             request_errors += 1
@@ -999,6 +1049,9 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
         if expected_requirement is not None:
             source_requirement_total += 1
             source_requirement_hits += int(actual_requirement == expected_requirement)
+        if isinstance(expected_answerability, str) and expected_answerability:
+            answerability_total += 1
+            answerability_hits += int(actual_answerability == expected_answerability)
         if propagation_consistent is False:
             propagation_consistency_failures += 1
 
@@ -1060,6 +1113,9 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
             "expected_source_requirement": expected_requirement,
             "predicted_source_requirement": actual_requirement,
             "source_requirement_match": actual_requirement == expected_requirement if expected_requirement else None,
+            "expected_answerability": expected_answerability,
+            "predicted_answerability": actual_answerability,
+            "answerability_match": actual_answerability == expected_answerability if expected_answerability else None,
             "route_propagation_consistent": propagation_consistent,
             "dependency_failure": dependency_failure,
             "required_evidence_types": expected_types,
@@ -1117,6 +1173,8 @@ def score_cases(golden_rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]
                 selection_constraint_hits, selection_constraint_total),
             "citation_index_validity": metric(ratio(citation_valid, citation_total), citation_valid, citation_total),
             "safe_outcome_accuracy": metric(ratio(safe_hits, safe_total), safe_hits, safe_total),
+            "answerability_accuracy": metric(ratio(answerability_hits, answerability_total),
+                                               answerability_hits, answerability_total),
             "route_accuracy": metric(ratio(route_hits, route_total), route_hits, route_total),
             "diagnostics": {
                 "domain_match": metric(ratio(domain_hits, domain_total), domain_hits, domain_total),
@@ -1184,6 +1242,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "| 指标 | 结果 |",
         "|---|---:|",
         f"| Safe Outcome Accuracy | {format_ratio(metrics['safe_outcome_accuracy']['value'])} ({metrics['safe_outcome_accuracy']['numerator']}/{metrics['safe_outcome_accuracy']['denominator']}) |",
+        f"| Answerability Accuracy | {format_ratio(metrics['answerability_accuracy']['value'])} ({metrics['answerability_accuracy']['numerator']}/{metrics['answerability_accuracy']['denominator']}) |",
         f"| Answer Availability | {format_ratio(metrics['answer_availability']['value'])} ({metrics['answer_availability']['numerator']}/{metrics['answer_availability']['denominator']}) |",
         f"| P95 End-to-End Latency | {metrics['latency_ms']['p95']} ms |",
         f"| P95 Retrieval Latency | {metrics['retrieval_latency_ms']['p95']} ms（{metrics['retrieval_latency_ms']['sample_count']} 个样本） |",
@@ -1225,7 +1284,7 @@ def render_report(summary: dict[str, Any]) -> str:
     )
     if coverage["missing_case_ids"]:
         rows.extend(["", "## 覆盖不足", "", "尚未执行的 Case：" + ", ".join(coverage["missing_case_ids"])])
-    rows.extend(["", "Retrieval Recall@10 使用 SourceAwareRanker 之后、EvidenceSelector 之前的统一 preSelectionRanked 快照；Selected Evidence ID Recall@6 仅作为精确 ID 回归诊断。", "", "Context Precision 按最终 Evidence 顺序计算平均精度（Average Precision）；Context Recall 按 gold_claims 的证据支持覆盖率计算。Judge 结果由固定模型、固定提示词和 temperature=0 生成，未覆盖的 Answer Case 不计入 Judge 指标分母。", "", "Domain / Entity Requirement / Source Requirement / Route Propagation 为辅助诊断，不改变核心指标口径。Route Accuracy 只比较 expected_intent 与 routing.resolvedIntent；未标注用户意图的域外 Case 不进入其分母。", "", "SAFE_REFUSAL 是结果族标签，可匹配明确的安全拒答子类型；ERROR 和依赖故障不属于正确安全拒答。", ""])
+    rows.extend(["", "Retrieval Recall@10 使用 SourceAwareRanker 之后、EvidenceSelector 之前的统一 preSelectionRanked 快照；Selected Evidence ID Recall@6 仅作为精确 ID 回归诊断。", "", "Context Precision 按最终 Evidence 顺序计算平均精度（Average Precision）；Context Recall 按 gold_claims 的证据支持覆盖率计算。Judge 结果由固定模型、固定提示词和 temperature=0 生成，未覆盖的 Answer Case 不计入 Judge 指标分母。", "", "Answerability Accuracy 直接比较 Retrieval Trace v4 的结构化 answerability；Source Requirement / Route Propagation 为辅助诊断。Route Accuracy 只比较 expected_intent 与 routing.resolvedIntent。", "", "SAFE_REFUSAL 是结果族标签，可匹配明确的安全拒答子类型；ERROR 和依赖故障不属于正确安全拒答。", ""])
     return "\n".join(rows)
 
 
@@ -1255,7 +1314,8 @@ def judge_settings(args: argparse.Namespace) -> JudgeSettings:
     api_key_env = args.judge_api_key_env or config.get("api_key_env") or "JUDGE_API_KEY"
     timeout = args.judge_timeout if args.judge_timeout is not None else config.get("timeout", 90.0)
     retries = args.judge_retries if args.judge_retries is not None else config.get("retries", 1)
-    max_concurrent = (args.judge_max_concurrent if args.judge_max_concurrent is not None
+    requested_max_concurrent = getattr(args, "judge_max_concurrent", None)
+    max_concurrent = (requested_max_concurrent if requested_max_concurrent is not None
                       else config.get("max_concurrent", 3))
     if not isinstance(url, str) or not url.strip() or not isinstance(model, str) or not model.strip():
         raise ValueError("启用 --judge 时必须提供 --judge-url/JUDGE_URL 和 --judge-model/JUDGE_MODEL")

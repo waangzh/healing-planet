@@ -105,13 +105,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.COMMUNITY, communityStore, entity, trace, config));
         }
         metrics.recordCandidates("fused", "all", fused.size());
-        // Topic hints retain all candidates. They only add a small ranking prior.
+        // Topic hints retain all candidates and are consumed only by EvidenceSelector coverage.
         List<RetrievalCandidate> candidates = List.copyOf(fused);
         trace.filtered(candidates);
-        Map<String, Double> rawRerankScores = trace.time("rerank", "all", "all",
+        Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
                 () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), candidates, runtimeSnapshot)));
-        Map<String, Double> rerankScores = trace.time("topic_hint_boost", "all", "all",
-                () -> applyTopicHints(request, candidates, rawRerankScores));
         List<RetrievalCandidate> reranked = candidates.stream()
                 .sorted(Comparator.comparingDouble((RetrievalCandidate candidate) -> rerankScores
                         .getOrDefault(candidate.document().id(), Double.NEGATIVE_INFINITY)).reversed())
@@ -140,21 +138,6 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         EvidenceSelector.Selection selection = evidenceSelector.select(request, ranked, config.finalTopK(),
                 entity.hasResolvedEntities() ? entity.canonicalPlantIds() : List.of(), config);
         return new SelectionResult(selection.evidence(), selection.reasons());
-    }
-
-    private Map<String, Double> applyTopicHints(RetrievalRequest request, List<RetrievalCandidate> candidates,
-                                                Map<String, Double> scores) {
-        Map<String, Double> boosted = new LinkedHashMap<>();
-        if (scores != null) boosted.putAll(scores);
-        if (request.topicHints().isEmpty()) return Map.copyOf(boosted);
-        for (RetrievalCandidate candidate : candidates) {
-            String type = candidate.document().knowledgeType();
-            if (candidate.document().source() == KnowledgeSource.PLANT && type != null
-                    && request.topicHints().contains(type.toUpperCase(java.util.Locale.ROOT))) {
-                boosted.merge(candidate.document().id(), 0.05d, Double::sum);
-            }
-        }
-        return Map.copyOf(boosted);
     }
 
     private List<RetrievalCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,

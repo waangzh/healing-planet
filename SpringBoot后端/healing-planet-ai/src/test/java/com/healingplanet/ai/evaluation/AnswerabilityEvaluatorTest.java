@@ -23,11 +23,49 @@ class AnswerabilityEvaluatorTest {
     private final AnswerabilityEvaluator evaluator = new AnswerabilityEvaluator();
 
     @Test
-    void lowPlantHintIsOutOfScopeOnlyAfterEmptyRetrieval() {
+    void lowPlantHintIsOutOfScopeAfterEmptyRetrieval() {
         var result = evaluator.evaluate(request("量子纠缠是什么？", Set.of(), 0.02d), List.of(), null);
 
         assertThat(result.result()).isEqualTo(Answerability.OUT_OF_SCOPE);
-        assertThat(result.reason()).contains("no_relevant_evidence");
+        assertThat(result.reason()).contains("without_strong_relevant_evidence");
+    }
+
+    @Test
+    void lowScoringDenseHitsDoNotMakeAnOutOfScopeQuestionAnswerable() {
+        Evidence unrelatedPlantHit = new Evidence("noise", EvidenceType.CARE_GUIDE, "1", "PLANT",
+                "绿萝光照指南", "绿萝需要明亮散射光", 0.27d, null, 1d, 0.90d,
+                Map.of("knowledgeType", "LIGHT", "canonicalPlantId", "1"), null);
+
+        var result = evaluator.evaluate(request("量子纠缠是什么？", Set.of(), 0.02d),
+                List.of(unrelatedPlantHit), null);
+
+        assertThat(result.result()).isEqualTo(Answerability.OUT_OF_SCOPE);
+        assertThat(result.reason()).contains("without_strong_relevant_evidence");
+    }
+
+    @Test
+    void strongRetrievedEvidenceCanRecoverAWeakDomainHint() {
+        Evidence strongHit = new Evidence("strong", EvidenceType.CARE_GUIDE, "1", "PLANT",
+                "植物概念", "相关内容", 0.72d, null, 1d, 0.70d, Map.of(), null);
+
+        assertThat(evaluator.evaluate(request("自然语言新变体", Set.of(), 0.25d),
+                List.of(strongHit), null).result()).isEqualTo(Answerability.ANSWERABLE);
+    }
+
+    @Test
+    void requiredCommunitySourceMustBeSatisfiedBySelectedEvidence() {
+        var base = request("花友怎么养绿萝？", Set.of(), 0.9d);
+        SourcePlan requiredCommunity = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.ALLOWED);
+        RetrievalRequest request = new RetrievalRequest(base.query(), base.analysis(), base.constraints(),
+                new RetrievalPlan(requiredCommunity, true, true, false, Set.of(), Set.of(), base.searchQuery()),
+                null, base.searchQuery());
+
+        var result = evaluator.evaluate(request,
+                List.of(evidence("guide", EvidenceType.CARE_GUIDE, Map.of())), null);
+
+        assertThat(result.result()).isEqualTo(Answerability.INSUFFICIENT_EVIDENCE);
+        assertThat(result.reason()).isEqualTo("required_community_evidence_missing");
     }
 
     @Test
@@ -39,6 +77,16 @@ class AnswerabilityEvaluatorTest {
                 .isEqualTo(Answerability.STATE_UNAVAILABLE);
         assertThat(evaluator.evaluate(request, List.of(evidence("live", EvidenceType.LIVE_STATE, Map.of()),
                 evidence("history", EvidenceType.SENSOR_HISTORY, Map.of())), null).result())
+                .isEqualTo(Answerability.ANSWERABLE);
+    }
+
+    @Test
+    void historyOnlyNeedDoesNotRequireLiveState() {
+        var request = request("这盆绿萝过去24小时土壤湿度趋势怎样？",
+                EnumSet.of(StateNeed.HISTORY), 0.9d);
+
+        assertThat(evaluator.evaluate(request,
+                List.of(evidence("history", EvidenceType.SENSOR_HISTORY, Map.of())), null).result())
                 .isEqualTo(Answerability.ANSWERABLE);
     }
 

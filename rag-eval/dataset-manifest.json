@@ -1,21 +1,21 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "freeze_date": null,
   "annotation_revision": {
-    "date": "2026-08-22",
-    "reason": "修正养护字段类型标注，并将可分块的正式指南 gold reference 绑定到实际 evidence_id。"
+    "date": "2026-08-28",
+    "reason": "迁移 Retrieval Trace v4：来源要求改为 ALLOWED/FORBIDDEN/REQUIRED，领域分类改为 soft hint，并新增结构化 Answerability 与可组合 state needs 标注。"
   },
   "development": {
     "path": "golden.jsonl",
     "role": "development-regression",
     "case_count": 114,
-    "sha256": "16e10672523e66023e5929f9690aaf1c9f4a82bfa5d3fb92703ec1a9f54d9d02"
+    "sha256": "b2f9dbd0cba7d7f595bd6935dd963a90cbb5927812c3589bc1452ddcbf8c9b4f"
   },
   "holdout": {
     "path": "holdout.jsonl",
     "role": "evaluation-regression",
     "case_count": 30,
-    "sha256": "0e56314a5882cfe600f0d31ff868bcb9de1b3685af3910e27a3a698fad3e7881",
+    "sha256": "80394b4de995069a31aff4f94d7d44b3cd794dda72d8123c7b5a54bc828d15e8",
     "id_format": "1..30 as strings",
     "usage": ""
   },

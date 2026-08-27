@@ -1,6 +1,7 @@
 package com.healingplanet.ai.query;
 
 import com.healingplanet.ai.domain.RagQuery;
+import com.healingplanet.ai.domain.QueryIntent;
 import com.healingplanet.ai.retrieval.SourcePlan;
 import org.springframework.stereotype.Component;
 
@@ -10,9 +11,9 @@ import java.util.regex.Pattern;
 @Component
 public class ExplicitConstraintParser {
     private static final Pattern COMMUNITY_ONLY = Pattern.compile(
-            "(?:只|仅)(?:想)?(?:看|参考|采用|听|了解)?[^，。！？?;；]{0,10}(?:社区|大家|网友|花友|帖子|经验)");
+            "(?<!不)(?:只|仅)(?:想)?(?:看|参考|采用|听|了解)?[^，。！？?;；]{0,10}(?:社区|大家|网友|花友|帖子|经验)");
     private static final Pattern FORMAL_ONLY = Pattern.compile(
-            "(?:只|仅)(?:想)?(?:看|参考|采用|了解|按)?[^，。！？?;；]{0,10}(?:官方|正式|指南|规范|标准)");
+            "(?<!不)(?:只|仅)(?:想)?(?:看|参考|采用|了解|按)?[^，。！？?;；]{0,10}(?:官方|正式|指南|规范|标准)");
     private static final Pattern NEGATION = Pattern.compile("(?:不要|别|无需|不用|不需要|不看|不参考|不引用|排除|去掉|剔除|避免)");
 
     public RetrievalConstraints parse(RagQuery query) {
@@ -24,12 +25,14 @@ public class ExplicitConstraintParser {
         boolean communityForbidden = formalOnly || explicitlyNegated(text, QueryLexicon.COMMUNITY);
         boolean formalForbidden = communityOnly || explicitlyNegated(text, QueryLexicon.FORMAL);
         boolean stateForbidden = explicitlyNegated(text, java.util.Set.of("实时数据", "传感器", "状态数据"));
+        boolean communityRequired = communityOnly || (communityMentioned && formalMentioned)
+                || query.intent() == QueryIntent.COMMUNITY_SEARCH;
 
         SourcePlan.SourceRequirement knowledge = formalForbidden ? SourcePlan.SourceRequirement.FORBIDDEN
                 : formalOnly || formalMentioned && communityMentioned ? SourcePlan.SourceRequirement.REQUIRED
                 : SourcePlan.SourceRequirement.ALLOWED;
         SourcePlan.SourceRequirement community = communityForbidden ? SourcePlan.SourceRequirement.FORBIDDEN
-                : communityOnly || communityMentioned && formalMentioned ? SourcePlan.SourceRequirement.REQUIRED
+                : communityRequired ? SourcePlan.SourceRequirement.REQUIRED
                 : SourcePlan.SourceRequirement.ALLOWED;
         return new RetrievalConstraints(knowledge, community,
                 stateForbidden ? SourcePlan.SourceRequirement.FORBIDDEN : SourcePlan.SourceRequirement.ALLOWED);

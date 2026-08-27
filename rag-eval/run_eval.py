@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_GOLDEN = Path(__file__).with_name("holdout.jsonl")
+DEFAULT_GOLDEN = Path(__file__).with_name("golden.jsonl")
 DEFAULT_OUTPUT = Path(__file__).with_name("results") / "raw.jsonl"
 DEFAULT_BASE_URL = "http://localhost:8010"
 DEFAULT_TIMEOUT_SECONDS = 180.0
@@ -186,6 +186,10 @@ def request_chat_stream(base_url: str, payload: dict[str, Any], timeout: float) 
         "retrievalTrace": retrieval_trace,
         "events": events,
     }
+    answerability = retrieval_trace.get("answerability") if isinstance(retrieval_trace, dict) else None
+    if not answer_parts and not stream_error and not transport_error \
+            and isinstance(answerability, dict) and answerability.get("result") == "ANSWERABLE":
+        stream_error = "流式生成已结束，但没有返回任何答案 token"
     if stream_error:
         result["error"] = stream_error
     if transport_error:

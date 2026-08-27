@@ -88,6 +88,37 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void shouldTreatGenericCareConceptsAsNoEntityQueries() {
+        assertThat(List.of(
+                "耐阴是什么意思？",
+                "喜阴和耐阴有什么区别？",
+                "浇水和补水有什么区别？"))
+                .allSatisfy(text -> assertThat(resolve(RagQuery.of(text)).kind())
+                        .as(text).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC));
+        verify(disambiguator, never()).disambiguate(any(), any(), any());
+    }
+
+    @Test
+    void shouldNotLetFuzzyCandidateNoiseTurnANoEntityQueryIntoUnknownEntity() {
+        when(sparseIndex.searchEntityNames(any(), any(Integer.class)))
+                .thenReturn(List.of(new SparseIndexService.SparseHit(entityDocument("1"), 3.2)));
+
+        assertThat(resolve(RagQuery.of("量子纠缠是什么？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
+        assertThat(resolve(RagQuery.of("耐阴是什么意思？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
+        verify(sparseIndex, never()).searchEntityNames(any(), any(Integer.class));
+    }
+
+    @Test
+    void genericConceptMarkersMustNotHideAnUnresolvedSpecificPlant() {
+        var resolution = resolve(RagQuery.of("火星苔藓为什么会发黄？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+        assertThat(resolution.rejectionReason()).isEqualTo("no_indexed_entity_candidate");
+    }
+
+    @Test
     void shouldUseOneIndexedSearchAndKeepOrdinaryFuzzyCandidateSoft() {
         when(sparseIndex.searchEntityNames(any(), any(Integer.class)))
                 .thenReturn(List.of(new SparseIndexService.SparseHit(entityDocument("2"), 3.2)));

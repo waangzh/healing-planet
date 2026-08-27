@@ -27,6 +27,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
     private final RagProperties properties;
     private final RagRuntimeConfigProvider runtimeConfigProvider;
 
+    @Autowired
     public StateAwareEvidenceRetriever(HybridEvidenceRetriever knowledgeRetriever, PlantStateRetriever stateRetriever,
                                        RetrievalMetrics metrics, RagProperties properties,
                                        RagRuntimeConfigProvider runtimeConfigProvider) {

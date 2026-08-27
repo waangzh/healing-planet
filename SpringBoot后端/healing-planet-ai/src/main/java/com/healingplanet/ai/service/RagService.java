@@ -59,7 +59,8 @@ public class RagService {
         RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         RetrievalRequest request = requestFor(query);
         String validation = validateStateQuery(query, request);
-        if (validation != null) return new RagResponse(validation, List.of());
+        if (validation != null) return new RagResponse(validation, List.of(),
+                entityDiagnostics(request), validationTrace(request, validation));
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
@@ -82,7 +83,8 @@ public class RagService {
         RagRuntimeConfig config = runtimeConfigProvider.snapshot();
         RetrievalRequest request = requestFor(query);
         String validation = validateStateQuery(query, request);
-        if (validation != null) return new RagStream(List.of(), Flux.just(validation));
+        if (validation != null) return new RagStream(List.of(), entityDiagnostics(request),
+                validationTrace(request, validation), Flux.just(validation));
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
@@ -202,6 +204,17 @@ public class RagService {
     private RetrievalTrace withAnswerability(RetrievalTrace trace, AnswerabilityEvaluator.Assessment assessment) {
         return trace == null ? null : trace.withAnswerability(new RetrievalTrace.AnswerabilitySnapshot(
                 assessment.result().name(), assessment.reason()));
+    }
+
+    private EntityResolutionDiagnostics entityDiagnostics(RetrievalRequest request) {
+        return request.entityResolution() == null ? null : request.entityResolution().diagnostics();
+    }
+
+    private RetrievalTrace validationTrace(RetrievalRequest request, String validation) {
+        String result = validation.contains("userId") ? "REQUIRE_USER_ID" : "REQUIRE_PLANT_INSTANCE";
+        return new RetrievalTrace(request.routingSnapshot(), entityDiagnostics(request), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())
+                .withAnswerability(new RetrievalTrace.AnswerabilitySnapshot(result, "explicit_state_identity_required"));
     }
 
     public record RagStream(List<Evidence> evidence, EntityResolutionDiagnostics entityResolution,

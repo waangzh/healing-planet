@@ -89,6 +89,25 @@ class RagServiceTest {
     }
 
     @Test
+    void outOfScopeIsStillRejectedWhenBroadRetrievalReturnsLowRelevancePlantEvidence() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        RetrievalRequestFactory factory = mock(RetrievalRequestFactory.class);
+        RagQuery query = RagQuery.of("量子纠缠是什么？");
+        when(factory.create(query)).thenReturn(request(query, Set.of(), 0.02d));
+        Evidence noise = new Evidence("noise", EvidenceType.CARE_GUIDE, "1", "PLANT",
+                "绿萝光照指南", "绿萝需要明亮散射光", 0.27d, null, 1d, 0.90d,
+                Map.of("knowledgeType", "LIGHT", "canonicalPlantId", "1"), null);
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+                .thenReturn(new RetrievalResult(List.of(noise), null));
+        ChatClient chat = mock(ChatClient.class);
+
+        var response = service(retriever, factory, chat).chat(query);
+
+        assertThat(response.answer()).contains("不属于当前植物养护知识库的可回答范围");
+        verify(chat, never()).prompt();
+    }
+
+    @Test
     void missingRequiredStateEvidenceReturnsSafeOutcome() {
         EvidenceRetriever retriever = mock(EvidenceRetriever.class);
         RetrievalRequestFactory factory = mock(RetrievalRequestFactory.class);

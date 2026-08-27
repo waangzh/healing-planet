@@ -21,10 +21,10 @@ cd .\SpringBoot后端\healing-planet-ai
 mvn spring-boot:run "-Dspring-boot.run.profiles=eval"
 ```
 
-然后在 `rag-eval` 目录运行 Golden：
+然后在 `rag-eval` 目录运行完整 Golden（默认仍只抽取 5 条，完整回归需显式指定数量）：
 
 ```powershell
-python .\run_eval.py
+python .\run_eval.py --limit 114
 python .\score.py
 ```
 
@@ -73,6 +73,8 @@ Judge 结果支持断点续评；提示词或输入变化会自动失效对应�
 - 安全与可靠性：Safe Outcome Accuracy、Answer Availability、P95 端到端延迟、P95 检索延迟。
 - 回归诊断：Route Accuracy、必需证据类型命中、选择约束命中、Selected Evidence ID Recall@6、引用索引有效性及错误分类。
 
-Retrieval Recall@10 使用 `preSelectionRanked`，因此旧 raw 文件不能作为新版检索召回率和检索延迟基线；升级服务后需重新执行 `run_eval.py`。本实现借鉴 RAGAS、RAGChecker 和 ALCE 的指标定义，但不引入它们的运行时依赖。
+Retrieval Recall@10 使用 `preSelectionRanked`。评分器要求 Retrieval Trace schema v4，并校验
+`ALLOWED/FORBIDDEN/REQUIRED`、`stateNeeds`、`topicHints`、`plantDomainConfidence` 与结构化
+`answerability`；旧 raw 文件不能作为新版检索召回率、Answerability 或检索延迟基线。升级服务后需重新执行 `run_eval.py`。本实现借鉴 RAGAS、RAGChecker 和 ALCE 的指标定义，但不引入它们的运行时依赖。
 
 `eval` Profile 默认从 `../../rag-eval/fixtures` 加载状态 Fixture，并将评测时钟固定为 `2026-08-17T10:00:00+08:00`。如需修改 Fixture 路径，设置 `RAG_EVAL_FIXTURE_DIRECTORY`。
