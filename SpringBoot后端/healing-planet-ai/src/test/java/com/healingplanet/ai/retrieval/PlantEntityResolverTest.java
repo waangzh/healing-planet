@@ -135,6 +135,21 @@ class PlantEntityResolverTest {
     }
 
     @Test
+    void shouldDetectUnknownOperandAfterAliasCollisionIsDisambiguated() {
+        when(disambiguator.disambiguate(any(), any(), any()))
+                .thenReturn(PlantEntityDisambiguator.Decision.known("20", 0.96));
+
+        var resolution = resolve(RagQuery.of("万年青和常春藤的光照要求一样吗？"));
+
+        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.PARTIAL);
+        assertThat(resolution.canonicalPlantIds()).containsExactly("20");
+        assertThat(resolution.unresolvedMentions()).containsExactly("常春藤");
+        assertThat(resolution.method()).isEqualTo(PlantEntityResolver.ResolutionMethod.LLM);
+        assertThat(resolution.scope().kind()).isEqualTo(PlantScope.Kind.HARD);
+        verify(disambiguator).disambiguate(any(), any(), any());
+    }
+
+    @Test
     void shouldDetectUnknownOperandOnEitherSideWithoutMisreadingTopicConjunctions() {
         assertThat(resolve(RagQuery.of("常春藤和绿萝的浇水方式一样吗？")).unresolvedMentions())
                 .containsExactly("常春藤");

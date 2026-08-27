@@ -65,6 +65,8 @@ public class PlantEntityResolver {
     private Resolution resolveMentions(String rawQuery, String normalizedQuery, List<PlantMention> mentions,
                                        PlantCatalogSnapshot snapshot) {
         List<PlantCatalogEntry> resolved = new ArrayList<>();
+        Resolution singleCollisionChoice = null;
+        boolean llmDisambiguated = false;
         for (PlantMention mention : mentions) {
             List<PlantCatalogEntry> entries = mention.bindings().stream()
                     .map(binding -> snapshot.byId().get(binding.canonicalPlantId())).distinct().toList();
@@ -76,16 +78,19 @@ public class PlantEntityResolver {
                     .map(entry -> new PlantEntityCandidateRetriever.Candidate(entry, mention.text(), 1)).toList();
             Resolution choice = disambiguateCandidates(rawQuery, candidates, "alias_collision");
             if (choice.kind() != ResolutionKind.KNOWN) return choice;
-            if (mentions.size() == 1) return choice;
             resolved.addAll(choice.entries(snapshot));
+            llmDisambiguated = true;
+            if (mentions.size() == 1) singleCollisionChoice = choice;
         }
         List<PlantCatalogEntry> distinct = resolved.stream().distinct().toList();
         PlantNameType type = mentions.stream().flatMap(mention -> mention.bindings().stream())
                 .map(PlantNameBinding::type).findFirst().orElse(PlantNameType.COMMON_NAME);
         List<String> unresolved = unresolvedDetector.find(normalizedQuery, mentions, snapshot);
         if (!unresolved.isEmpty()) {
-            return Resolution.partial(distinct, unresolved, method(type), mentions.get(0).text());
+            return Resolution.partial(distinct, unresolved,
+                    llmDisambiguated ? ResolutionMethod.LLM : method(type), mentions.get(0).text());
         }
+        if (singleCollisionChoice != null) return singleCollisionChoice;
         return Resolution.known(distinct, method(type), 1, 0, distinct.size(), mentions.get(0).text());
     }
 
