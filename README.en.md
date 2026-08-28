@@ -1,12 +1,14 @@
 # Healing Planet
 
-> A smart plant care and community platform — IoT hardware control, AI plant disease detection, plant encyclopedia, and social community.
+> A smart plant care platform that brings together a plant community, IoT monitoring, and a traceable evidence-based AI assistant.
+
+[中文](README.md) | [English](README.en.md)
 
 ## Overview
 
 Healing Planet is a full-stack system consisting of:
 
-- **2 Spring Boot backends** — community services (port 8000) + IoT device control (port 8070)
+- **3 backend service directories** — community services (port 8000), IoT device control sources (port 8070), and the JDK 17 AI/RAG service (port 8010)
 - **3 Vue 3 web frontends** — community portal, plant dashboard, admin panel
 - **1 WeChat Mini Program** — environmental monitoring, device control, AI assistant, plant identification
 - **MCP protocol support** — AI agent integration for smart plant pot control
@@ -42,6 +44,19 @@ IoT-focused backend for smart plant pots:
 - XiaoZhi MCP bridge: transparent proxy to XiaoZhi MCP platform for remote AI agent control
 - Community data sharing: REST API integration with healing-planet-sys for sensor-driven blog posts
 
+The repository currently contains the IoT service sources and example application configuration, but no verifiable root `pom.xml` or `build.gradle`. Use the original deployment environment for this module rather than assuming the Maven commands used by the other services.
+
+### healing-planet-ai (Port 8010)
+
+The standalone AI service provides an Evidence-first RAG pipeline:
+
+```text
+Query Analysis -> Entity Resolution -> Retrieval Planning -> Broad Retrieval
+-> Evidence Selection -> Answerability -> Generation
+```
+
+It combines dense retrieval, Lucene BM25, RRF, an optional reranker, source-aware ranking, plant entity resolution, community evidence, and on-demand current/history sensor state. Explicit source bans and security constraints remain hard; semantic domain/topic predictions are only planning and ranking signals. Every `REQUIRED` source must contribute relevant evidence, and retrieval, reranking, answerability, and generation share one immutable runtime configuration snapshot per request. The service is read-only with respect to IoT devices.
+
 ## Frontends
 
 | Application | Description | Tech |
@@ -70,7 +85,7 @@ The API base URL is configured via `utils/config.js` (copy from `utils/config.ex
 
 | Category | Technologies |
 |---|---|
-| Backend Framework | Spring Boot 2.6/2.7, Spring MVC, Spring WebFlux, Spring Mail |
+| Backend Framework | Spring Boot 2.6.x for the community service; Spring Boot 3.5.x / Spring AI 1.1.x for the AI service |
 | ORM | MyBatis-Plus (pagination, logical delete) |
 | Database | MySQL 5.7+/8.x |
 | Cache | Redis |
@@ -86,8 +101,10 @@ The API base URL is configured via `utils/config.js` (copy from `utils/config.ex
 
 ### Prerequisites
 
-- JDK 8, Maven 3.6+, MySQL, Redis
-- Node.js 20.19+ or 22.12+
+- JDK 8 and Maven for the community service; JDK 17 and Maven 3.9+ recommended for the AI service
+- Node.js; `Sprout-Admin` requires `^20.19.0 || >=22.12.0`
+- npm for the community/admin frontends; pnpm for the smart plant website
+- MySQL and Redis; Docker/Qdrant plus OpenAI-compatible chat and embedding APIs for the AI service
 
 ### Setup
 
@@ -111,22 +128,25 @@ redis-server
 cd SpringBoot后端/healing-planet-sys
 mvn clean install && mvn -pl service -am spring-boot:run
 
-# Smart plant backend (port 8070)
-cd SpringBoot后端/smart_green_plant
-mvn clean install && mvn spring-boot:run
+# AI/RAG backend (port 8010; inject environment variables from .env.example first)
+cd ../healing-planet-ai
+docker compose up -d qdrant
+mvn spring-boot:run
 ```
+
+No startup command is documented for `smart_green_plant` because this checkout does not contain a verifiable build descriptor for that service.
 
 ### Run Frontends
 
 ```bash
 # Community portal
-cd VUE前端/green-oasis-community && npm install && npm run dev
+cd VUE前端/green-oasis-community && npm ci && npm run dev
 
 # Plant dashboard
-cd VUE前端/smart-green-plant-website && npm install && npm run dev
+cd ../smart-green-plant-website && pnpm install --frozen-lockfile && pnpm run dev
 
 # Admin panel
-cd VUE前端/Sprout-Admin && npm install && npm run dev
+cd ../Sprout-Admin && npm ci && npm run dev
 ```
 
 ### Setup Mini Program

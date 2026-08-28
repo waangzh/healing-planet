@@ -73,6 +73,7 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 ### 第二阶段 · 个体化状态感知
 
 - `QueryAnalyzer` 只产生可复用的 soft hint；普通的“温度/湿度/现在/它”不会单独升级为状态检索。
+- “多少”只有与植物实例或传感器上下文组合时才视为 telemetry 请求；“现在适宜温度是多少”仍走知识检索。
 - `CURRENT / HISTORY / FRESHNESS / DECISION_SUPPORT` 是可组合需求；纯历史问题不会被强制追加实时状态。
 - 调用方显式传入的 `COMMUNITY_SEARCH` 作为兼容信号，将社区来源设为 `REQUIRED`，不会被静默忽略。
 - `GET /internal/plant-state/{plantInstanceId}` 聚合最新读数、近 24 小时 / 7 天统计与趋势、设备阈值。
@@ -80,7 +81,7 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 - `PlantStateAnalyzer` 将原始指标确定性转换为 `LIVE_STATE` 与 `SENSOR_HISTORY` Evidence。
 - 个体化问题同时路由到植物知识与状态数据，植物名称会增强知识检索。
 - 状态证据与可信知识、非可信社区内容分区注入，并携带采集时间与陈旧标记。
-- `userId + plantInstanceId` 必填，IoT 服务再次校验实例归属；状态不可用时只做知识降级并明确证据不足。
+- 状态检索需要 `userId + plantInstanceId`，IoT 服务再次校验实例归属；状态不可用或被明确禁止时，不使用一般指南冒充即时状态判断。
 
 ### 第三阶段 · 多模态病害辅助分析
 
@@ -116,10 +117,9 @@ docker compose up -d qdrant
 
 ### 3. 配置
 
-复制 `.env.example` 并通过系统环境变量或 IDE 注入配置。**不要提交真实密钥。**
+参考 `.env.example`，通过系统环境变量、部署系统或 IDE 注入配置。Spring Boot 不会自动加载模块目录中的 `.env` 文件，**不要提交真实密钥。**
 
 ```bash
-cp .env.example .env   # 按需修改
 mvn spring-boot:run
 ```
 
@@ -154,11 +154,15 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
+| `RAG_RETRIEVAL_MODE` | 检索模式：`BM25_ONLY` / `DENSE_ONLY` / `HYBRID_RRF` | `HYBRID_RRF` |
+| `RAG_ANSWERABILITY_MIN_RETRIEVAL_RELEVANCE` / `RAG_ANSWERABILITY_MIN_RERANK_RELEVANCE` | Answerability 的 retrieval / rerank 最低相关性 | `0.45` / `0.40` |
+| `RAG_ANSWERABILITY_MIN_ALIGNED_SEMANTIC_RELEVANCE` / `RAG_ANSWERABILITY_MIN_ALIGNED_FINAL_RELEVANCE` | 实体或主题对齐证据的 semantic / final 最低相关性 | `0.30` / `0.60` |
+| `RAG_ANSWERABILITY_STRONG_RECOVERY_RELEVANCE` | 低领域置信度查询允许由强证据恢复的阈值 | `0.60` |
 | `RAG_ENTITY_LLM_MODEL` / `RAG_ENTITY_LLM_TEMPERATURE` / `RAG_ENTITY_LLM_MAX_TOKENS` | 实体消歧专用模型 / 温度 / 最大输出 token | `Qwen/Qwen3.5-4B` / `0.0` / `160` |
 | `RAG_ENTITY_LLM_ENABLE_THINKING` | 是否启用实体消歧模型的推理模式 | `false` |
 | `RAG_ENTITY_LLM_CONNECT_TIMEOUT_MILLIS` / `RAG_ENTITY_LLM_READ_TIMEOUT_MILLIS` | 实体消歧独立连接 / 读取超时；固定单次尝试 | `1000` / `8000` |
 | `RAG_ENTITY_CIRCUIT_FAILURE_THRESHOLD` / `RAG_ENTITY_CIRCUIT_OPEN_MILLIS` | 实体消歧连续失败阈值 / 熔断时长；冷却结束后重新累计失败次数 | `3` / `5000` |
-| `RERANKER_ENABLED` / `RERANKER_MODEL` | 重排序开关与模型 | `false` / `BAAI/bge-reranker-v2-m3` |
+| `RERANKER_ENABLED` / `RERANKER_MODEL` | 重排序开关与模型 | 代码与 `.env.example` 默认 `false`；`application.example.yml` 的环境变量回退值为 `true` / `BAAI/bge-reranker-v2-m3` |
 | `PLANT_STATE_BASE_URL` / `PLANT_STATE_API_KEY` | IoT 状态服务 | `http://localhost:8070` / 空 |
 | `DISEASE_DETECTOR_BASE_URL` / `DISEASE_DETECTOR_PATH` | 病害检测服务 | `http://localhost:5000` / `/classify` |
 | `RAG_ATTACHMENT_TTL_SECONDS` / `RAG_ATTACHMENT_MAX_ENTRIES` | 临时图片缓存 | `900` / `32` |
