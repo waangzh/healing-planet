@@ -27,8 +27,11 @@ public final class QueryLexicon {
             "土壤湿度", "空气湿度", "湿度", "温度", "光照强度", "光照", "co2", "二氧化碳", "传感器读数");
     public static final Set<String> SENSOR_CONTEXT = Set.of(
             "传感器", "读数", "监测值", "实测", "测得", "状态数据", "实时数据", "设备数据");
-    public static final Set<String> MEASUREMENT_REQUEST = Set.of(
-            "多少", "读数", "数值", "数据", "测得", "监测", "变化", "趋势", "波动");
+    public static final Set<String> TELEMETRY_MEASUREMENT_REQUEST = Set.of(
+            "读数", "数值", "数据", "测得", "监测", "监测值", "实测");
+    public static final Set<String> QUANTITY_REQUEST = Set.of("多少");
+    public static final Set<String> KNOWLEDGE_REQUIREMENT = Set.of(
+            "适宜", "适合", "要求", "范围", "推荐", "通常", "一般");
     public static final Set<String> STATE_ASSESSMENT = Set.of(
             "偏低", "偏高", "正常吗", "正常不", "超出", "超阈值", "越界", "异常吗", "有没有异常");
     public static final Set<String> STATE_SIGNALS = Set.of(
@@ -36,9 +39,6 @@ public final class QueryLexicon {
     public static final Set<String> GENERIC_CONCEPT = Set.of(
             "是什么意思", "有什么区别", "区别是什么", "怎么理解", "原理是什么",
             "光合作用", "蒸腾作用", "呼吸作用");
-    /** Plant-name morphology used only to keep an unresolved named plant from being swallowed by a concept marker. */
-    public static final Set<String> PLANT_NAME_SUFFIX = Set.of(
-            "苔藓", "兰", "榕", "蕨", "竹", "藤", "菊", "莲", "掌", "草", "花", "树", "木");
     public static final Set<String> PLANT_DOMAIN = Set.of(
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
             "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",

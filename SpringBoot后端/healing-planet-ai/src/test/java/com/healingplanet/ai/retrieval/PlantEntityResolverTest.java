@@ -92,7 +92,10 @@ class PlantEntityResolverTest {
         assertThat(List.of(
                 "耐阴是什么意思？",
                 "喜阴和耐阴有什么区别？",
-                "浇水和补水有什么区别？"))
+                "浇水和补水有什么区别？",
+                "兰花是什么意思？",
+                "小草是什么意思？",
+                "仙人掌是什么意思？"))
                 .allSatisfy(text -> assertThat(resolve(RagQuery.of(text)).kind())
                         .as(text).isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC));
         verify(disambiguator, never()).disambiguate(any(), any(), any());

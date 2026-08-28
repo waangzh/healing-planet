@@ -75,6 +75,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         return retrieveWithDiagnostics(request, new RagRuntimeSnapshot(config, null));
     }
 
+    @Override
     public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RagRuntimeSnapshot runtimeSnapshot) {
         RagRuntimeConfig config = runtimeSnapshot.config();
         RetrievalTraceCollector trace = new RetrievalTraceCollector(

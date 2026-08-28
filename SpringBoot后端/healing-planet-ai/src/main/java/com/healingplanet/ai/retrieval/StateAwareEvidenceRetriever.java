@@ -56,7 +56,11 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
 
     @Override
     public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request) {
-        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
+        return retrieveWithDiagnostics(request, runtimeConfigProvider.runtimeSnapshot());
+    }
+
+    @Override
+    public RetrievalResult retrieveWithDiagnostics(RetrievalRequest request, RagRuntimeSnapshot runtimeSnapshot) {
         RetrievalTraceCollector trace = new RetrievalTraceCollector(
                 properties.getEval().isRetrievalTraceEnabled());
         return retrieveWithDiagnostics(request, trace, runtimeSnapshot);
@@ -91,10 +95,7 @@ public class StateAwareEvidenceRetriever implements EvidenceRetriever {
         RetrievalResult knowledge = routed.plan().searchKnowledge() || routed.plan().searchCommunity()
                 ? knowledgeRetriever.retrieveWithDiagnostics(routed, runtimeSnapshot) : new RetrievalResult(List.of(), null);
         if (knowledge == null) {
-            knowledge = knowledgeRetriever.retrieveWithDiagnostics(routed);
-        }
-        if (knowledge == null) {
-            knowledge = new RetrievalResult(knowledgeRetriever.retrieve(routed), null);
+            knowledge = new RetrievalResult(List.of(), null);
         }
         result.addAll(knowledge.evidence());
         metrics.recordCandidates("response", "all", result.size());

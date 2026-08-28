@@ -2,7 +2,9 @@ package com.healingplanet.ai.service;
 
 import com.healingplanet.ai.config.RagChatOptions;
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -28,8 +30,11 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,7 +48,7 @@ class RagServiceTest {
         when(factory.create(query)).thenReturn(request(query, Set.of(), 0.9d));
         EntityResolutionDiagnostics unknown = new EntityResolutionDiagnostics("UNKNOWN", "NONE", null,
                 List.of(), 0, 0, 0, 0, "no_indexed_entity_candidate");
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(evidence("other", EvidenceType.CARE_GUIDE, Map.of())), unknown));
         ChatClient chat = mock(ChatClient.class);
 
@@ -63,7 +68,7 @@ class RagServiceTest {
         EntityResolutionDiagnostics conflict = new EntityResolutionDiagnostics("CONFLICT", "EXPLICIT_ID", "1",
                 List.of("1"), 1, 0, 1, 1, "explicit_canonical_plant_id_conflicts_with_query_mention",
                 List.of(), List.of(), List.of("虎尾兰"), "CONFLICT");
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(), conflict));
         ChatClient chat = mock(ChatClient.class);
 
@@ -79,13 +84,13 @@ class RagServiceTest {
         RetrievalRequestFactory factory = mock(RetrievalRequestFactory.class);
         RagQuery query = RagQuery.of("量子纠缠是什么？");
         when(factory.create(query)).thenReturn(request(query, Set.of(), 0.02d));
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(), null));
 
         var response = service(retriever, factory, mock(ChatClient.class)).chat(query);
 
         assertThat(response.answer()).contains("不属于当前植物养护知识库的可回答范围");
-        verify(retriever).retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class));
+        verify(retriever).retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class));
     }
 
     @Test
@@ -97,7 +102,7 @@ class RagServiceTest {
         Evidence noise = new Evidence("noise", EvidenceType.CARE_GUIDE, "1", "PLANT",
                 "绿萝光照指南", "绿萝需要明亮散射光", 0.27d, null, 1d, 0.90d,
                 Map.of("knowledgeType", "LIGHT", "canonicalPlantId", "1"), null);
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(noise), null));
         ChatClient chat = mock(ChatClient.class);
 
@@ -115,7 +120,7 @@ class RagServiceTest {
                 QueryIntent.PERSONAL_CARE, List.of(), Map.of());
         when(factory.create(query)).thenReturn(request(query,
                 Set.of(StateNeed.CURRENT, StateNeed.DECISION_SUPPORT), 0.9d));
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(evidence("guide", EvidenceType.CARE_GUIDE, Map.of())), null));
 
         var response = service(retriever, factory, mock(ChatClient.class)).chat(query);
@@ -131,7 +136,7 @@ class RagServiceTest {
                 QueryIntent.PERSONAL_CARE, List.of(), Map.of());
         when(factory.create(query)).thenReturn(request(query,
                 Set.of(StateNeed.CURRENT, StateNeed.DECISION_SUPPORT), 0.9d));
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(evidence("live", EvidenceType.LIVE_STATE,
                         Map.of("stale", true, "ageMinutes", 31L))), null));
         ChatClient chat = mock(ChatClient.class);
@@ -155,20 +160,45 @@ class RagServiceTest {
                 new RetrievalPlan(sourcePlan, true, true, false, needs, Set.of(), query.query()),
                 null, query.query());
         when(factory.create(query)).thenReturn(forbidden);
-        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(evidence("guide", EvidenceType.CARE_GUIDE, Map.of())), null));
         ChatClient chat = mock(ChatClient.class);
 
         var response = service(retriever, factory, chat).chat(query);
 
-        assertThat(response.answer()).contains("按你的要求不读取传感器状态", "无法判断", "一般养护指南");
+        assertThat(response.answer()).contains("按你的要求不读取传感器状态", "无法判断", "可以另行提供");
         verify(chat, never()).prompt();
     }
 
+    @Test
+    void requestUsesOneRuntimeSnapshotForRetrievalAndAnswerability() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        RetrievalRequestFactory factory = mock(RetrievalRequestFactory.class);
+        RagRuntimeConfigProvider provider = mock(RagRuntimeConfigProvider.class);
+        RagRuntimeConfig config = RagRuntimeConfig.from(new RagProperties()).withRevision(10);
+        RagRuntimeSnapshot runtime = new RagRuntimeSnapshot(config, null);
+        RagQuery query = RagQuery.of("量子纠缠是什么？");
+        when(provider.runtimeSnapshot()).thenReturn(runtime);
+        when(factory.create(query)).thenReturn(request(query, Set.of(), 0.02d));
+        when(retriever.retrieveWithDiagnostics(any(RetrievalRequest.class), same(runtime)))
+                .thenReturn(new RetrievalResult(List.of(), null));
+
+        service(retriever, factory, mock(ChatClient.class), provider).chat(query);
+
+        verify(provider, times(1)).runtimeSnapshot();
+        verify(retriever).retrieveWithDiagnostics(any(RetrievalRequest.class), same(runtime));
+        verify(provider, never()).snapshot();
+    }
+
     private RagService service(EvidenceRetriever retriever, RetrievalRequestFactory factory, ChatClient chat) {
+        return service(retriever, factory, chat, new RagRuntimeConfigProvider(new RagProperties()));
+    }
+
+    private RagService service(EvidenceRetriever retriever, RetrievalRequestFactory factory, ChatClient chat,
+                               RagRuntimeConfigProvider runtimeConfigProvider) {
         return new RagService(retriever, mock(PromptContextBuilder.class), mock(GenerationPromptBuilder.class), chat,
                 factory, new AnswerabilityEvaluator(), new RetrievalMetrics(new SimpleMeterRegistry()),
-                new RagRuntimeConfigProvider(new RagProperties()), new RagChatOptions());
+                runtimeConfigProvider, new RagChatOptions());
     }
 
     private RetrievalRequest request(RagQuery query, Set<StateNeed> needs, double confidence) {

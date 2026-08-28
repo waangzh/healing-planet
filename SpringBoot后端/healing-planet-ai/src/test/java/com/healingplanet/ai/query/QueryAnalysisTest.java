@@ -58,6 +58,7 @@ class QueryAnalysisTest {
     void ordinaryKnowledgeWordingDoesNotBecomeStateRetrieval() {
         assertThat(List.of(
                 "绿萝适宜温度是多少？",
+                "绿萝现在适宜温度是多少？",
                 "虎尾兰湿度要求是什么？",
                 "现在有哪些适合宿舍的耐阴植物？",
                 "它喜欢阳光吗？",
@@ -71,6 +72,21 @@ class QueryAnalysisTest {
         var analysis = analyzer.analyze(RagQuery.of("这盆绿萝过去24小时土壤湿度趋势怎样？"));
 
         assertThat(analysis.stateNeeds()).containsExactly(StateNeed.HISTORY);
+    }
+
+    @Test
+    void explicitPersonalCareHistoryOnlyDoesNotInventCurrentNeed() {
+        RagQuery query = new RagQuery("过去24小时土壤湿度趋势怎样？", null, null, null,
+                QueryIntent.PERSONAL_CARE, List.of(), java.util.Map.of());
+
+        assertThat(analyzer.analyze(query).stateNeeds()).containsExactly(StateNeed.HISTORY);
+    }
+
+    @Test
+    void quantityWordNeedsPersonalOrSensorContextToBecomeTelemetry() {
+        assertThat(analyzer.analyze(RagQuery.of("绿萝现在适宜温度是多少？")).stateNeeds()).isEmpty();
+        assertThat(analyzer.analyze(RagQuery.of("传感器现在温度是多少？")).stateNeeds())
+                .containsExactly(StateNeed.CURRENT);
     }
 
     @Test

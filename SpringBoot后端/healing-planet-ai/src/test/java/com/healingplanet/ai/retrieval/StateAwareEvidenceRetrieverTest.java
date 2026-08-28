@@ -1,6 +1,8 @@
 package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.QueryIntent;
@@ -17,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,12 +49,14 @@ class StateAwareEvidenceRetrieverTest {
                 Set.of(StateNeed.CURRENT, StateNeed.DECISION_SUPPORT));
         when(state.retrieve(request.query())).thenReturn(List.of(evidence("live", EvidenceType.LIVE_STATE),
                 evidence("history", EvidenceType.SENSOR_HISTORY)));
-        when(knowledge.retrieve(org.mockito.ArgumentMatchers.any(RetrievalRequest.class))).thenReturn(List.of());
+        when(knowledge.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
+                .thenReturn(new RetrievalResult(List.of(), null));
+        RagRuntimeSnapshot runtime = new RagRuntimeSnapshot(RagRuntimeConfig.from(new RagProperties()), null);
 
-        List<Evidence> result = retriever(knowledge, state).retrieve(request);
+        List<Evidence> result = retriever(knowledge, state).retrieveWithDiagnostics(request, runtime).evidence();
 
         ArgumentCaptor<RetrievalRequest> captured = ArgumentCaptor.forClass(RetrievalRequest.class);
-        verify(knowledge).retrieve(captured.capture());
+        verify(knowledge).retrieveWithDiagnostics(captured.capture(), same(runtime));
         assertThat(captured.getValue().analysis()).isSameAs(request.analysis());
         assertThat(captured.getValue().plan()).isEqualTo(request.plan());
         assertThat(captured.getValue().topicHints()).contains("WATERING");
@@ -64,7 +70,7 @@ class StateAwareEvidenceRetrieverTest {
         RagProperties properties = new RagProperties();
         properties.getEval().setRetrievalTraceEnabled(true);
         RetrievalRequest request = request("绿萝需要什么光照？", SourcePlan.SourceRequirement.ALLOWED, Set.of());
-        when(knowledge.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+        when(knowledge.retrieveWithDiagnostics(any(RetrievalRequest.class), any(RagRuntimeSnapshot.class)))
                 .thenReturn(new RetrievalResult(List.of(), null));
         StateAwareEvidenceRetriever retriever = new StateAwareEvidenceRetriever(knowledge, state,
                 new RetrievalMetrics(new SimpleMeterRegistry()), properties);

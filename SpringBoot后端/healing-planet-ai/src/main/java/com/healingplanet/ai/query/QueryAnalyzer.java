@@ -25,13 +25,18 @@ public class QueryAnalyzer {
         boolean stateSignal = QueryLexicon.containsAny(text, QueryLexicon.STATE_SIGNALS);
         boolean stateMetric = QueryLexicon.containsAny(text, QueryLexicon.STATE_METRICS);
         boolean sensorContext = QueryLexicon.containsAny(text, QueryLexicon.SENSOR_CONTEXT);
-        boolean measurementRequest = QueryLexicon.containsAny(text, QueryLexicon.MEASUREMENT_REQUEST);
+        boolean telemetryMeasurementRequest = QueryLexicon.containsAny(
+                text, QueryLexicon.TELEMETRY_MEASUREMENT_REQUEST);
+        boolean quantityRequest = QueryLexicon.containsAny(text, QueryLexicon.QUANTITY_REQUEST);
+        boolean knowledgeRequirement = QueryLexicon.containsAny(text, QueryLexicon.KNOWLEDGE_REQUIREMENT);
         boolean stateAssessment = QueryLexicon.containsAny(text, QueryLexicon.STATE_ASSESSMENT);
         boolean explicitPersonalIntent = query.intent() == QueryIntent.PERSONAL_CARE;
 
         boolean historyMeasurement = history && stateMetric
                 && QueryLexicon.containsAny(text, QueryLexicon.HISTORY_MEASUREMENT);
-        boolean currentMeasurement = stateMetric && (measurementRequest && (current || sensorContext)
+        boolean currentMeasurement = stateMetric && !knowledgeRequirement
+                && (telemetryMeasurementRequest && (current || sensorContext)
+                || quantityRequest && (sensorContext || instanceContext)
                 || instanceContext && stateAssessment);
         boolean stateDecisionContext = wateringDecision || (stateDecision && (stateSignal || stateMetric));
         boolean contextualDecision = stateDecisionContext
@@ -45,7 +50,7 @@ public class QueryAnalyzer {
         if (historyContext) stateNeeds.add(StateNeed.HISTORY);
         if (freshnessContext) stateNeeds.add(StateNeed.FRESHNESS);
         if (contextualDecision) stateNeeds.add(StateNeed.DECISION_SUPPORT);
-        if (explicitPersonalIntent || currentMeasurement || contextualDecision || freshnessContext
+        if ((explicitPersonalIntent && !historyContext) || currentMeasurement || contextualDecision || freshnessContext
                 || (instanceContext && current && !historyContext)) {
             stateNeeds.add(StateNeed.CURRENT);
         }

@@ -48,11 +48,11 @@ public class AnswerabilityEvaluator {
                 return new Assessment(Answerability.STATE_STALE, "live_state_stale");
             }
         }
-        Assessment missingSource = requiredSourceAssessment(request.sourcePlan(), evidence);
-        if (missingSource != null) return missingSource;
-
         boolean resolvedEntity = request.entityResolution() != null
                 && request.entityResolution().hasResolvedEntities();
+        Assessment missingSource = requiredSourceAssessment(request, evidence, resolvedEntity, thresholds);
+        if (missingSource != null) return missingSource;
+
         boolean relevantEvidence = evidence.stream()
                 .anyMatch(item -> relevant(request, item, resolvedEntity, thresholds));
         boolean strongRecoveryEvidence = evidence.stream()
@@ -66,18 +66,30 @@ public class AnswerabilityEvaluator {
                 : new Assessment(Answerability.INSUFFICIENT_EVIDENCE, "selected_evidence_below_relevance_threshold");
     }
 
-    private Assessment requiredSourceAssessment(SourcePlan sourcePlan, List<Evidence> evidence) {
-        boolean hasKnowledge = evidence.stream().anyMatch(item -> item.type() == EvidenceType.CARE_GUIDE
-                || item.type() == EvidenceType.PLANT_KNOWLEDGE
-                || item.type() == EvidenceType.DISEASE_KNOWLEDGE);
-        boolean hasCommunity = evidence.stream().anyMatch(item -> item.type() == EvidenceType.COMMUNITY_POST);
-        if (sourcePlan.knowledge().required() && !hasKnowledge) {
-            return new Assessment(Answerability.INSUFFICIENT_EVIDENCE, "required_knowledge_evidence_missing");
+    private Assessment requiredSourceAssessment(RetrievalRequest request, List<Evidence> evidence,
+                                                boolean resolvedEntity,
+                                                RagRuntimeConfig.Answerability thresholds) {
+        boolean hasRelevantKnowledge = evidence.stream()
+                .filter(this::isKnowledgeEvidence)
+                .anyMatch(item -> relevant(request, item, resolvedEntity, thresholds));
+        boolean hasRelevantCommunity = evidence.stream()
+                .filter(item -> item.type() == EvidenceType.COMMUNITY_POST)
+                .anyMatch(item -> relevant(request, item, resolvedEntity, thresholds));
+        if (request.sourcePlan().knowledge().required() && !hasRelevantKnowledge) {
+            return new Assessment(Answerability.INSUFFICIENT_EVIDENCE,
+                    "required_knowledge_relevant_evidence_missing");
         }
-        if (sourcePlan.community().required() && !hasCommunity) {
-            return new Assessment(Answerability.INSUFFICIENT_EVIDENCE, "required_community_evidence_missing");
+        if (request.sourcePlan().community().required() && !hasRelevantCommunity) {
+            return new Assessment(Answerability.INSUFFICIENT_EVIDENCE,
+                    "required_community_relevant_evidence_missing");
         }
         return null;
+    }
+
+    private boolean isKnowledgeEvidence(Evidence evidence) {
+        return evidence.type() == EvidenceType.CARE_GUIDE
+                || evidence.type() == EvidenceType.PLANT_KNOWLEDGE
+                || evidence.type() == EvidenceType.DISEASE_KNOWLEDGE;
     }
 
     private boolean relevant(RetrievalRequest request, Evidence evidence, boolean resolvedEntity,

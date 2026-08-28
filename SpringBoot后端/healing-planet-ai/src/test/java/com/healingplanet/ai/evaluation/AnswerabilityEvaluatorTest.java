@@ -68,7 +68,28 @@ class AnswerabilityEvaluatorTest {
                 List.of(evidence("guide", EvidenceType.CARE_GUIDE, Map.of())));
 
         assertThat(result.result()).isEqualTo(Answerability.INSUFFICIENT_EVIDENCE);
-        assertThat(result.reason()).isEqualTo("required_community_evidence_missing");
+        assertThat(result.reason()).isEqualTo("required_community_relevant_evidence_missing");
+    }
+
+    @Test
+    void everyRequiredSourceNeedsItsOwnRelevantEvidence() {
+        RetrievalRequest base = request("官方怎么说，社区又怎么说？", Set.of(), 0.9d);
+        SourcePlan bothRequired = new SourcePlan(SourcePlan.SourceRequirement.REQUIRED,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.ALLOWED);
+        RetrievalRequest request = new RetrievalRequest(base.query(), base.analysis(), base.constraints(),
+                new RetrievalPlan(bothRequired, true, true, false, Set.of(), Set.of(), base.searchQuery()),
+                null, base.searchQuery());
+        Evidence relevantGuide = scoredEvidence("guide", EvidenceType.CARE_GUIDE, 0.90d);
+        Evidence weakPost = scoredEvidence("post", EvidenceType.COMMUNITY_POST, 0.10d);
+        Evidence weakGuide = scoredEvidence("weak-guide", EvidenceType.CARE_GUIDE, 0.10d);
+        Evidence relevantPost = scoredEvidence("strong-post", EvidenceType.COMMUNITY_POST, 0.90d);
+
+        assertThat(evaluate(request, List.of(relevantGuide, weakPost)).reason())
+                .isEqualTo("required_community_relevant_evidence_missing");
+        assertThat(evaluate(request, List.of(weakGuide, relevantPost)).reason())
+                .isEqualTo("required_knowledge_relevant_evidence_missing");
+        assertThat(evaluate(request, List.of(relevantGuide, relevantPost)).result())
+                .isEqualTo(Answerability.ANSWERABLE);
     }
 
     @Test
@@ -159,5 +180,9 @@ class AnswerabilityEvaluatorTest {
 
     private Evidence evidence(String id, EvidenceType type, Map<String, Object> metadata) {
         return new Evidence(id, type, id, "test", id, id, 1d, null, 1d, 1d, metadata, null);
+    }
+
+    private Evidence scoredEvidence(String id, EvidenceType type, double score) {
+        return new Evidence(id, type, id, "test", id, id, score, null, score, score, Map.of(), null);
     }
 }

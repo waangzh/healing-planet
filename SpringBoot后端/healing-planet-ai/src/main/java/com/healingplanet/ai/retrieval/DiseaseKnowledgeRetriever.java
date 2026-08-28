@@ -39,8 +39,12 @@ public class DiseaseKnowledgeRetriever {
     }
 
     public List<Evidence> retrieve(DiseaseDetection detection, RagQuery query) {
+        return retrieve(detection, query, runtimeConfigProvider.runtimeSnapshot());
+    }
+
+    public List<Evidence> retrieve(DiseaseDetection detection, RagQuery query,
+                                   RagRuntimeSnapshot runtimeSnapshot) {
         if (detection.healthy()) return List.of();
-        RagRuntimeSnapshot runtimeSnapshot = runtimeConfigProvider.runtimeSnapshot();
         RagRuntimeConfig config = runtimeSnapshot.config();
         String searchText = searchText(detection, query);
         List<RrfFusion.DenseHit> dense = config.retrievalMode().usesDense() ? denseSearch(searchText, config) : List.of();

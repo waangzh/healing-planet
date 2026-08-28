@@ -4,6 +4,7 @@ import com.healingplanet.ai.config.RagChatOptions;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.DiseaseDetection;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -98,7 +99,8 @@ public class MultimodalDiagnosisService {
 
     public MultimodalRagResponse analyze(FilePart image, String attachmentId, Long userId, Long plantInstanceId,
                                          String canonicalPlantId, String question, MultimodalRoute requestedRoute) {
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtime = runtimeConfigProvider.runtimeSnapshot();
+        RagRuntimeConfig config = runtime.config();
         String queryText = question == null || question.isBlank() ? "请分析这张植物图片" : question.trim();
         ImageAttachment attachment = attachmentStore.resolve(image, attachmentId);
         VisualObservation observation = attachment.observation();
@@ -109,13 +111,15 @@ public class MultimodalDiagnosisService {
         }
         MultimodalRoute route = multimodalRouter.route(requestedRoute, queryText, observation);
         return route == MultimodalRoute.DISEASE_DIAGNOSIS
-                ? diagnose(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, config)
-                : answerGeneral(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, route, config);
+                ? diagnose(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation, runtime)
+                : answerGeneral(attachment, userId, plantInstanceId, canonicalPlantId, queryText, observation,
+                route, runtime);
     }
 
     private MultimodalRagResponse diagnose(ImageAttachment attachment, Long userId, Long plantInstanceId,
                                             String canonicalPlantId, String queryText,
-                                            VisualObservation observation, RagRuntimeConfig config) {
+                                            VisualObservation observation, RagRuntimeSnapshot runtime) {
+        RagRuntimeConfig config = runtime.config();
         RagQuery query = new RagQuery(queryText, userId, plantInstanceId, canonicalPlantId,
                 QueryIntent.DISEASE_DIAGNOSIS, List.of(), Map.of());
         DiseaseDetection detection = attachment.detection();
@@ -131,7 +135,7 @@ public class MultimodalDiagnosisService {
             if (updated != null) attachment = updated;
         }
         List<Evidence> state = stateRetriever.retrieve(query);
-        List<Evidence> disease = diseaseRetriever.retrieve(detection, query);
+        List<Evidence> disease = diseaseRetriever.retrieve(detection, query, runtime);
         List<Evidence> evidence = new ArrayList<>();
         evidence.add(visualEvidence(observation, detection, classifierNote));
         evidence.addAll(disease);
@@ -155,7 +159,8 @@ public class MultimodalDiagnosisService {
     private MultimodalRagResponse answerGeneral(ImageAttachment attachment, Long userId, Long plantInstanceId,
                                                  String canonicalPlantId, String queryText,
                                                  VisualObservation observation, MultimodalRoute route,
-                                                 RagRuntimeConfig config) {
+                                                 RagRuntimeSnapshot runtime) {
+        RagRuntimeConfig config = runtime.config();
         String retrievalQuery = Stream.of(queryText, observation.searchQuery(), observation.summary(),
                         observation.recognizedText())
                 .filter(value -> value != null && !value.isBlank()).distinct().reduce((a, b) -> a + " " + b)
@@ -164,7 +169,7 @@ public class MultimodalDiagnosisService {
                 null, List.of(), Map.of());
         List<Evidence> evidence = new ArrayList<>();
         evidence.add(visualEvidence(observation, null, null));
-        evidence.addAll(ragService.search(query));
+        evidence.addAll(ragService.search(query, runtime));
         boolean stateUsed = hasStateEvidence(evidence);
         String note = userId == null || plantInstanceId == null
                 ? "未选择植物，本轮未结合传感器数据。" : null;

@@ -4,6 +4,7 @@ import com.healingplanet.ai.config.RagChatOptions;
 import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.config.RagRuntimeConfigProvider;
+import com.healingplanet.ai.config.RagRuntimeSnapshot;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.RagQuery;
@@ -56,12 +57,13 @@ public class RagService {
     }
 
     public RagResponse chat(RagQuery query) {
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtime = runtimeConfigProvider.runtimeSnapshot();
+        RagRuntimeConfig config = runtime.config();
         RetrievalRequest request = requestFor(query);
         String validation = validateStateQuery(query, request);
         if (validation != null) return new RagResponse(validation, List.of(),
                 entityDiagnostics(request), validationTrace(request, validation));
-        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
+        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request, runtime);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
                 retrieval.entityResolution(), config);
@@ -80,12 +82,13 @@ public class RagService {
     }
 
     public RagStream stream(RagQuery query) {
-        RagRuntimeConfig config = runtimeConfigProvider.snapshot();
+        RagRuntimeSnapshot runtime = runtimeConfigProvider.runtimeSnapshot();
+        RagRuntimeConfig config = runtime.config();
         RetrievalRequest request = requestFor(query);
         String validation = validateStateQuery(query, request);
         if (validation != null) return new RagStream(List.of(), entityDiagnostics(request),
                 validationTrace(request, validation), Flux.just(validation));
-        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
+        RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request, runtime);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
                 retrieval.entityResolution(), config);
@@ -104,7 +107,11 @@ public class RagService {
     }
 
     public List<Evidence> search(RagQuery query) {
-        RetrievalResult result = retriever.retrieveWithDiagnostics(requestFor(query));
+        return search(query, runtimeConfigProvider.runtimeSnapshot());
+    }
+
+    List<Evidence> search(RagQuery query, RagRuntimeSnapshot runtime) {
+        RetrievalResult result = retriever.retrieveWithDiagnostics(requestFor(query), runtime);
         return entityGuardAnswer(result.entityResolution()) == null ? result.evidence() : List.of();
     }
 
@@ -197,7 +204,8 @@ public class RagService {
             case STATE_STALE -> staleStateDecisionAnswer(request, evidence);
             case OUT_OF_SCOPE -> outOfScopeAnswer();
             case INSUFFICIENT_EVIDENCE -> "required_state_evidence_forbidden".equals(assessment.reason())
-                    ? "按你的要求不读取传感器状态，因此无法判断这盆植物现在是否需要处理；只能提供一般养护指南。"
+                    ? "按你的要求不读取传感器状态，因此无法判断这盆植物现在是否需要处理；"
+                    + "如果需要，我可以另行提供不依赖实时状态的一般养护指南。"
                     : emptyEvidenceAnswer(retrieval);
         };
     }
