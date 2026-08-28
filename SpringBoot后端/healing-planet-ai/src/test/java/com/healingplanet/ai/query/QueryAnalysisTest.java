@@ -107,6 +107,15 @@ class QueryAnalysisTest {
     }
 
     @Test
+    void forbiddingStateRetrievalDoesNotEraseTheQuestionsStateNeeds() {
+        var plan = plan("不要看传感器，我这盆绿萝现在需要浇水吗？");
+
+        assertThat(plan.searchState()).isFalse();
+        assertThat(plan.sourcePlan().state()).isEqualTo(SourcePlan.SourceRequirement.FORBIDDEN);
+        assertThat(plan.stateNeeds()).containsExactlyInAnyOrder(StateNeed.CURRENT, StateNeed.DECISION_SUPPORT);
+    }
+
+    @Test
     void notOnlyPhrasesDoNotCreateFalseSourceForbiddance() {
         var communityFirst = plan("不只看社区经验，也看看官方说法。");
         var formalFirst = plan("不只看官方指南，也想看看大家怎么做。");

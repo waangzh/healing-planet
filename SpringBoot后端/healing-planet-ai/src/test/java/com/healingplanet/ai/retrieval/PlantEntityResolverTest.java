@@ -112,10 +112,18 @@ class PlantEntityResolverTest {
 
     @Test
     void genericConceptMarkersMustNotHideAnUnresolvedSpecificPlant() {
-        var resolution = resolve(RagQuery.of("火星苔藓为什么会发黄？"));
-
-        assertThat(resolution.kind()).isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
-        assertThat(resolution.rejectionReason()).isEqualTo("no_indexed_entity_candidate");
+        assertThat(List.of(
+                "火星苔藓是什么意思？",
+                "火星苔藓的光合作用有什么特点？"))
+                .allSatisfy(text -> {
+                    var resolution = resolve(RagQuery.of(text));
+                    assertThat(resolution.kind()).as(text)
+                            .isEqualTo(PlantEntityResolver.ResolutionKind.UNKNOWN);
+                    assertThat(resolution.rejectionReason()).as(text)
+                            .isEqualTo("specific_plant_mention_before_generic_concept");
+                });
+        assertThat(resolve(RagQuery.of("光合作用是什么意思？")).kind())
+                .isEqualTo(PlantEntityResolver.ResolutionKind.GENERIC);
     }
 
     @Test

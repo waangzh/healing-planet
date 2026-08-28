@@ -36,6 +36,9 @@ public final class QueryLexicon {
     public static final Set<String> GENERIC_CONCEPT = Set.of(
             "是什么意思", "有什么区别", "区别是什么", "怎么理解", "原理是什么",
             "光合作用", "蒸腾作用", "呼吸作用");
+    /** Plant-name morphology used only to keep an unresolved named plant from being swallowed by a concept marker. */
+    public static final Set<String> PLANT_NAME_SUFFIX = Set.of(
+            "苔藓", "兰", "榕", "蕨", "竹", "藤", "菊", "莲", "掌", "草", "花", "树", "木");
     public static final Set<String> PLANT_DOMAIN = Set.of(
             "植物", "绿植", "盆栽", "花卉", "花盆", "花草", "植株", "园艺", "种植", "栽培", "多肉",
             "养花", "养植物", "养绿植", "盆土", "根系", "叶片", "叶子", "浇水", "补水", "施肥", "肥料",

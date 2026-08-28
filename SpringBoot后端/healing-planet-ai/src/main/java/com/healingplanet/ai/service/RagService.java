@@ -64,7 +64,7 @@ public class RagService {
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
-                retrieval.entityResolution());
+                retrieval.entityResolution(), config);
         RetrievalTrace trace = withAnswerability(retrieval.retrievalTrace(), assessment);
         String safeAnswer = safeAnswer(request, retrieval, evidence, assessment);
         if (safeAnswer != null) return new RagResponse(safeAnswer,
@@ -88,7 +88,7 @@ public class RagService {
         RetrievalResult retrieval = retriever.retrieveWithDiagnostics(request);
         List<Evidence> evidence = retrieval.evidence();
         AnswerabilityEvaluator.Assessment assessment = answerabilityEvaluator.evaluate(request, evidence,
-                retrieval.entityResolution());
+                retrieval.entityResolution(), config);
         RetrievalTrace trace = withAnswerability(retrieval.retrievalTrace(), assessment);
         String safeAnswer = safeAnswer(request, retrieval, evidence, assessment);
         if (safeAnswer != null) return new RagStream(
@@ -166,8 +166,7 @@ public class RagService {
     }
 
     private String staleStateDecisionAnswer(RetrievalRequest request, List<Evidence> evidence) {
-        if (!request.stateNeeds().contains(StateNeed.DECISION_SUPPORT)
-                && !request.stateNeeds().contains(StateNeed.FRESHNESS)) return null;
+        if (!request.stateNeeds().contains(StateNeed.DECISION_SUPPORT)) return null;
         for (int index = 0; index < evidence.size(); index++) {
             Evidence item = evidence.get(index);
             if (item.type() != EvidenceType.LIVE_STATE || !Boolean.TRUE.equals(item.metadata().get("stale"))) continue;
@@ -197,7 +196,9 @@ public class RagService {
             case STATE_UNAVAILABLE -> "暂时无法获取这盆植物的最新状态，因此不能可靠判断当前是否需要处理。请确认设备在线并稍后重试。";
             case STATE_STALE -> staleStateDecisionAnswer(request, evidence);
             case OUT_OF_SCOPE -> outOfScopeAnswer();
-            case INSUFFICIENT_EVIDENCE -> emptyEvidenceAnswer(retrieval);
+            case INSUFFICIENT_EVIDENCE -> "required_state_evidence_forbidden".equals(assessment.reason())
+                    ? "按你的要求不读取传感器状态，因此无法判断这盆植物现在是否需要处理；只能提供一般养护指南。"
+                    : emptyEvidenceAnswer(retrieval);
         };
     }
 

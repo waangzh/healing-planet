@@ -55,6 +55,21 @@ public class RagRuntimeConfigValidator {
         finiteInRange("engagementNormalization", ranking.engagementNormalization(), 1, 100000, errors);
         finiteInRange("recencyDecayDays", ranking.recencyDecayDays(), 1, 3650, errors);
         positiveInRange("mixedSourceCommunityLimit", config.mixedSourceCommunityLimit(), 0, 30, errors);
+        if (config.answerability() == null) {
+            errors.add("answerability 不能为空");
+        } else {
+            RagRuntimeConfig.Answerability answerability = config.answerability();
+            finiteInRange("answerability.minRetrievalRelevance",
+                    answerability.minRetrievalRelevance(), 0, 1, errors);
+            finiteInRange("answerability.minRerankRelevance",
+                    answerability.minRerankRelevance(), 0, 1, errors);
+            finiteInRange("answerability.minAlignedSemanticRelevance",
+                    answerability.minAlignedSemanticRelevance(), 0, 1, errors);
+            finiteInRange("answerability.minAlignedFinalRelevance",
+                    answerability.minAlignedFinalRelevance(), 0, 1, errors);
+            finiteInRange("answerability.strongRecoveryRelevance",
+                    answerability.strongRecoveryRelevance(), 0, 1, errors);
+        }
         if (config.generation() == null) {
             errors.add("generation 不能为空");
         } else {

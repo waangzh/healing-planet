@@ -49,6 +49,9 @@ public class PlantEntityResolver {
         String explicitId = query.canonicalPlantId() == null ? "" : query.canonicalPlantId().trim();
         if (!explicitId.isBlank()) return resolveExplicit(explicitId, mentions, snapshot);
         if (!mentions.isEmpty()) return resolveMentions(query.query(), normalized, mentions, snapshot);
+        if (hasUnresolvedSpecificPlantBeforeGenericConcept(normalized)) {
+            return Resolution.unknown("specific_plant_mention_before_generic_concept", 0, 0, 0);
+        }
         if (isGenericOrNonEntityQuery(normalized)) return Resolution.generic();
         List<PlantEntityCandidateRetriever.Candidate> candidates = candidateRetriever.retrieve(normalized, snapshot);
         if (candidates.isEmpty()) return Resolution.unknown("no_indexed_entity_candidate", 0, 0, 0);
@@ -60,6 +63,20 @@ public class PlantEntityResolver {
                 || normalized.startsWith("植物")
                 || QueryLexicon.containsAny(normalized, QueryLexicon.GENERIC_CONCEPT)
                 || !QueryLexicon.containsAny(normalized, QueryLexicon.PLANT_DOMAIN);
+    }
+
+    private boolean hasUnresolvedSpecificPlantBeforeGenericConcept(String normalized) {
+        if (!QueryLexicon.containsAny(normalized, QueryLexicon.GENERIC_CONCEPT)
+                || QueryLexicon.containsAny(normalized, QueryLexicon.CLEAR_NON_PLANT)) return false;
+        for (String suffix : QueryLexicon.PLANT_NAME_SUFFIX) {
+            int suffixEnd = normalized.indexOf(suffix) + suffix.length();
+            if (suffixEnd <= suffix.length()) continue;
+            String following = normalized.substring(suffixEnd);
+            if (following.startsWith("是什么意思") || following.startsWith("怎么理解")
+                    || following.startsWith("的光合作用") || following.startsWith("的蒸腾作用")
+                    || following.startsWith("的呼吸作用")) return true;
+        }
+        return false;
     }
 
     private Resolution resolveExplicit(String explicitId, List<PlantMention> mentions, PlantCatalogSnapshot snapshot) {

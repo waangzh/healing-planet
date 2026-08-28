@@ -15,6 +15,7 @@ public record RagRuntimeConfig(
         SourceAwareRanking sourceAwareRanking,
         boolean evidenceSelectorEnabled,
         int mixedSourceCommunityLimit,
+        Answerability answerability,
         Generation generation,
         RerankerClient rerankerClient) {
 
@@ -40,6 +41,11 @@ public record RagRuntimeConfig(
                         ranking.getEngagementNormalization(), ranking.getRecencyDecayDays()),
                 properties.getEvidenceSelector().isEnabled(),
                 properties.getEvidenceSelector().getMixedSourceCommunityLimit(),
+                new Answerability(properties.getAnswerability().getMinRetrievalRelevance(),
+                        properties.getAnswerability().getMinRerankRelevance(),
+                        properties.getAnswerability().getMinAlignedSemanticRelevance(),
+                        properties.getAnswerability().getMinAlignedFinalRelevance(),
+                        properties.getAnswerability().getStrongRecoveryRelevance()),
                 new Generation(properties.getGeneration().getModel(), properties.getGeneration().getTemperature(),
                         properties.getGeneration().getMaxTokens()),
                 new RerankerClient("default", properties.getReranker().getPath(), properties.getReranker().getModel(),
@@ -49,13 +55,14 @@ public record RagRuntimeConfig(
     public RagRuntimeConfig withRevision(long value) {
         return new RagRuntimeConfig(value, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
                 rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
-                generation, rerankerClient);
+                answerability, generation, rerankerClient);
     }
 
     /** 兼容第一阶段已经落库、尚未包含本阶段字段的版本。 */
     public RagRuntimeConfig completeWith(RagRuntimeConfig fallback) {
         return new RagRuntimeConfig(revision, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
                 rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                answerability == null ? fallback.answerability : answerability,
                 generation == null ? fallback.generation : generation,
                 rerankerClient == null ? fallback.rerankerClient : rerankerClient);
     }
@@ -83,6 +90,14 @@ public record RagRuntimeConfig(
     }
 
     public record Generation(String model, double temperature, int maxTokens) {
+    }
+
+    public record Answerability(
+            double minRetrievalRelevance,
+            double minRerankRelevance,
+            double minAlignedSemanticRelevance,
+            double minAlignedFinalRelevance,
+            double strongRecoveryRelevance) {
     }
 
     /** 仅保存部署侧 profile 标识和非敏感调用参数；URL、密钥和探活地址保留在应用配置中。 */

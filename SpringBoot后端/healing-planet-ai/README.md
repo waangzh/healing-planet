@@ -51,6 +51,8 @@ Query
 
 显式来源禁止、权限、实体冲突和安全规则仍是 hard constraint；领域、主题和来源相关性预测只作为
 planning / coverage hint。宽召回之后由 Evidence 的相关性、必需来源覆盖和状态完整性决定是否可回答。
+Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `RagRuntimeConfig`，默认值在
+`application.example.yml` 的 `app.rag.answerability` 下配置；切换检索模式或 reranker 后应重新校准。
 
 ## 核心特性
 

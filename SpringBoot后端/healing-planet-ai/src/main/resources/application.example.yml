@@ -151,6 +151,13 @@ app:
     evidence-selector:
       enabled: ${RAG_EVIDENCE_SELECTOR_ENABLED:true}
       mixed-source-community-limit: ${RAG_MIXED_SOURCE_COMMUNITY_LIMIT:2}
+    # 不同 retrieval-mode / reranker 组合应分别用 Golden/Holdout 校准这些阈值。
+    answerability:
+      min-retrieval-relevance: ${RAG_ANSWERABILITY_MIN_RETRIEVAL_RELEVANCE:0.45}
+      min-rerank-relevance: ${RAG_ANSWERABILITY_MIN_RERANK_RELEVANCE:0.40}
+      min-aligned-semantic-relevance: ${RAG_ANSWERABILITY_MIN_ALIGNED_SEMANTIC_RELEVANCE:0.30}
+      min-aligned-final-relevance: ${RAG_ANSWERABILITY_MIN_ALIGNED_FINAL_RELEVANCE:0.60}
+      strong-recovery-relevance: ${RAG_ANSWERABILITY_STRONG_RECOVERY_RELEVANCE:0.60}
     plant-state:
       base-url: ${PLANT_STATE_BASE_URL:http://localhost:8070}
       api-key: ${PLANT_STATE_API_KEY:}

@@ -27,6 +27,7 @@ public class RagProperties {
     private final Generation generation = new Generation();
     private final SourceAwareRanking sourceAwareRanking = new SourceAwareRanking();
     private final EvidenceSelector evidenceSelector = new EvidenceSelector();
+    private final Answerability answerability = new Answerability();
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
     private final Attachments attachments = new Attachments();
@@ -58,6 +59,7 @@ public class RagProperties {
     public Generation getGeneration() { return generation; }
     public SourceAwareRanking getSourceAwareRanking() { return sourceAwareRanking; }
     public EvidenceSelector getEvidenceSelector() { return evidenceSelector; }
+    public Answerability getAnswerability() { return answerability; }
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
     public Attachments getAttachments() { return attachments; }
@@ -180,6 +182,25 @@ public class RagProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public int getMixedSourceCommunityLimit() { return mixedSourceCommunityLimit; }
         public void setMixedSourceCommunityLimit(int value) { this.mixedSourceCommunityLimit = value; }
+    }
+
+    public static class Answerability {
+        private double minRetrievalRelevance = 0.45;
+        private double minRerankRelevance = 0.40;
+        private double minAlignedSemanticRelevance = 0.30;
+        private double minAlignedFinalRelevance = 0.60;
+        private double strongRecoveryRelevance = 0.60;
+
+        public double getMinRetrievalRelevance() { return minRetrievalRelevance; }
+        public void setMinRetrievalRelevance(double value) { this.minRetrievalRelevance = value; }
+        public double getMinRerankRelevance() { return minRerankRelevance; }
+        public void setMinRerankRelevance(double value) { this.minRerankRelevance = value; }
+        public double getMinAlignedSemanticRelevance() { return minAlignedSemanticRelevance; }
+        public void setMinAlignedSemanticRelevance(double value) { this.minAlignedSemanticRelevance = value; }
+        public double getMinAlignedFinalRelevance() { return minAlignedFinalRelevance; }
+        public void setMinAlignedFinalRelevance(double value) { this.minAlignedFinalRelevance = value; }
+        public double getStrongRecoveryRelevance() { return strongRecoveryRelevance; }
+        public void setStrongRecoveryRelevance(double value) { this.strongRecoveryRelevance = value; }
     }
 
     public static class Bm25 {

@@ -1,5 +1,6 @@
 package com.healingplanet.ai.evaluation;
 
+import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import com.healingplanet.ai.domain.Evidence;
 import com.healingplanet.ai.domain.EvidenceType;
@@ -13,26 +14,25 @@ import java.util.List;
 /** Makes safe outcomes from retrieved evidence rather than a pre-retrieval classifier. */
 @Component
 public class AnswerabilityEvaluator {
-    private static final double MIN_RETRIEVAL_RELEVANCE = 0.45d;
-    private static final double MIN_RERANK_RELEVANCE = 0.40d;
-    private static final double MIN_ALIGNED_SEMANTIC_RELEVANCE = 0.30d;
-    private static final double MIN_ALIGNED_FINAL_RELEVANCE = 0.60d;
-    private static final double STRONG_RECOVERY_RELEVANCE = 0.60d;
-
     public Assessment evaluate(RetrievalRequest request, List<Evidence> evidence,
-                               EntityResolutionDiagnostics entityResolution) {
+                               EntityResolutionDiagnostics entityResolution, RagRuntimeConfig config) {
         if (entityResolution != null) {
             return switch (entityResolution.resolutionKind()) {
                 case "CONFLICT" -> new Assessment(Answerability.ENTITY_CONFLICT, "entity_conflict");
                 case "AMBIGUOUS" -> new Assessment(Answerability.ENTITY_AMBIGUOUS, "entity_ambiguous");
                 case "UNKNOWN" -> new Assessment(Answerability.ENTITY_UNKNOWN, "entity_unknown");
-                default -> evaluateEvidence(request, evidence);
+                default -> evaluateEvidence(request, evidence, config.answerability());
             };
         }
-        return evaluateEvidence(request, evidence);
+        return evaluateEvidence(request, evidence, config.answerability());
     }
 
-    private Assessment evaluateEvidence(RetrievalRequest request, List<Evidence> evidence) {
+    private Assessment evaluateEvidence(RetrievalRequest request, List<Evidence> evidence,
+                                        RagRuntimeConfig.Answerability thresholds) {
+        if (!request.stateNeeds().isEmpty()
+                && request.sourcePlan().state() == SourcePlan.SourceRequirement.FORBIDDEN) {
+            return new Assessment(Answerability.INSUFFICIENT_EVIDENCE, "required_state_evidence_forbidden");
+        }
         boolean hasLive = evidence.stream().anyMatch(item -> item.type() == EvidenceType.LIVE_STATE);
         boolean hasHistory = evidence.stream().anyMatch(item -> item.type() == EvidenceType.SENSOR_HISTORY);
         if (request.plan().searchState()) {
@@ -42,8 +42,7 @@ public class AnswerabilityEvaluator {
             if (currentRequired && !hasLive || request.stateNeeds().contains(StateNeed.HISTORY) && !hasHistory) {
                 return new Assessment(Answerability.STATE_UNAVAILABLE, "required_state_evidence_missing");
             }
-            boolean immediateDecision = request.stateNeeds().contains(StateNeed.DECISION_SUPPORT)
-                    || request.stateNeeds().contains(StateNeed.FRESHNESS);
+            boolean immediateDecision = request.stateNeeds().contains(StateNeed.DECISION_SUPPORT);
             if (immediateDecision && evidence.stream().filter(item -> item.type() == EvidenceType.LIVE_STATE)
                     .anyMatch(item -> Boolean.TRUE.equals(item.metadata().get("stale")))) {
                 return new Assessment(Answerability.STATE_STALE, "live_state_stale");
@@ -54,8 +53,10 @@ public class AnswerabilityEvaluator {
 
         boolean resolvedEntity = request.entityResolution() != null
                 && request.entityResolution().hasResolvedEntities();
-        boolean relevantEvidence = evidence.stream().anyMatch(item -> relevant(request, item, resolvedEntity));
-        boolean strongRecoveryEvidence = evidence.stream().anyMatch(this::stronglyRelevant);
+        boolean relevantEvidence = evidence.stream()
+                .anyMatch(item -> relevant(request, item, resolvedEntity, thresholds));
+        boolean strongRecoveryEvidence = evidence.stream()
+                .anyMatch(item -> stronglyRelevant(item, thresholds));
         if (relevantEvidence && (request.analysis().plantDomainConfidence() >= 0.3d
                 || resolvedEntity || strongRecoveryEvidence)) {
             return new Assessment(Answerability.ANSWERABLE, "relevant_evidence_selected");
@@ -79,7 +80,8 @@ public class AnswerabilityEvaluator {
         return null;
     }
 
-    private boolean relevant(RetrievalRequest request, Evidence evidence, boolean resolvedEntity) {
+    private boolean relevant(RetrievalRequest request, Evidence evidence, boolean resolvedEntity,
+                             RagRuntimeConfig.Answerability thresholds) {
         if (evidence.type() == EvidenceType.LIVE_STATE || evidence.type() == EvidenceType.SENSOR_HISTORY
                 || evidence.type() == EvidenceType.VISUAL_OBSERVATION
                 || evidence.type() == EvidenceType.SENSOR_CONSISTENCY) return true;
@@ -87,14 +89,14 @@ public class AnswerabilityEvaluator {
         double retrieval = score(evidence.retrievalScore());
         double rerank = score(evidence.rerankScore());
         double semantic = Math.max(retrieval, rerank);
-        return retrieval >= MIN_RETRIEVAL_RELEVANCE || rerank >= MIN_RERANK_RELEVANCE
-                || aligned && semantic >= MIN_ALIGNED_SEMANTIC_RELEVANCE
-                && score(evidence.finalScore()) >= MIN_ALIGNED_FINAL_RELEVANCE;
+        return retrieval >= thresholds.minRetrievalRelevance() || rerank >= thresholds.minRerankRelevance()
+                || aligned && semantic >= thresholds.minAlignedSemanticRelevance()
+                && score(evidence.finalScore()) >= thresholds.minAlignedFinalRelevance();
     }
 
-    private boolean stronglyRelevant(Evidence evidence) {
+    private boolean stronglyRelevant(Evidence evidence, RagRuntimeConfig.Answerability thresholds) {
         return Math.max(score(evidence.retrievalScore()), score(evidence.rerankScore()))
-                >= STRONG_RECOVERY_RELEVANCE;
+                >= thresholds.strongRecoveryRelevance();
     }
 
     private boolean topicAligned(RetrievalRequest request, Evidence evidence) {

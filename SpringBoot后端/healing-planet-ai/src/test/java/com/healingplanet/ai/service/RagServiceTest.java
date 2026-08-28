@@ -142,6 +142,29 @@ class RagServiceTest {
         verify(chat, never()).prompt();
     }
 
+    @Test
+    void forbiddenStateSourceExplainsWhyCurrentDecisionCannotBeMade() {
+        EvidenceRetriever retriever = mock(EvidenceRetriever.class);
+        RetrievalRequestFactory factory = mock(RetrievalRequestFactory.class);
+        RagQuery query = RagQuery.of("不要看传感器，我这盆绿萝现在需要浇水吗？");
+        Set<StateNeed> needs = Set.of(StateNeed.CURRENT, StateNeed.DECISION_SUPPORT);
+        RetrievalRequest base = request(query, needs, 0.9d);
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.ALLOWED, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalRequest forbidden = new RetrievalRequest(query, base.analysis(), base.constraints(),
+                new RetrievalPlan(sourcePlan, true, true, false, needs, Set.of(), query.query()),
+                null, query.query());
+        when(factory.create(query)).thenReturn(forbidden);
+        when(retriever.retrieveWithDiagnostics(org.mockito.ArgumentMatchers.any(RetrievalRequest.class)))
+                .thenReturn(new RetrievalResult(List.of(evidence("guide", EvidenceType.CARE_GUIDE, Map.of())), null));
+        ChatClient chat = mock(ChatClient.class);
+
+        var response = service(retriever, factory, chat).chat(query);
+
+        assertThat(response.answer()).contains("按你的要求不读取传感器状态", "无法判断", "一般养护指南");
+        verify(chat, never()).prompt();
+    }
+
     private RagService service(EvidenceRetriever retriever, RetrievalRequestFactory factory, ChatClient chat) {
         return new RagService(retriever, mock(PromptContextBuilder.class), mock(GenerationPromptBuilder.class), chat,
                 factory, new AnswerabilityEvaluator(), new RetrievalMetrics(new SimpleMeterRegistry()),
