@@ -17,6 +17,7 @@ public class RagProperties {
     private double similarityThreshold = 0.25;
     private RetrievalMode retrievalMode = RetrievalMode.HYBRID_RRF;
     private int rrfK = 60;
+    private final AdaptiveRecall adaptiveRecall = new AdaptiveRecall();
     private String internalApiKey = "";
     private Path dataDirectory = Path.of("data", "rag");
     private final Ingestion ingestion = new Ingestion();
@@ -47,6 +48,7 @@ public class RagProperties {
     public void setRetrievalMode(RetrievalMode retrievalMode) { this.retrievalMode = retrievalMode; }
     public int getRrfK() { return rrfK; }
     public void setRrfK(int rrfK) { this.rrfK = rrfK; }
+    public AdaptiveRecall getAdaptiveRecall() { return adaptiveRecall; }
     public String getInternalApiKey() { return internalApiKey; }
     public void setInternalApiKey(String internalApiKey) { this.internalApiKey = internalApiKey; }
     public Path getDataDirectory() { return dataDirectory; }
@@ -73,6 +75,22 @@ public class RagProperties {
 
         public boolean usesDense() { return this != BM25_ONLY; }
         public boolean usesSparse() { return this != DENSE_ONLY; }
+    }
+
+    public static class AdaptiveRecall {
+        private boolean enabled = true;
+        private int maxDenseTopK = 120;
+        private int maxSparseTopK = 120;
+        private int minUniqueLogicalCandidates = 2;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getMaxDenseTopK() { return maxDenseTopK; }
+        public void setMaxDenseTopK(int value) { this.maxDenseTopK = value; }
+        public int getMaxSparseTopK() { return maxSparseTopK; }
+        public void setMaxSparseTopK(int value) { this.maxSparseTopK = value; }
+        public int getMinUniqueLogicalCandidates() { return minUniqueLogicalCandidates; }
+        public void setMinUniqueLogicalCandidates(int value) { this.minUniqueLogicalCandidates = value; }
     }
 
     public static class Ingestion {

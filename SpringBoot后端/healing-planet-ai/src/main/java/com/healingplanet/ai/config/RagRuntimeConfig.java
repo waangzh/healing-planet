@@ -11,6 +11,7 @@ public record RagRuntimeConfig(
         double similarityThreshold,
         RagProperties.RetrievalMode retrievalMode,
         int rrfK,
+        AdaptiveRecall adaptiveRecall,
         boolean rerankerEnabled,
         SourceAwareRanking sourceAwareRanking,
         boolean evidenceSelectorEnabled,
@@ -21,6 +22,7 @@ public record RagRuntimeConfig(
 
     public static RagRuntimeConfig from(RagProperties properties) {
         RagProperties.SourceAwareRanking ranking = properties.getSourceAwareRanking();
+        RagProperties.AdaptiveRecall adaptiveRecall = properties.getAdaptiveRecall();
         return new RagRuntimeConfig(
                 0,
                 properties.getDenseTopK(),
@@ -29,6 +31,8 @@ public record RagRuntimeConfig(
                 properties.getSimilarityThreshold(),
                 properties.getRetrievalMode(),
                 properties.getRrfK(),
+                new AdaptiveRecall(adaptiveRecall.isEnabled(), adaptiveRecall.getMaxDenseTopK(),
+                        adaptiveRecall.getMaxSparseTopK(), adaptiveRecall.getMinUniqueLogicalCandidates()),
                 properties.getReranker().isEnabled(),
                 new SourceAwareRanking(
                         ranking.isEnabled(), ranking.getRrfNormalizationFactor(), ranking.getDenseWeight(),
@@ -54,14 +58,15 @@ public record RagRuntimeConfig(
 
     public RagRuntimeConfig withRevision(long value) {
         return new RagRuntimeConfig(value, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
-                rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                rrfK, adaptiveRecall, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
                 answerability, generation, rerankerClient);
     }
 
     /** 兼容第一阶段已经落库、尚未包含本阶段字段的版本。 */
     public RagRuntimeConfig completeWith(RagRuntimeConfig fallback) {
         return new RagRuntimeConfig(revision, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
-                rrfK, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                rrfK, adaptiveRecall == null ? fallback.adaptiveRecall : adaptiveRecall,
+                rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
                 answerability == null ? fallback.answerability : answerability,
                 generation == null ? fallback.generation : generation,
                 rerankerClient == null ? fallback.rerankerClient : rerankerClient);
@@ -87,6 +92,10 @@ public record RagRuntimeConfig(
             double viewWeight,
             double engagementNormalization,
             double recencyDecayDays) {
+    }
+
+    public record AdaptiveRecall(boolean enabled, int maxDenseTopK, int maxSparseTopK,
+                                 int minUniqueLogicalCandidates) {
     }
 
     public record Generation(String model, double temperature, int maxTokens) {

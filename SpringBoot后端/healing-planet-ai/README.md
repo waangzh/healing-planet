@@ -41,7 +41,8 @@ Query
   -> PlantEntityResolver
   -> RetrievalPlanner（每个请求只生成一次计划）
   -> StateAwareEvidenceRetriever
-       -> Dense + BM25 + logical-evidence RRF + 可选 reranker
+       -> Retrieval Query Groups + Dense/BM25 + logical-evidence RRF
+       -> CoverageInspector + source-aware Adaptive Recall + 可选 reranker
        -> PlantStateClient / PlantStateAnalyzer
   -> SourceAwareRanker + EvidenceSelector
   -> AnswerabilityEvaluator
@@ -67,6 +68,9 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 - Lucene 中文字符 n-gram BM25 稀疏检索。
 - 每条知识先以一个逻辑证据及其一个或多个 fragment 建模；RRF 按逻辑证据在 dense / BM25
   路径中的最佳 fragment 名次融合，不因同一长文的多个 chunk 重复加分。
+- 多个已解析植物会形成确定性的 Retrieval Query Groups；普通查询仍保留单个原始查询组，不使用
+  LLM query decomposition。首轮召回后 CoverageInspector 只检查必需来源、查询组、实体、主题和
+  候选数量；存在缺口时才按缺失来源将 recall Top-K 有界扩展至配置上限。
 - 可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
 - 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用。
@@ -155,6 +159,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `QDRANT_DISEASE_COLLECTION` | 病害知识 collection | `disease_knowledge` |
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
+| `RAG_ADAPTIVE_RECALL_*` | 覆盖缺口时的有界、按来源扩召回配置 | 最大 `120`，最少逻辑候选 `2` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
 | `RAG_RETRIEVAL_MODE` | 检索模式：`BM25_ONLY` / `DENSE_ONLY` / `HYBRID_RRF` | `HYBRID_RRF` |
 | `RAG_ANSWERABILITY_MIN_RETRIEVAL_RELEVANCE` / `RAG_ANSWERABILITY_MIN_RERANK_RELEVANCE` | Answerability 的 retrieval / rerank 最低相关性 | `0.45` / `0.40` |

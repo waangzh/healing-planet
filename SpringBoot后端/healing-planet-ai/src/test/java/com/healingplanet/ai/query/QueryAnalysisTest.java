@@ -179,6 +179,27 @@ class QueryAnalysisTest {
         assertThat(plan("房间空气干燥而且阳光直射").topicHints()).isEqualTo(analysis.topicHints());
     }
 
+    @Test
+    void multipleResolvedPlantsProduceDeterministicEntityQueryGroups() {
+        RagQuery query = RagQuery.of("对比绿萝和虎尾兰的浇水和湿度要求");
+        var analysis = analyzer.analyze(query);
+        var entity = new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, "1",
+                List.of("1", "2"), Set.of("绿萝", "虎尾兰"), PlantEntityResolver.ResolutionMethod.EXACT_NAME,
+                1, 0, 1, 2, "");
+
+        RetrievalPlan plan = planner.plan(query, analysis, constraints.parse(query), entity);
+
+        assertThat(plan.queryGroups()).extracting(RetrievalQueryGroup::id).containsExactly("Q1", "Q2");
+        assertThat(plan.queryGroups()).allSatisfy(group -> {
+            assertThat(group.role()).isEqualTo(GroupRole.ENTITY_FOCUS);
+            assertThat(group.query()).isEqualTo(query.query());
+            assertThat(group.topicHints()).containsExactlyInAnyOrder("WATERING", "HUMIDITY");
+            assertThat(group.requiredCoverage()).isTrue();
+        });
+        assertThat(plan.queryGroups().get(0).canonicalPlantIds()).containsExactly("1");
+        assertThat(plan.queryGroups().get(1).canonicalPlantIds()).containsExactly("2");
+    }
+
     private RetrievalPlan plan(String text) {
         RagQuery query = RagQuery.of(text);
         var analysis = analyzer.analyze(query);

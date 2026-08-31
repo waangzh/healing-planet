@@ -42,8 +42,7 @@ public record RetrievalRequest(
     }
 
     public RetrievalRequest withSearchQuery(String value) {
-        RetrievalPlan updatedPlan = new RetrievalPlan(plan.sourcePlan(), plan.searchKnowledge(),
-                plan.searchCommunity(), plan.searchState(), plan.stateNeeds(), plan.topicHints(), value);
+        RetrievalPlan updatedPlan = plan.withSearchQuery(value);
         return new RetrievalRequest(query, analysis, constraints, updatedPlan, entityResolution, value);
     }
 

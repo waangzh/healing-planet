@@ -58,6 +58,12 @@ app:
     final-top-k: ${RAG_FINAL_TOP_K:6}
     similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.25}
     rrf-k: ${RAG_RRF_K:60}
+    # 第一轮召回后仅在真实 coverage 缺口存在时，按来源从 30 → 60 → 120 有界扩展。
+    adaptive-recall:
+      enabled: ${RAG_ADAPTIVE_RECALL_ENABLED:true}
+      max-dense-top-k: ${RAG_ADAPTIVE_RECALL_MAX_DENSE_TOP_K:120}
+      max-sparse-top-k: ${RAG_ADAPTIVE_RECALL_MAX_SPARSE_TOP_K:120}
+      min-unique-logical-candidates: ${RAG_ADAPTIVE_RECALL_MIN_UNIQUE_CANDIDATES:2}
     # 以下参数由 RAG 配置版本控制，并在每次 ChatClient 调用时覆盖默认 options。
     generation:
       model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}

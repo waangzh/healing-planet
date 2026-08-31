@@ -3,9 +3,12 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 同一逻辑证据在多个检索路径中命中的 fragment 聚合结果。
@@ -18,7 +21,8 @@ record LogicalEvidenceCandidate(
         Integer sparseRank,
         Double denseScore,
         Double sparseScore,
-        double fusionScore
+        double fusionScore,
+        Set<String> matchedQueryGroupIds
 ) {
     LogicalEvidenceCandidate {
         if (logicalEvidenceId == null || logicalEvidenceId.isBlank()) {
@@ -31,6 +35,14 @@ record LogicalEvidenceCandidate(
         if (fragments.isEmpty()) {
             throw new IllegalArgumentException("fragments 不能为空");
         }
+        matchedQueryGroupIds = immutable(matchedQueryGroupIds);
+    }
+
+    LogicalEvidenceCandidate(String logicalEvidenceId, KnowledgeDocument representative,
+                             List<RetrievalFragmentHit> fragments, Integer denseRank, Integer sparseRank,
+                             Double denseScore, Double sparseScore, double fusionScore) {
+        this(logicalEvidenceId, representative, fragments, denseRank, sparseRank, denseScore, sparseScore,
+                fusionScore, Set.of());
     }
 
     LogicalEvidenceCandidate withRerankedRepresentative(Map<String, Double> rerankScores) {
@@ -46,7 +58,7 @@ record LogicalEvidenceCandidate(
             return this;
         }
         return new LogicalEvidenceCandidate(logicalEvidenceId, selected.document(), fragments,
-                denseRank, sparseRank, denseScore, sparseScore, fusionScore);
+                denseRank, sparseRank, denseScore, sparseScore, fusionScore, matchedQueryGroupIds);
     }
 
     Map<String, Object> evidenceMetadata() {
@@ -55,6 +67,8 @@ record LogicalEvidenceCandidate(
         metadata.put("logicalEvidenceId", logicalEvidenceId);
         metadata.put("matchedFragmentIds", String.join(",", fragmentIds));
         metadata.put("matchedFragmentCount", fragmentIds.size());
+        metadata.put("matchedQueryGroupIds", String.join(",", matchedQueryGroupIds));
+        metadata.put("matchedQueryGroupCount", matchedQueryGroupIds.size());
         return Map.copyOf(metadata);
     }
 
@@ -72,5 +86,11 @@ record LogicalEvidenceCandidate(
             unique.putIfAbsent(fragment.fragmentId(), fragment);
         }
         return List.copyOf(unique.values());
+    }
+
+    private static Set<String> immutable(Set<String> values) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        if (values != null) values.stream().filter(value -> value != null && !value.isBlank()).forEach(result::add);
+        return Collections.unmodifiableSet(result);
     }
 }

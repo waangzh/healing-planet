@@ -1,6 +1,7 @@
 package com.healingplanet.ai.retrieval;
 
 import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.config.RagRuntimeConfig;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.domain.RagQuery;
 import com.healingplanet.ai.domain.QueryIntent;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +46,7 @@ class HybridEvidenceRetrieverTest {
         properties.getReranker().setEnabled(false);
         properties.getSourceAwareRanking().setEnabled(false);
         properties.getEvidenceSelector().setEnabled(false);
+        properties.getAdaptiveRecall().setEnabled(false);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
                 new KnowledgeDocumentMapper(), mock(Reranker.class), new SourceAwareRanker(properties),
                 entityResolver, new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
@@ -169,14 +172,36 @@ class HybridEvidenceRetrieverTest {
         assertThat(evidence.get(0).finalScore()).isGreaterThan(0.05d);
     }
 
+    @Test
+    void shouldDeepenOnlyTheMissingRequiredSource() {
+        properties.getAdaptiveRecall().setEnabled(true);
+        properties.getAdaptiveRecall().setMaxDenseTopK(60);
+        properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(1);
+        properties.setRetrievalMode(RagProperties.RetrievalMode.DENSE_ONLY);
+        when(entityResolver.resolve(any())).thenReturn(new PlantEntityResolver.Resolution(
+                PlantEntityResolver.ResolutionKind.GENERIC, "", Set.of()));
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("p1", "1")));
+        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN);
+
+        retriever.retrieveWithDiagnostics(request("绿萝浇水经验", sourcePlan), RagRuntimeConfig.from(properties));
+
+        verify(plantStore, times(1)).similaritySearch(any(SearchRequest.class));
+        verify(communityStore, times(2)).similaritySearch(any(SearchRequest.class));
+    }
+
     private PlantEntityResolver.Resolution known(String id) {
         return new PlantEntityResolver.Resolution(PlantEntityResolver.ResolutionKind.KNOWN, id, Set.of("绿萝"));
     }
 
     private RetrievalRequest request(String text) {
+        return request(text, new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.ALLOWED, SourcePlan.SourceRequirement.ALLOWED));
+    }
+
+    private RetrievalRequest request(String text, SourcePlan sourcePlan) {
         RagQuery query = RagQuery.of(text);
-        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
-                SourcePlan.SourceRequirement.ALLOWED, SourcePlan.SourceRequirement.ALLOWED);
         return new RetrievalRequest(query, new QueryAnalysis(QueryIntent.GENERAL_CARE, Set.of(),
                 KnowledgeTopicClassifier.classify(text), false, 0.9d), RetrievalConstraints.defaults(),
                 new RetrievalPlan(sourcePlan, true, true, false, Set.of(),

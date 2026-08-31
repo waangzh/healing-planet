@@ -23,6 +23,16 @@ public class RagRuntimeConfigValidator {
         finiteInRange("similarityThreshold", config.similarityThreshold(), 0, 1, errors);
         positiveInRange("rrfK", config.rrfK(), 1, 500, errors);
         if (config.retrievalMode() == null) errors.add("retrievalMode 不能为空");
+        if (config.adaptiveRecall() == null) {
+            errors.add("adaptiveRecall 不能为空");
+        } else {
+            positiveInRange("adaptiveRecall.maxDenseTopK", config.adaptiveRecall().maxDenseTopK(),
+                    config.denseTopK(), 500, errors);
+            positiveInRange("adaptiveRecall.maxSparseTopK", config.adaptiveRecall().maxSparseTopK(),
+                    config.sparseTopK(), 500, errors);
+            positiveInRange("adaptiveRecall.minUniqueLogicalCandidates",
+                    config.adaptiveRecall().minUniqueLogicalCandidates(), 1, 30, errors);
+        }
         if (config.sourceAwareRanking() == null) {
             errors.add("sourceAwareRanking 不能为空");
             return errors;

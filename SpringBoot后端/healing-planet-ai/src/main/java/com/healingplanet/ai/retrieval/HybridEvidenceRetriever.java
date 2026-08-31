@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,9 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private final RetrievalMetrics metrics;
     private final RagProperties properties;
     private final RagRuntimeConfigProvider runtimeConfigProvider;
+    private final CoverageInspector coverageInspector;
+    private final AdaptiveRecallPolicy adaptiveRecallPolicy;
+    private final LogicalEvidenceCandidateMerger candidateMerger = new LogicalEvidenceCandidateMerger();
 
     @Autowired
     public HybridEvidenceRetriever(@Qualifier("plantVectorStore") VectorStore plantStore,
@@ -39,7 +43,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                    SparseIndexService sparseIndex, KnowledgeDocumentMapper documentMapper,
                                    Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
                                    EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties,
-                                   RagRuntimeConfigProvider runtimeConfigProvider) {
+                                   RagRuntimeConfigProvider runtimeConfigProvider, CoverageInspector coverageInspector,
+                                   AdaptiveRecallPolicy adaptiveRecallPolicy) {
         this.plantStore = plantStore;
         this.communityStore = communityStore;
         this.sparseIndex = sparseIndex;
@@ -51,6 +56,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         this.metrics = metrics;
         this.properties = properties;
         this.runtimeConfigProvider = runtimeConfigProvider;
+        this.coverageInspector = coverageInspector;
+        this.adaptiveRecallPolicy = adaptiveRecallPolicy;
     }
 
     HybridEvidenceRetriever(VectorStore plantStore, VectorStore communityStore,
@@ -58,7 +65,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                             Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
                             EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties) {
         this(plantStore, communityStore, sparseIndex, documentMapper, reranker, ranker, entityResolver,
-                evidenceSelector, metrics, properties, new RagRuntimeConfigProvider(properties));
+                evidenceSelector, metrics, properties, new RagRuntimeConfigProvider(properties),
+                new CoverageInspector(), new AdaptiveRecallPolicy());
     }
 
     @Override
@@ -92,22 +100,15 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         PlantEntityResolver.Resolution entity = trace.time("entity_resolve", "all", "all",
                 () -> metrics.time("entity_resolve", "all", () -> request.entityResolution() == null
                         ? entityResolver.resolve(request) : request.entityResolution()));
-        List<LogicalEvidenceCandidate> fused = new java.util.ArrayList<>();
         boolean identityBlocked = entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
                 || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
                 || entity.kind() == PlantEntityResolver.ResolutionKind.CONFLICT;
         boolean includePlant = request.plan().searchKnowledge() && !identityBlocked;
         boolean includeCommunity = request.plan().searchCommunity() && !identityBlocked
                 && entity.kind() != PlantEntityResolver.ResolutionKind.PARTIAL;
-        if (includePlant) {
-            fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.PLANT, plantStore, entity, trace, config));
-        }
-        if (includeCommunity) {
-            fused.addAll(retrieveSource(request.searchQuery(), KnowledgeSource.COMMUNITY, communityStore, entity, trace, config));
-        }
-        metrics.recordCandidates("fused", "all", fused.size());
-        // Topic hints retain all candidates and are consumed only by EvidenceSelector coverage.
-        List<LogicalEvidenceCandidate> candidates = List.copyOf(fused);
+        List<LogicalEvidenceCandidate> candidates = recallWithCoverage(request, entity, includePlant, includeCommunity,
+                trace, config);
+        metrics.recordCandidates("fused", "all", candidates.size());
         trace.filtered(candidates);
         Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
                 () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), candidates, runtimeSnapshot)));
@@ -123,6 +124,78 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         trace.selected(selection.evidence(), selection.reasons());
         metrics.recordCandidates("selected", "all", selection.evidence().size());
         return new RetrievalPayload(selection.evidence(), entity.diagnostics());
+    }
+
+    private List<LogicalEvidenceCandidate> recallWithCoverage(RetrievalRequest request,
+                                                               PlantEntityResolver.Resolution entity,
+                                                               boolean includePlant, boolean includeCommunity,
+                                                               RetrievalTraceCollector trace,
+                                                               RagRuntimeConfig config) {
+        Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled = new LinkedHashMap<>();
+        RecallBudget budget = adaptiveRecallPolicy.initial(config);
+        recall(request, entity, includePlant, includeCommunity, budget,
+                activeSources(includePlant, includeCommunity), recalled, trace, config);
+        List<LogicalEvidenceCandidate> candidates = merge(recalled);
+        RecallCoverage coverage = coverageInspector.inspect(request, candidates, config);
+        while (!coverage.sufficient()) {
+            RecallBudget expanded = adaptiveRecallPolicy.next(request, coverage, budget, config);
+            if (!adaptiveRecallPolicy.expanded(budget, expanded)) break;
+            Set<KnowledgeSource> sources = expandedSources(budget, expanded);
+            trace.time("adaptive_recall", sourceTag(sources), "all", () -> {
+                recall(request, entity, includePlant, includeCommunity, expanded, sources, recalled, trace, config);
+                return null;
+            });
+            budget = expanded;
+            candidates = merge(recalled);
+            coverage = coverageInspector.inspect(request, candidates, config);
+        }
+        return candidates;
+    }
+
+    private void recall(RetrievalRequest request, PlantEntityResolver.Resolution entity, boolean includePlant,
+                        boolean includeCommunity, RecallBudget budget, Set<KnowledgeSource> sources,
+                        Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled, RetrievalTraceCollector trace,
+                        RagRuntimeConfig config) {
+        for (RetrievalQueryGroup group : request.plan().queryGroups()) {
+            if (includePlant && sources.contains(KnowledgeSource.PLANT)
+                    && group.sourceScope().includes(KnowledgeSource.PLANT)) {
+                recalled.put(new RecallRoute(KnowledgeSource.PLANT, group.id()), retrieveSource(group,
+                        KnowledgeSource.PLANT, plantStore, entity, budget, trace, config));
+            }
+            if (includeCommunity && sources.contains(KnowledgeSource.COMMUNITY)
+                    && group.sourceScope().includes(KnowledgeSource.COMMUNITY)) {
+                recalled.put(new RecallRoute(KnowledgeSource.COMMUNITY, group.id()), retrieveSource(group,
+                        KnowledgeSource.COMMUNITY, communityStore, entity, budget, trace, config));
+            }
+        }
+    }
+
+    private List<LogicalEvidenceCandidate> merge(Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled) {
+        List<LogicalEvidenceCandidateMerger.GroupCandidate> candidates = new java.util.ArrayList<>();
+        recalled.forEach((route, values) -> values.forEach(candidate -> candidates.add(
+                new LogicalEvidenceCandidateMerger.GroupCandidate(route.groupId(), candidate))));
+        return candidateMerger.merge(candidates);
+    }
+
+    private Set<KnowledgeSource> activeSources(boolean includePlant, boolean includeCommunity) {
+        Set<KnowledgeSource> sources = new LinkedHashSet<>();
+        if (includePlant) sources.add(KnowledgeSource.PLANT);
+        if (includeCommunity) sources.add(KnowledgeSource.COMMUNITY);
+        return sources;
+    }
+
+    private Set<KnowledgeSource> expandedSources(RecallBudget before, RecallBudget after) {
+        Set<KnowledgeSource> sources = new LinkedHashSet<>();
+        if (before.plantDenseTopK() != after.plantDenseTopK()
+                || before.plantSparseTopK() != after.plantSparseTopK()) sources.add(KnowledgeSource.PLANT);
+        if (before.communityDenseTopK() != after.communityDenseTopK()
+                || before.communitySparseTopK() != after.communitySparseTopK()) sources.add(KnowledgeSource.COMMUNITY);
+        return sources;
+    }
+
+    private String sourceTag(Set<KnowledgeSource> sources) {
+        return sources.stream().map(source -> source.name().toLowerCase(java.util.Locale.ROOT)).sorted()
+                .collect(java.util.stream.Collectors.joining(","));
     }
 
     private SelectionResult selectEvidence(RetrievalRequest request, List<LogicalEvidenceCandidate> candidates,
@@ -142,14 +215,17 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         return new SelectionResult(selection.evidence(), selection.reasons());
     }
 
-    private List<LogicalEvidenceCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,
-                                                          PlantEntityResolver.Resolution entity,
+    private List<LogicalEvidenceCandidate> retrieveSource(RetrievalQueryGroup group, KnowledgeSource source,
+                                                          VectorStore store, PlantEntityResolver.Resolution entity,
+                                                          RecallBudget budget,
                                                           RetrievalTraceCollector trace, RagRuntimeConfig config) {
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
-        String scope = entity.hasResolvedEntities()
-                ? String.join(",", entity.canonicalPlantIds()) : entity.kind().name();
+        List<String> canonicalPlantIds = canonicalPlantIds(source, group, entity);
+        String scope = group.id() + ":" + (canonicalPlantIds.isEmpty() ? entity.kind().name()
+                : String.join(",", canonicalPlantIds));
         List<org.springframework.ai.document.Document> documents = config.retrievalMode().usesDense()
-                ? denseSearch(query, source, store, entity, trace, sourceTag, scope, config) : List.of();
+                ? denseSearch(group.query(), source, store, canonicalPlantIds, budget.denseTopK(source), trace,
+                sourceTag, scope, config) : List.of();
         List<RrfFusion.DenseHit> denseRaw = documents.stream()
                 .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, source),
                         document.getScore() == null ? 0d : document.getScore()))
@@ -159,9 +235,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         List<SparseIndexService.SparseHit> sparseRaw = config.retrievalMode().usesSparse()
                 ? trace.time("sparse_search", sourceTag, scope,
                     () -> metrics.time("sparse_search", sourceTag,
-                            () -> sparseIndex.search(source, query, config.sparseTopK(),
-                                    source == KnowledgeSource.PLANT && entity.scope().filtersPlantKnowledge()
-                                            ? entity.canonicalPlantIds() : List.of())))
+                            () -> sparseIndex.search(source, group.query(), budget.sparseTopK(source),
+                                    canonicalPlantIds)))
                 : List.of();
         trace.sparse(sparseRaw, scope);
         List<SparseIndexService.SparseHit> sparse = sparseRaw;
@@ -175,18 +250,23 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         return result;
     }
 
+    private List<String> canonicalPlantIds(KnowledgeSource source, RetrievalQueryGroup group,
+                                            PlantEntityResolver.Resolution entity) {
+        if (source != KnowledgeSource.PLANT || !entity.scope().filtersPlantKnowledge()) return List.of();
+        return group.canonicalPlantIds().isEmpty() ? entity.canonicalPlantIds() : List.copyOf(group.canonicalPlantIds());
+    }
+
     private List<org.springframework.ai.document.Document> denseSearch(
-            String query, KnowledgeSource source, VectorStore store,
-            PlantEntityResolver.Resolution entity, RetrievalTraceCollector trace,
-            String sourceTag, String scope, RagRuntimeConfig config) {
+            String query, KnowledgeSource source, VectorStore store, List<String> canonicalPlantIds, int topK,
+            RetrievalTraceCollector trace, String sourceTag, String scope, RagRuntimeConfig config) {
         SearchRequest.Builder requestBuilder = SearchRequest.builder().query(query)
-                .topK(config.denseTopK())
+                .topK(topK)
                 .similarityThreshold(config.similarityThreshold());
-        if (source == KnowledgeSource.PLANT && entity.scope().filtersPlantKnowledge()) {
+        if (source == KnowledgeSource.PLANT && !canonicalPlantIds.isEmpty()) {
             FilterExpressionBuilder filters = new FilterExpressionBuilder();
-            requestBuilder.filterExpression(entity.canonicalPlantIds().size() == 1
-                    ? filters.eq("canonicalPlantId", entity.canonicalPlantId()).build()
-                    : filters.in("canonicalPlantId", entity.canonicalPlantIds().toArray()).build());
+            requestBuilder.filterExpression(canonicalPlantIds.size() == 1
+                    ? filters.eq("canonicalPlantId", canonicalPlantIds.get(0)).build()
+                    : filters.in("canonicalPlantId", canonicalPlantIds.toArray()).build());
         }
         SearchRequest request = requestBuilder.build();
         return trace.time("dense_search", sourceTag, scope,
@@ -205,5 +285,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                     com.healingplanet.ai.domain.EntityResolutionDiagnostics entityResolution) { }
 
     private record SelectionResult(List<Evidence> evidence, Map<String, String> reasons) { }
+
+    private record RecallRoute(KnowledgeSource source, String groupId) { }
 
 }
