@@ -50,10 +50,11 @@ public class DiseaseKnowledgeRetriever {
         List<RrfFusion.DenseHit> dense = config.retrievalMode().usesDense() ? denseSearch(searchText, config) : List.of();
         List<SparseIndexService.SparseHit> sparse = config.retrievalMode().usesSparse()
                 ? sparseIndex.search(KnowledgeSource.DISEASE, searchText, config.sparseTopK()) : List.of();
-        List<RetrievalCandidate> candidates = RrfFusion.fuse(dense, sparse, config.rrfK());
+        List<LogicalEvidenceCandidate> candidates = RrfFusion.fuse(dense, sparse, config.rrfK());
         Map<String, Double> rerankScores = rerank(searchText, candidates, runtimeSnapshot);
-        return candidates.stream().map(candidate -> toEvidence(candidate,
-                        rerankScores.get(candidate.document().id()), detection, config))
+        return candidates.stream().map(candidate -> candidate.withRerankedRepresentative(rerankScores))
+                .map(candidate -> toEvidence(candidate,
+                        rerankScores.get(candidate.representativeFragmentId()), detection, config))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
                 .limit(Math.min(3, config.finalTopK())).toList();
     }
@@ -66,9 +67,9 @@ public class DiseaseKnowledgeRetriever {
                         document.getScore() == null ? 0d : document.getScore())).toList();
     }
 
-    private Evidence toEvidence(RetrievalCandidate candidate, Double rerank, DiseaseDetection detection,
+    private Evidence toEvidence(LogicalEvidenceCandidate candidate, Double rerank, DiseaseDetection detection,
                                 RagRuntimeConfig config) {
-        var document = candidate.document();
+        var document = candidate.representative();
         var ranking = config.sourceAwareRanking();
         double rrf = Math.min(1d, candidate.fusionScore() * ranking.rrfNormalizationFactor());
         double retrieval = switch (config.retrievalMode()) {
@@ -82,7 +83,7 @@ public class DiseaseKnowledgeRetriever {
         double score = clamp(0.65 * semantic + 0.25 * document.trustScore() + 0.10 * nameMatch);
         return new Evidence(document.id(), EvidenceType.DISEASE_KNOWLEDGE, document.sourceId(),
                 KnowledgeSource.DISEASE.name(), document.title(), document.content(), retrieval, rerank,
-                document.trustScore(), score, document.metadata(), document.createdAt());
+                document.trustScore(), score, candidate.evidenceMetadata(), document.createdAt());
     }
 
     private boolean matches(String diseaseName, List<String> tags) {
@@ -100,7 +101,7 @@ public class DiseaseKnowledgeRetriever {
     private String safe(String value) { return value == null ? "" : value; }
     private double clamp(double value) { return Math.max(0, Math.min(1, value)); }
 
-    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates,
+    private Map<String, Double> rerank(String query, List<LogicalEvidenceCandidate> candidates,
                                        RagRuntimeSnapshot runtimeSnapshot) {
         if (reranker instanceof SnapshotReranker snapshotReranker) {
             return snapshotReranker.rerank(query, candidates, runtimeSnapshot);

@@ -49,7 +49,8 @@ class KnowledgeDocumentMapper {
         Map<String, String> result = new java.util.LinkedHashMap<>();
         for (String key : List.of("aliases", "visualSymptoms", "triggerConditions",
                 "environmentConditions", "source", "sourceLevel", "diseaseId", "chunkIndex",
-                "chunkCount", "section", "contentHash", "sourceUpdatedAt", "indexVersion")) {
+                "chunkCount", "section", "logicalEvidenceId", "fragmentId", "fragmentIndex",
+                "fragmentCount", "fragmentRole", "fragmentSection", "contentHash", "sourceUpdatedAt", "indexVersion")) {
             Object value = metadata.get(key);
             if (value != null && !value.toString().isBlank()) result.put(key, value.toString());
         }

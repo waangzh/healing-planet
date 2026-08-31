@@ -28,24 +28,25 @@ public class SourceAwareRanker {
         this.properties = properties;
     }
 
-    public List<Evidence> rank(RagQuery query, List<RetrievalCandidate> candidates,
+    public List<Evidence> rank(RagQuery query, List<LogicalEvidenceCandidate> candidates,
                                Map<String, Double> rerankScores) {
         return rank(query, candidates, rerankScores, RagRuntimeConfig.from(properties));
     }
 
-    public List<Evidence> rank(RagQuery query, List<RetrievalCandidate> candidates,
+    public List<Evidence> rank(RagQuery query, List<LogicalEvidenceCandidate> candidates,
                                Map<String, Double> rerankScores, RagRuntimeConfig config) {
         // Candidate relevance has already been gated by retrieval. Reranking should
         // change priority without applying another score-distribution-dependent cutoff.
         return candidates.stream()
-                .map(candidate -> toEvidence(query, candidate, rerankScores.get(candidate.document().id()), config))
+                .map(candidate -> toEvidence(query, candidate,
+                        rerankScores.get(candidate.representativeFragmentId()), config))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
                 .toList();
     }
 
-    private Evidence toEvidence(RagQuery query, RetrievalCandidate candidate, Double rerankScore,
+    private Evidence toEvidence(RagQuery query, LogicalEvidenceCandidate candidate, Double rerankScore,
                                 RagRuntimeConfig config) {
-        KnowledgeDocument document = candidate.document();
+        KnowledgeDocument document = candidate.representative();
         RagRuntimeConfig.SourceAwareRanking ranking = config.sourceAwareRanking();
         double retrieval = retrievalScore(candidate, ranking, config.retrievalMode());
         double semantic = rerankScore == null ? retrieval : rerankScore;
@@ -70,12 +71,12 @@ public class SourceAwareRanker {
                 document.id(), document.source() == KnowledgeSource.PLANT
                     ? EvidenceType.CARE_GUIDE : EvidenceType.COMMUNITY_POST,
                 document.sourceId(), document.source().name(), document.title(), document.content(),
-                retrieval, rerankScore, document.trustScore(), clamp(finalScore), document.metadata(),
+                retrieval, rerankScore, document.trustScore(), clamp(finalScore), candidate.evidenceMetadata(),
                 document.createdAt()
         );
     }
 
-    private double retrievalScore(RetrievalCandidate candidate, RagRuntimeConfig.SourceAwareRanking ranking,
+    private double retrievalScore(LogicalEvidenceCandidate candidate, RagRuntimeConfig.SourceAwareRanking ranking,
                                   RagProperties.RetrievalMode retrievalMode) {
         double rrfNormalized = clamp(candidate.fusionScore() * ranking.rrfNormalizationFactor());
         if (!ranking.enabled()) {

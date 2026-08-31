@@ -189,7 +189,7 @@ public class IngestionService {
 
     private KnowledgeDocument withEmbeddingMetadata(KnowledgeDocument document) {
         Map<String, String> attributes = new LinkedHashMap<>(document.attributes());
-        attributes.put("contentHash", sha256(document.content()));
+        attributes.put("contentHash", contentHash(document));
         attributes.put("embeddingModelVersion", embeddingModelVersion());
         return new KnowledgeDocument(document.id(), document.source(), document.sourceId(), document.title(),
                 document.content(), document.canonicalPlantId(), document.plantName(), document.knowledgeType(),
@@ -264,6 +264,12 @@ public class IngestionService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("当前 JVM 不支持 SHA-256", exception);
         }
+    }
+
+    private String contentHash(KnowledgeDocument document) {
+        String indexVersion = document.attributes().getOrDefault("indexVersion", "");
+        String value = indexVersion.isBlank() ? document.content() : indexVersion + "\u0000" + document.content();
+        return sha256(value);
     }
 
     private record IndexingResult(int documents, int deleted) {

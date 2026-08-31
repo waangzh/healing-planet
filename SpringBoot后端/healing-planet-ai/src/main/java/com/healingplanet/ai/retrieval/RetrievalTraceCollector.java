@@ -64,15 +64,15 @@ final class RetrievalTraceCollector {
         }
     }
 
-    void rrf(List<RetrievalCandidate> candidates, String scope) {
+    void rrf(List<LogicalEvidenceCandidate> candidates, String scope) {
         addCandidates(rrf, candidates, scope, null, false);
     }
 
-    void filtered(List<RetrievalCandidate> candidates) {
+    void filtered(List<LogicalEvidenceCandidate> candidates) {
         addCandidates(filtered, candidates, "all", null, false);
     }
 
-    void rerank(List<RetrievalCandidate> before, List<RetrievalCandidate> after,
+    void rerank(List<LogicalEvidenceCandidate> before, List<LogicalEvidenceCandidate> after,
                 java.util.Map<String, Double> scores) {
         addCandidates(rerankBefore, before, "all", scores, false);
         addCandidates(rerankAfter, after, "all", scores, false);
@@ -106,27 +106,31 @@ final class RetrievalTraceCollector {
     }
 
     private void addCandidates(List<RetrievalTrace.CandidateSnapshot> target,
-                               List<RetrievalCandidate> candidates, String scope,
+                               List<LogicalEvidenceCandidate> candidates, String scope,
                                java.util.Map<String, Double> rerankScores, boolean includeFinalScore) {
         if (!enabled) return;
         for (int i = 0; i < candidates.size(); i++) {
-            RetrievalCandidate item = candidates.get(i);
-            Double rerankScore = rerankScores == null ? null : rerankScores.get(item.document().id());
-            target.add(candidate(item.document(), scope, i + 1, item.denseScore(), item.sparseScore(),
-                    rank(item.denseRank()), rank(item.sparseRank()), item.fusionScore(), rerankScore,
+            LogicalEvidenceCandidate item = candidates.get(i);
+            Double rerankScore = rerankScores == null ? null : rerankScores.get(item.representativeFragmentId());
+            target.add(candidate(item.logicalEvidenceId(), item.representative(), scope, i + 1,
+                    item.denseScore(), item.sparseScore(), item.denseRank(), item.sparseRank(), item.fusionScore(), rerankScore,
                     includeFinalScore ? rerankScore : null));
         }
-    }
-
-    private Integer rank(int value) {
-        return value == 0 ? null : value;
     }
 
     private RetrievalTrace.CandidateSnapshot candidate(KnowledgeDocument document, String scope, int rank,
                                                         Double denseScore, Double sparseScore,
                                                         Integer denseRank, Integer sparseRank, Double rrfScore,
                                                         Double rerankScore, Double finalScore) {
-        return new RetrievalTrace.CandidateSnapshot(document.id(), document.sourceId(), document.source().name(),
+        return candidate(document.id(), document, scope, rank, denseScore, sparseScore, denseRank, sparseRank,
+                rrfScore, rerankScore, finalScore);
+    }
+
+    private RetrievalTrace.CandidateSnapshot candidate(String id, KnowledgeDocument document, String scope, int rank,
+                                                        Double denseScore, Double sparseScore,
+                                                        Integer denseRank, Integer sparseRank, Double rrfScore,
+                                                        Double rerankScore, Double finalScore) {
+        return new RetrievalTrace.CandidateSnapshot(id, document.sourceId(), document.source().name(),
                 document.title(), document.content(), document.canonicalPlantId(), document.knowledgeType(), scope,
                 rank, denseScore, sparseScore, denseRank, sparseRank, rrfScore, rerankScore, finalScore);
     }

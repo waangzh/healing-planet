@@ -4,5 +4,5 @@ import java.util.List;
 import java.util.Map;
 
 public interface Reranker {
-    Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates);
+    Map<String, Double> rerank(String query, List<LogicalEvidenceCandidate> candidates);
 }

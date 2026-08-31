@@ -40,6 +40,10 @@ class KnowledgeDocumentConverterTest {
             assertThat(document.sourceId()).isEqualTo("post-1");
             assertThat(document.tags()).containsExactly("绿萝", "黄叶");
             assertThat(document.trustScore()).isEqualTo(0.75);
+            assertThat(document.metadata()).containsEntry("logicalEvidenceId", "COMMUNITY:post-1")
+                    .containsEntry("fragmentRole", "CONTENT");
+            assertThat(document.metadata().get("fragmentId"))
+                    .isEqualTo("COMMUNITY:post-1:" + document.metadata().get("fragmentIndex"));
         });
     }
 
@@ -57,7 +61,8 @@ class KnowledgeDocumentConverterTest {
             assertThat(TokenAwareTextChunker.countTokens(document.content()))
                     .isLessThanOrEqualTo(TokenAwareTextChunker.COMMUNITY_MAX_TOKENS);
             assertThat(document.metadata()).containsKeys("chunkIndex", "chunkCount", "section", "contentHash",
-                    "sourceUpdatedAt", "indexVersion");
+                    "sourceUpdatedAt", "indexVersion", "logicalEvidenceId", "fragmentId",
+                    "fragmentRole", "fragmentIndex", "fragmentCount", "fragmentSection");
             assertThat(String.valueOf(document.metadata().get("contentHash"))).hasSize(64);
             assertThat(document.metadata().get("sourceUpdatedAt")).isEqualTo("2026-02-01T00:00:00Z");
         });
@@ -65,6 +70,8 @@ class KnowledgeDocumentConverterTest {
         assertThat(documents).anySatisfy(document -> assertThat(document.metadata().get("section")).isEqualTo("调整方案"));
         assertThat(documents).extracting(document -> document.metadata().get("chunkCount"))
                 .containsOnly(String.valueOf(documents.size()));
+        assertThat(documents).extracting(document -> document.metadata().get("logicalEvidenceId"))
+                .containsOnly(documents.get(0).metadata().get("logicalEvidenceId"));
     }
 
     @Test
@@ -82,7 +89,15 @@ class KnowledgeDocumentConverterTest {
         assertThat(generalCare).hasSize(3).allSatisfy(document -> {
             assertThat(document.sourceId()).isEqualTo("plant-1");
             assertThat(document.content()).hasSizeLessThanOrEqualTo(360);
+            assertThat(document.metadata()).containsKeys("logicalEvidenceId", "fragmentId", "fragmentIndex",
+                    "fragmentRole", "fragmentCount", "fragmentSection");
         });
+        assertThat(generalCare).extracting(document -> document.metadata().get("logicalEvidenceId"))
+                .containsOnly(generalCare.get(0).metadata().get("logicalEvidenceId"));
+        assertThat(generalCare).extracting(document -> document.metadata().get("fragmentIndex"))
+                .containsExactly("0", "1", "2");
+        assertThat(generalCare).extracting(document -> document.metadata().get("logicalEvidenceId"))
+                .allMatch(id -> String.valueOf(id).startsWith("PLANT:plant-1:GENERAL_CARE"));
     }
 
     @Test

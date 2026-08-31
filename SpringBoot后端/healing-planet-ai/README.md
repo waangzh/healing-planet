@@ -41,7 +41,7 @@ Query
   -> PlantEntityResolver
   -> RetrievalPlanner（每个请求只生成一次计划）
   -> StateAwareEvidenceRetriever
-       -> Dense + BM25 + RRF + 可选 reranker
+       -> Dense + BM25 + logical-evidence RRF + 可选 reranker
        -> PlantStateClient / PlantStateAnalyzer
   -> SourceAwareRanker + EvidenceSelector
   -> AnswerabilityEvaluator
@@ -65,7 +65,9 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 - `post + post_tag + tag` 转换为社区经验文档，只摄取 `status = 1`（兼容历史 `status is null`）的帖子。
 - BGE-M3 dense embedding + Qdrant 独立 collection（植物实体 / 植物知识 / 社区 / 病害）。
 - Lucene 中文字符 n-gram BM25 稀疏检索。
-- RRF 融合、可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
+- 每条知识先以一个逻辑证据及其一个或多个 fragment 建模；RRF 按逻辑证据在 dense / BM25
+  路径中的最佳 fragment 名次融合，不因同一长文的多个 chunk 重复加分。
+- 可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
 - 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用。
 - 分页增量索引、植物索引、社区索引、单帖子更新与删除；全量扫描仅用于修复与补数。
@@ -169,7 +171,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 ## 索引流程
 
-应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 chunk；只有 `contentHash` 或 `embeddingModelVersion` 变化的 chunk 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
+应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 fragment；只有内容、索引版本或 `embeddingModelVersion` 变化的 fragment 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
 
 首次引入该机制或需要补数时，先由数据库发布流程执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)，再显式触发扫描：
 
@@ -209,7 +211,7 @@ RabbitMQ 使用持久化 exchange/queue，并为无效消息保留死信队列�
 }
 ```
 
-响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据；`entityResolution` 返回实体解析诊断，包括 `resolutionKind`、`resolutionMethod`、`canonicalPlantId`、`canonicalPlantIds`、`top1Score`、`top2Score`、`scoreMargin`、`candidateCount` 和 `rejectionReason`。
+响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据；知识证据的元数据含 `logicalEvidenceId`、`fragmentId`、`fragmentRole`、`fragmentIndex`、`fragmentCount`、`fragmentSection`，其中 `id` 仍是具体 fragment 的引用锚点。`entityResolution` 返回实体解析诊断，包括 `resolutionKind`、`resolutionMethod`、`canonicalPlantId`、`canonicalPlantIds`、`top1Score`、`top2Score`、`scoreMargin`、`candidateCount` 和 `rejectionReason`。
 
 ### 流式问答
 

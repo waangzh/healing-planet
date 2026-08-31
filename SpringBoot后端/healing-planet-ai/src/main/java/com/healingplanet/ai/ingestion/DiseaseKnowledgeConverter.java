@@ -19,7 +19,7 @@ import java.util.UUID;
 @Component
 public class DiseaseKnowledgeConverter {
 
-    private static final String INDEX_VERSION = "chunk-v2";
+    private static final String INDEX_VERSION = "logical-evidence-v1";
 
     /**
      * 兼容旧调用方的完整病害视图；索引流程应使用 {@link #convertAll(DiseaseKnowledgeRepository.DiseaseRow)}。
@@ -40,11 +40,14 @@ public class DiseaseKnowledgeConverter {
                 """.formatted(safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases),
                 safe(row.symptoms()), safe(row.visualSymptoms()), safe(row.triggerConditions()),
                 safe(row.environmentConditions()), safe(row.treatment()), safe(row.prevention()), safe(row.source()));
-        return new KnowledgeDocument(id(row.id()), KnowledgeSource.DISEASE, row.id(),
+        String documentId = id(row.id());
+        String fragmentId = "DISEASE:" + row.id() + ":完整资料:0";
+        return new KnowledgeDocument(documentId, KnowledgeSource.DISEASE, row.id(),
                 safe(row.plantName()) + safe(row.diseaseName()) + "知识",
                 content, safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
                 combineTags(row.diseaseName(), aliases), trust(row.sourceLevel()), false,
-                0, 0, 0, 0, sourceUpdatedAt(row), chunkMetadata(row, 0, 1, "", content));
+                0, 0, 0, 0, sourceUpdatedAt(row), fragmentMetadata(row,
+                logicalEvidenceId(row.id(), "完整资料"), fragmentId, 0, 1, 0, 1, "完整资料", content));
     }
 
     public List<KnowledgeDocument> convertAll(DiseaseKnowledgeRepository.DiseaseRow row) {
@@ -66,17 +69,28 @@ public class DiseaseKnowledgeConverter {
             chunks.add(new DiseaseChunk("", "病害资料暂无可索引正文。"));
         }
 
+        Map<String, Integer> fragmentCounts = new LinkedHashMap<>();
+        for (DiseaseChunk chunk : chunks) {
+            fragmentCounts.merge(chunk.section(), 1, Integer::sum);
+        }
+        Map<String, Integer> fragmentIndexes = new LinkedHashMap<>();
         List<KnowledgeDocument> result = new ArrayList<>(chunks.size());
         for (int index = 0; index < chunks.size(); index++) {
             DiseaseChunk chunk = chunks.get(index);
             String content = prefix + chunk.content();
+            int fragmentIndex = fragmentIndexes.getOrDefault(chunk.section(), 0);
+            fragmentIndexes.put(chunk.section(), fragmentIndex + 1);
+            String documentId = id(row.id() + ":" + index);
+            String fragmentId = logicalEvidenceId(row.id(), sectionName(chunk.section())) + ":" + fragmentIndex;
             result.add(new KnowledgeDocument(
-                    id(row.id() + ":" + index), KnowledgeSource.DISEASE, row.id(),
+                    documentId, KnowledgeSource.DISEASE, row.id(),
                     safe(row.plantName()) + safe(row.diseaseName()) + "知识", content,
                     safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
                     combineTags(row.diseaseName(), aliases), trust(row.sourceLevel()), false,
                     0, 0, 0, 0, sourceUpdatedAt(row),
-                    chunkMetadata(row, index, chunks.size(), chunk.section(), content)
+                    fragmentMetadata(row, logicalEvidenceId(row.id(), sectionName(chunk.section())), fragmentId,
+                            fragmentIndex, fragmentCounts.get(chunk.section()), index, chunks.size(),
+                            chunk.section(), content)
             ));
         }
         return result;
@@ -129,14 +143,23 @@ public class DiseaseKnowledgeConverter {
         return UUID.nameUUIDFromBytes(("disease:" + sourceId).getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    private Map<String, String> chunkMetadata(DiseaseKnowledgeRepository.DiseaseRow row, int chunkIndex,
-                                              int chunkCount, String section, String content) {
+    private Map<String, String> fragmentMetadata(DiseaseKnowledgeRepository.DiseaseRow row,
+                                                 String logicalEvidenceId, String fragmentId,
+                                                 int fragmentIndex, int fragmentCount,
+                                                 int chunkIndex, int chunkCount,
+                                                 String section, String content) {
         Map<String, String> attributes = attributes(row);
         attributes.put("diseaseId", row.id());
         attributes.put("chunkIndex", String.valueOf(chunkIndex));
         attributes.put("chunkCount", String.valueOf(chunkCount));
         attributes.put("section", section);
-        attributes.put("contentHash", sha256(content));
+        attributes.put("logicalEvidenceId", logicalEvidenceId);
+        attributes.put("fragmentId", fragmentId);
+        attributes.put("fragmentRole", "CONTENT");
+        attributes.put("fragmentIndex", String.valueOf(fragmentIndex));
+        attributes.put("fragmentCount", String.valueOf(fragmentCount));
+        attributes.put("fragmentSection", section);
+        attributes.put("contentHash", contentHash(content));
         attributes.put("sourceUpdatedAt", sourceUpdatedAt(row).equals(Instant.EPOCH)
                 ? "" : sourceUpdatedAt(row).toString());
         attributes.put("indexVersion", INDEX_VERSION);
@@ -158,6 +181,18 @@ public class DiseaseKnowledgeConverter {
         if (row.updatedAt() != null) return row.updatedAt();
         if (row.createdAt() != null) return row.createdAt();
         return Instant.EPOCH;
+    }
+
+    private String logicalEvidenceId(String diseaseId, String section) {
+        return "DISEASE:" + diseaseId + ":" + section;
+    }
+
+    private String sectionName(String section) {
+        return section == null || section.isBlank() ? "完整资料" : section;
+    }
+
+    private String contentHash(String content) {
+        return sha256(INDEX_VERSION + "\u0000" + content);
     }
 
     private String sha256(String content) {

@@ -92,7 +92,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         PlantEntityResolver.Resolution entity = trace.time("entity_resolve", "all", "all",
                 () -> metrics.time("entity_resolve", "all", () -> request.entityResolution() == null
                         ? entityResolver.resolve(request) : request.entityResolution()));
-        List<RetrievalCandidate> fused = new java.util.ArrayList<>();
+        List<LogicalEvidenceCandidate> fused = new java.util.ArrayList<>();
         boolean identityBlocked = entity.kind() == PlantEntityResolver.ResolutionKind.UNKNOWN
                 || entity.kind() == PlantEntityResolver.ResolutionKind.AMBIGUOUS
                 || entity.kind() == PlantEntityResolver.ResolutionKind.CONFLICT;
@@ -107,24 +107,25 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         }
         metrics.recordCandidates("fused", "all", fused.size());
         // Topic hints retain all candidates and are consumed only by EvidenceSelector coverage.
-        List<RetrievalCandidate> candidates = List.copyOf(fused);
+        List<LogicalEvidenceCandidate> candidates = List.copyOf(fused);
         trace.filtered(candidates);
         Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
                 () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), candidates, runtimeSnapshot)));
-        List<RetrievalCandidate> reranked = candidates.stream()
-                .sorted(Comparator.comparingDouble((RetrievalCandidate candidate) -> rerankScores
-                        .getOrDefault(candidate.document().id(), Double.NEGATIVE_INFINITY)).reversed())
+        List<LogicalEvidenceCandidate> reranked = candidates.stream()
+                .map(candidate -> candidate.withRerankedRepresentative(rerankScores))
+                .sorted(Comparator.comparingDouble((LogicalEvidenceCandidate candidate) -> rerankScores
+                        .getOrDefault(candidate.representativeFragmentId(), Double.NEGATIVE_INFINITY)).reversed())
                 .toList();
         trace.rerank(candidates, reranked, rerankScores);
         SelectionResult selection = trace.time("final_rank", "all", "all",
                 () -> metrics.time("final_rank", "all",
-                        () -> selectEvidence(request, candidates, rerankScores, entity, trace, runtimeSnapshot.config())));
+                        () -> selectEvidence(request, reranked, rerankScores, entity, trace, runtimeSnapshot.config())));
         trace.selected(selection.evidence(), selection.reasons());
         metrics.recordCandidates("selected", "all", selection.evidence().size());
         return new RetrievalPayload(selection.evidence(), entity.diagnostics());
     }
 
-    private SelectionResult selectEvidence(RetrievalRequest request, List<RetrievalCandidate> candidates,
+    private SelectionResult selectEvidence(RetrievalRequest request, List<LogicalEvidenceCandidate> candidates,
                                            Map<String, Double> rerankScores,
                                            PlantEntityResolver.Resolution entity,
                                            RetrievalTraceCollector trace, RagRuntimeConfig config) {
@@ -141,9 +142,9 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         return new SelectionResult(selection.evidence(), selection.reasons());
     }
 
-    private List<RetrievalCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,
-                                                    PlantEntityResolver.Resolution entity,
-                                                    RetrievalTraceCollector trace, RagRuntimeConfig config) {
+    private List<LogicalEvidenceCandidate> retrieveSource(String query, KnowledgeSource source, VectorStore store,
+                                                          PlantEntityResolver.Resolution entity,
+                                                          RetrievalTraceCollector trace, RagRuntimeConfig config) {
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
         String scope = entity.hasResolvedEntities()
                 ? String.join(",", entity.canonicalPlantIds()) : entity.kind().name();
@@ -166,7 +167,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         List<SparseIndexService.SparseHit> sparse = sparseRaw;
         metrics.recordCandidates("dense", sourceTag, dense.size());
         metrics.recordCandidates("sparse", sourceTag, sparse.size());
-        List<RetrievalCandidate> result = trace.time("rrf_fusion", sourceTag, scope,
+        List<LogicalEvidenceCandidate> result = trace.time("rrf_fusion", sourceTag, scope,
                 () -> metrics.time("rrf_fusion", sourceTag,
                         () -> RrfFusion.fuse(dense, sparse, config.rrfK())));
         trace.rrf(result, scope);
@@ -192,7 +193,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                 () -> metrics.time("embedding", sourceTag, () -> store.similaritySearch(request)));
     }
 
-    private Map<String, Double> rerank(String query, List<RetrievalCandidate> candidates, RagRuntimeSnapshot runtimeSnapshot) {
+    private Map<String, Double> rerank(String query, List<LogicalEvidenceCandidate> candidates,
+                                       RagRuntimeSnapshot runtimeSnapshot) {
         if (reranker instanceof SnapshotReranker snapshotReranker) {
             return snapshotReranker.rerank(query, candidates, runtimeSnapshot);
         }

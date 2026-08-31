@@ -37,11 +37,17 @@ class DiseaseKnowledgeConverterTest {
             assertThat(TokenAwareTextChunker.countTokens(document.content()))
                     .isLessThanOrEqualTo(TokenAwareTextChunker.DISEASE_MAX_TOKENS);
             assertThat(document.metadata()).containsEntry("diseaseId", "d2")
-                    .containsKeys("chunkIndex", "chunkCount", "section", "contentHash", "sourceUpdatedAt", "indexVersion");
+                    .containsKeys("chunkIndex", "chunkCount", "section", "contentHash", "sourceUpdatedAt", "indexVersion",
+                            "logicalEvidenceId", "fragmentId", "fragmentRole", "fragmentIndex", "fragmentCount",
+                            "fragmentSection");
             assertThat(document.metadata().get("chunkCount")).isEqualTo("4");
             assertThat(document.metadata().get("sourceUpdatedAt")).isEqualTo("2026-02-01T00:00:00Z");
         });
         assertThat(documents).extracting(document -> document.metadata().get("section"))
                 .containsExactly("症状", "诱因", "处理", "预防");
+        assertThat(documents).extracting(document -> document.metadata().get("logicalEvidenceId"))
+                .doesNotHaveDuplicates();
+        assertThat(documents).allSatisfy(document -> assertThat(document.metadata().get("logicalEvidenceId"))
+                .isEqualTo("DISEASE:d2:" + document.metadata().get("section")));
     }
 }

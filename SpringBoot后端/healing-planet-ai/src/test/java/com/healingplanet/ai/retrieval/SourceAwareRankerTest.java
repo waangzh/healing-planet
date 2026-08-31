@@ -18,7 +18,7 @@ class SourceAwareRankerTest {
 
     @Test
     void shouldReturnAllCandidatesInRerankedOrderWithoutApplyingSelectionLimit() {
-        List<RetrievalCandidate> candidates = List.of(
+        List<LogicalEvidenceCandidate> candidates = List.of(
                 candidate("strong"), candidate("medium"), candidate("tail"), candidate("last"));
         Map<String, Double> rerankScores = Map.of(
                 "strong", 1.0,
@@ -41,7 +41,7 @@ class SourceAwareRankerTest {
 
     @Test
     void shouldApplyRelativeAdmissionWithinEachSourceForMixedQueries() {
-        List<RetrievalCandidate> candidates = List.of(
+        List<LogicalEvidenceCandidate> candidates = List.of(
                 candidate("guide"), communityCandidate("community"));
         Map<String, Double> rerankScores = Map.of(
                 "guide", 1.0,
@@ -55,7 +55,7 @@ class SourceAwareRankerTest {
 
     @Test
     void shouldKeepCommunityTailCandidateForRecall() {
-        List<RetrievalCandidate> candidates = List.of(
+        List<LogicalEvidenceCandidate> candidates = List.of(
                 candidate("guide"), communityCandidate("relevant"), communityCandidate("irrelevant"));
         Map<String, Double> rerankScores = Map.of(
                 "guide", 1.0,
@@ -73,8 +73,8 @@ class SourceAwareRankerTest {
         var properties = new com.healingplanet.ai.config.RagProperties();
         properties.getSourceAwareRanking().setEnabled(false);
         SourceAwareRanker baselineRanker = new SourceAwareRanker(properties);
-        RetrievalCandidate denseFavored = candidate("dense-favored", 0.99, 0.01);
-        RetrievalCandidate rrfFavored = candidate("rrf-favored", 0.20, 0.03);
+        LogicalEvidenceCandidate denseFavored = candidate("dense-favored", 0.99, 0.01);
+        LogicalEvidenceCandidate rrfFavored = candidate("rrf-favored", 0.20, 0.03);
 
         List<Evidence> result = baselineRanker.rank(RagQuery.of("光照"),
                 List.of(rrfFavored, denseFavored), Map.of());
@@ -82,24 +82,31 @@ class SourceAwareRankerTest {
         assertThat(result).extracting(Evidence::id).containsExactly("rrf-favored", "dense-favored");
     }
 
-    private RetrievalCandidate candidate(String id) {
+    private LogicalEvidenceCandidate candidate(String id) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
                 "1", "绿萝", "LIGHT", List.of("光照"), 1, false,
                 0, 0, 0, 0, Instant.EPOCH, Map.of());
-        return new RetrievalCandidate(document, null, null, 0, 0, 0);
+        return candidate(document, null, 0);
     }
 
-    private RetrievalCandidate candidate(String id, double denseScore, double fusionScore) {
+    private LogicalEvidenceCandidate candidate(String id, double denseScore, double fusionScore) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
                 "1", "绿萝", "LIGHT", List.of("光照"), 1, false,
                 0, 0, 0, 0, Instant.EPOCH, Map.of());
-        return new RetrievalCandidate(document, denseScore, null, 1, 0, fusionScore);
+        return candidate(document, denseScore, fusionScore);
     }
 
-    private RetrievalCandidate communityCandidate(String id) {
+    private LogicalEvidenceCandidate communityCandidate(String id) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.COMMUNITY, "community", id, id,
                 "", "绿萝", "COMMUNITY_EXPERIENCE", List.of(), 0.5, false,
                 0, 0, 0, 0, Instant.EPOCH, Map.of());
-        return new RetrievalCandidate(document, null, null, 0, 0, 0);
+        return candidate(document, null, 0);
+    }
+
+    private LogicalEvidenceCandidate candidate(KnowledgeDocument document, Double denseScore, double fusionScore) {
+        RetrievalFragmentHit fragment = RetrievalFragmentHit.dense(document, 1,
+                denseScore == null ? 0d : denseScore);
+        return new LogicalEvidenceCandidate(document.id(), document, List.of(fragment),
+                denseScore == null ? null : 1, null, denseScore, null, fusionScore);
     }
 }

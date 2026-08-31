@@ -17,7 +17,7 @@ import java.util.UUID;
 
 @Component
 public class KnowledgeDocumentConverter {
-    private static final String INDEX_VERSION = "chunk-v2";
+    private static final String INDEX_VERSION = "logical-evidence-v1";
 
     public List<KnowledgeDocument> fromPlant(KnowledgeRepository.PlantRow plant) {
         List<KnowledgeDocument> documents = new ArrayList<>();
@@ -26,9 +26,7 @@ public class KnowledgeDocumentConverter {
         addPlantTopic(documents, plant, "TEMPERATURE", "温度", plant.temperaturePreference());
         addPlantTopic(documents, plant, "HUMIDITY", "湿度", plant.humidityPreference());
         addPlantTopic(documents, plant, "FERTILIZING", "施肥", plant.fertilizingTips());
-        for (String chunk : semanticChunks(plant.detailAdvice(), 300)) {
-            addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护", chunk);
-        }
+        addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护", semanticChunks(plant.detailAdvice(), 300));
         return documents;
     }
 
@@ -45,12 +43,15 @@ public class KnowledgeDocumentConverter {
         for (int i = 0; i < chunks.size(); i++) {
             TokenAwareTextChunker.Chunk chunk = chunks.get(i);
             String content = contentPrefix + chunk.content();
+            String documentId = id("post", post.id() + ":" + i);
+            String fragmentId = "COMMUNITY:" + post.id() + ":" + i;
             result.add(new KnowledgeDocument(
-                    id("post", post.id() + ":" + i), KnowledgeSource.COMMUNITY, post.id(), safe(post.title()), content,
+                    documentId, KnowledgeSource.COMMUNITY, post.id(), safe(post.title()), content,
                     "", inferPlantName(tags), "COMMUNITY_EXPERIENCE", tags,
                     post.essence() ? 0.75 : 0.5, post.essence(), post.likes(), post.collects(),
-                    post.comments(), post.views(), post.createdAt(), chunkMetadata(i, chunks.size(), chunk.section(),
-                    content, sourceUpdatedAt(post.updatedAt(), post.createdAt()))
+                    post.comments(), post.views(), post.createdAt(), fragmentMetadata(
+                    "COMMUNITY:" + post.id(), fragmentId, i, chunks.size(), chunk.section(), content,
+                    sourceUpdatedAt(post.updatedAt(), post.createdAt()))
             ));
         }
         return result;
@@ -61,14 +62,29 @@ public class KnowledgeDocumentConverter {
         if (value == null || value.isBlank()) {
             return;
         }
+        addPlantTopic(target, plant, type, topic, List.of(value.trim()));
+    }
+
+    private void addPlantTopic(List<KnowledgeDocument> target, KnowledgeRepository.PlantRow plant,
+                               String type, String topic, List<String> fragments) {
+        if (fragments.isEmpty()) {
+            return;
+        }
+        String logicalEvidenceId = "PLANT:" + plant.id() + ":" + type;
         String title = safe(plant.commonName()) + topic + "指南";
-        String content = "植物：%s\n学名：%s\n养护主题：%s\n\n%s".formatted(
-                safe(plant.commonName()), safe(plant.scientificName()), topic, value.trim());
-        target.add(new KnowledgeDocument(
-                id("plant", plant.id() + ":" + type + ":" + target.size()), KnowledgeSource.PLANT,
-                plant.id(), title, content, plant.id(), safe(plant.commonName()), type, List.of(topic),
-                1.0, false, 0, 0, 0, 0, Instant.EPOCH, java.util.Map.of()
-        ));
+        for (int index = 0; index < fragments.size(); index++) {
+            String value = fragments.get(index);
+            String content = "植物：%s\n学名：%s\n养护主题：%s\n\n%s".formatted(
+                    safe(plant.commonName()), safe(plant.scientificName()), topic, value.trim());
+            String documentId = id("plant", plant.id() + ":" + type + ":" + target.size());
+            String fragmentId = logicalEvidenceId + ":" + index;
+            target.add(new KnowledgeDocument(
+                    documentId, KnowledgeSource.PLANT, plant.id(), title, content,
+                    plant.id(), safe(plant.commonName()), type, List.of(topic),
+                    1.0, false, 0, 0, 0, 0, Instant.EPOCH,
+                    fragmentMetadata(logicalEvidenceId, fragmentId, index, fragments.size(), topic, content, Instant.EPOCH)
+            ));
+        }
     }
 
     static List<String> semanticChunks(String text, int maxCharacters) {
@@ -119,13 +135,21 @@ public class KnowledgeDocumentConverter {
         return UUID.nameUUIDFromBytes((namespace + ":" + source).getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    private Map<String, String> chunkMetadata(int chunkIndex, int chunkCount, String section,
-                                              String content, Instant sourceUpdatedAt) {
+    private Map<String, String> fragmentMetadata(String logicalEvidenceId, String fragmentId,
+                                                 int fragmentIndex, int fragmentCount, String section,
+                                                 String content, Instant sourceUpdatedAt) {
         Map<String, String> result = new LinkedHashMap<>();
-        result.put("chunkIndex", String.valueOf(chunkIndex));
-        result.put("chunkCount", String.valueOf(chunkCount));
+        // chunk 字段保留给旧的检索追踪和离线评测；新字段定义逻辑证据与物理片段的关系。
+        result.put("chunkIndex", String.valueOf(fragmentIndex));
+        result.put("chunkCount", String.valueOf(fragmentCount));
         result.put("section", safe(section));
-        result.put("contentHash", sha256(content));
+        result.put("logicalEvidenceId", logicalEvidenceId);
+        result.put("fragmentId", fragmentId);
+        result.put("fragmentRole", "CONTENT");
+        result.put("fragmentIndex", String.valueOf(fragmentIndex));
+        result.put("fragmentCount", String.valueOf(fragmentCount));
+        result.put("fragmentSection", safe(section));
+        result.put("contentHash", contentHash(content));
         result.put("sourceUpdatedAt", sourceUpdatedAt == null ? "" : sourceUpdatedAt.toString());
         result.put("indexVersion", INDEX_VERSION);
         return result;
@@ -133,6 +157,10 @@ public class KnowledgeDocumentConverter {
 
     private Instant sourceUpdatedAt(Instant updatedAt, Instant createdAt) {
         return updatedAt == null ? createdAt : updatedAt;
+    }
+
+    private String contentHash(String content) {
+        return sha256(INDEX_VERSION + "\u0000" + content);
     }
 
     private String sha256(String content) {
