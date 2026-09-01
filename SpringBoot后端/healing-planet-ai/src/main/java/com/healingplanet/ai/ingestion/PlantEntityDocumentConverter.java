@@ -2,6 +2,7 @@ package com.healingplanet.ai.ingestion;
 
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -15,6 +16,17 @@ import java.util.UUID;
 @Component
 public class PlantEntityDocumentConverter {
 
+    private final EmbeddingTextBuilder embeddingTextBuilder;
+
+    public PlantEntityDocumentConverter() {
+        this(new EmbeddingTextBuilder());
+    }
+
+    @Autowired
+    public PlantEntityDocumentConverter(EmbeddingTextBuilder embeddingTextBuilder) {
+        this.embeddingTextBuilder = embeddingTextBuilder;
+    }
+
     public KnowledgeDocument convert(KnowledgeRepository.PlantEntityRow plant) {
         String commonName = safe(plant.commonName());
         String scientificName = safe(plant.scientificName());
@@ -26,11 +38,9 @@ public class PlantEntityDocumentConverter {
         String normalizedNames = java.util.stream.Stream.concat(
                         java.util.stream.Stream.of(commonName, scientificName), aliases.stream())
                 .map(this::normalize).filter(name -> !name.isBlank()).distinct().collect(java.util.stream.Collectors.joining("|"));
-        String content = aliases.isEmpty()
-                ? "植物名称：%s\n学名：%s".formatted(commonName, scientificName)
-                : "植物名称：%s\n学名：%s\n别名：%s".formatted(commonName, scientificName, String.join("、", aliases));
+        String content = embeddingTextBuilder.plantEntity(commonName, scientificName, aliases);
         return new KnowledgeDocument(
-                id(plant.id()), KnowledgeSource.PLANT_ENTITY, plant.id(), commonName, content,
+                id(plant.id()), KnowledgeSource.PLANT_ENTITY, plant.id(), commonName, content, content,
                 plant.id(), commonName, "PLANT_ENTITY", List.of(), 1.0, false,
                 0, 0, 0, 0, Instant.EPOCH,
                 Map.of("commonName", commonName, "scientificName", scientificName,

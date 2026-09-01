@@ -23,14 +23,20 @@ public class DiseaseKnowledgeConverter {
 
     private static final String INDEX_VERSION = "logical-evidence-v1";
     private final ChunkPolicy chunkPolicy;
+    private final EmbeddingTextBuilder embeddingTextBuilder;
 
     public DiseaseKnowledgeConverter() {
-        this(new ChunkPolicy(new RagProperties()));
+        this(new ChunkPolicy(new RagProperties()), new EmbeddingTextBuilder());
+    }
+
+    public DiseaseKnowledgeConverter(ChunkPolicy chunkPolicy) {
+        this(chunkPolicy, new EmbeddingTextBuilder());
     }
 
     @Autowired
-    public DiseaseKnowledgeConverter(ChunkPolicy chunkPolicy) {
+    public DiseaseKnowledgeConverter(ChunkPolicy chunkPolicy, EmbeddingTextBuilder embeddingTextBuilder) {
         this.chunkPolicy = chunkPolicy;
+        this.embeddingTextBuilder = embeddingTextBuilder;
     }
 
     /**
@@ -49,8 +55,7 @@ public class DiseaseKnowledgeConverter {
                 """.formatted(
                 safe(row.symptoms()), safe(row.visualSymptoms()), safe(row.triggerConditions()),
                 safe(row.environmentConditions()), safe(row.treatment()), safe(row.prevention()), safe(row.source()));
-        String content = "植物：%s\n病害：%s\n别名：%s\n\n%s".formatted(
-                safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases), displayContent);
+        String content = embeddingTextBuilder.disease(row.plantName(), row.diseaseName(), aliases, displayContent);
         String documentId = id(row.id());
         String fragmentId = "DISEASE:" + row.id() + ":完整资料:0";
         return new KnowledgeDocument(documentId, KnowledgeSource.DISEASE, row.id(),
@@ -63,12 +68,7 @@ public class DiseaseKnowledgeConverter {
 
     public List<KnowledgeDocument> convertAll(DiseaseKnowledgeRepository.DiseaseRow row) {
         List<String> aliases = split(row.aliases());
-        String prefix = """
-                植物：%s
-                病害：%s
-                别名：%s
-
-                """.formatted(safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases));
+        String prefix = embeddingTextBuilder.diseasePrefix(row.plantName(), row.diseaseName(), aliases);
         int contentBudget = Math.max(1, chunkPolicy.maxTokens(KnowledgeSource.DISEASE)
                 - TokenAwareTextChunker.countTokens(prefix));
         List<DiseaseChunk> chunks = new ArrayList<>();
@@ -88,7 +88,7 @@ public class DiseaseKnowledgeConverter {
         List<KnowledgeDocument> result = new ArrayList<>(chunks.size());
         for (int index = 0; index < chunks.size(); index++) {
             DiseaseChunk chunk = chunks.get(index);
-            String content = prefix + chunk.content();
+            String content = embeddingTextBuilder.disease(row.plantName(), row.diseaseName(), aliases, chunk.content());
             int fragmentIndex = fragmentIndexes.getOrDefault(chunk.section(), 0);
             fragmentIndexes.put(chunk.section(), fragmentIndex + 1);
             String documentId = id(row.id() + ":" + index);

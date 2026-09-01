@@ -23,20 +23,27 @@ public class KnowledgeDocumentConverter {
     private static final String INDEX_VERSION = "logical-evidence-v2";
     private final PlantCatalogIndex plantCatalogIndex;
     private final ChunkPolicy chunkPolicy;
+    private final EmbeddingTextBuilder embeddingTextBuilder;
 
     /** Kept for focused converter tests that do not need a catalog snapshot. */
     KnowledgeDocumentConverter() {
-        this(null, new ChunkPolicy(new RagProperties()));
+        this(null, new ChunkPolicy(new RagProperties()), new EmbeddingTextBuilder());
     }
 
     public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex) {
-        this(plantCatalogIndex, new ChunkPolicy(new RagProperties()));
+        this(plantCatalogIndex, new ChunkPolicy(new RagProperties()), new EmbeddingTextBuilder());
+    }
+
+    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex, ChunkPolicy chunkPolicy) {
+        this(plantCatalogIndex, chunkPolicy, new EmbeddingTextBuilder());
     }
 
     @Autowired
-    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex, ChunkPolicy chunkPolicy) {
+    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex, ChunkPolicy chunkPolicy,
+                                      EmbeddingTextBuilder embeddingTextBuilder) {
         this.plantCatalogIndex = plantCatalogIndex;
         this.chunkPolicy = chunkPolicy;
+        this.embeddingTextBuilder = embeddingTextBuilder;
     }
 
     public List<KnowledgeDocument> fromPlant(KnowledgeRepository.PlantRow plant) {
@@ -49,7 +56,8 @@ public class KnowledgeDocumentConverter {
         addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护",
                 TokenAwareTextChunker.split(plant.detailAdvice(), Math.max(1,
                                 chunkPolicy.maxTokens(KnowledgeSource.PLANT)
-                                        - TokenAwareTextChunker.countTokens(plantPrefix(plant, "综合养护"))))
+                                        - TokenAwareTextChunker.countTokens(embeddingTextBuilder.plantPrefix(
+                                                plant.commonName(), plant.scientificName(), "综合养护"))))
                         .stream().map(chunk -> new PlantChunk(chunk.content(),
                                 chunk.section().isBlank() ? "综合养护" : chunk.section())).toList());
         return documents;
@@ -66,7 +74,7 @@ public class KnowledgeDocumentConverter {
                 ? plantResolution.resolvedPlantIds().get(0) : "";
         String plantName = plantResolution.primaryPlantName().isBlank()
                 ? inferPlantName(tags) : plantResolution.primaryPlantName();
-        String contentPrefix = "标题：%s\n标签：%s\n\n".formatted(safe(post.title()), String.join("、", tags));
+        String contentPrefix = embeddingTextBuilder.communityPrefix(post.title(), tags, plantName);
         int contentBudget = Math.max(1, chunkPolicy.maxTokens(KnowledgeSource.COMMUNITY)
                 - TokenAwareTextChunker.countTokens(contentPrefix));
         List<TokenAwareTextChunker.Chunk> chunks = TokenAwareTextChunker.split(post.content(), contentBudget);
@@ -74,7 +82,7 @@ public class KnowledgeDocumentConverter {
         List<KnowledgeDocument> result = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             TokenAwareTextChunker.Chunk chunk = chunks.get(i);
-            String content = contentPrefix + chunk.content();
+            String content = embeddingTextBuilder.community(post.title(), tags, plantName, chunk.content());
             String documentId = id("post", post.id() + ":" + i);
             String fragmentId = "COMMUNITY:" + post.id() + ":" + i;
             Map<String, String> metadata = new LinkedHashMap<>(fragmentMetadata(
@@ -110,7 +118,7 @@ public class KnowledgeDocumentConverter {
         for (int index = 0; index < fragments.size(); index++) {
             PlantChunk fragment = fragments.get(index);
             String value = fragment.content();
-            String content = plantPrefix(plant, topic) + value.trim();
+            String content = embeddingTextBuilder.plant(plant.commonName(), plant.scientificName(), topic, value);
             String documentId = id("plant", plant.id() + ":" + type + ":" + target.size());
             String fragmentId = logicalEvidenceId + ":" + index;
             target.add(new KnowledgeDocument(
@@ -125,11 +133,6 @@ public class KnowledgeDocumentConverter {
 
     private String inferPlantName(List<String> tags) {
         return tags.isEmpty() ? "" : tags.get(0);
-    }
-
-    private String plantPrefix(KnowledgeRepository.PlantRow plant, String topic) {
-        return "植物：%s\n学名：%s\n养护主题：%s\n\n".formatted(
-                safe(plant.commonName()), safe(plant.scientificName()), topic);
     }
 
     private String safe(String value) {
