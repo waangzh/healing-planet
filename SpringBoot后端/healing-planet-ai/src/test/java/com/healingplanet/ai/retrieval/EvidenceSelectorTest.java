@@ -119,6 +119,34 @@ class EvidenceSelectorTest {
                 .containsEntry("sansevieria", "QUERY_GROUP_COVERAGE");
     }
 
+    @Test
+    void shouldCoverEachRequiredGroupTopicBeforeGlobalFill() {
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.REQUIRED,
+                SourcePlan.SourceRequirement.FORBIDDEN, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup pothos = new RetrievalQueryGroup("Q1", "绿萝浇水湿度", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING", "HUMIDITY"), Set.of("plant-1"), SourceScope.from(sourcePlan), true);
+        RetrievalQueryGroup sansevieria = new RetrievalQueryGroup("Q2", "虎尾兰浇水湿度", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING", "HUMIDITY"), Set.of("plant-2"), SourceScope.from(sourcePlan), true);
+        RagQuery query = RagQuery.of("绿萝和虎尾兰的浇水湿度要求");
+        RetrievalRequest request = new RetrievalRequest(query, new QueryAnalysis(QueryIntent.GENERAL_CARE,
+                Set.of(), Set.of("WATERING", "HUMIDITY"), false, 0.9d), RetrievalConstraints.defaults(),
+                new RetrievalPlan(sourcePlan, true, false, false, Set.of(), Set.of("WATERING", "HUMIDITY"),
+                        query.query(), List.of(pothos, sansevieria)), null, query.query());
+
+        EvidenceSelector.Selection result = selector.select(request, List.of(
+                groupedGuide("q1-water", "plant-1", "Q1", "WATERING", 0.99),
+                groupedGuide("q2-water", "plant-2", "Q2", "WATERING", 0.98),
+                groupedGuide("q1-humidity", "plant-1", "Q1", "HUMIDITY", 0.97),
+                groupedGuide("q1-general", "plant-1", "Q1", "GENERAL_CARE", 0.96),
+                groupedGuide("q2-humidity", "plant-2", "Q2", "HUMIDITY", 0.20)), 4,
+                List.of("plant-1", "plant-2"));
+
+        assertThat(result.evidence()).extracting(Evidence::id)
+                .containsExactly("q1-water", "q2-water", "q1-humidity", "q2-humidity");
+        assertThat(result.reasons()).containsOnlyKeys("q1-water", "q2-water", "q1-humidity", "q2-humidity")
+                .allSatisfy((id, reason) -> assertThat(reason).isEqualTo("QUERY_GROUP_COVERAGE"));
+    }
+
     private Evidence guide(String id, String plantId, String knowledgeType, double score) {
         return evidence(id, EvidenceType.CARE_GUIDE, plantId, knowledgeType, score, plantId);
     }
@@ -128,8 +156,12 @@ class EvidenceSelectorTest {
     }
 
     private Evidence groupedGuide(String id, String plantId, String groupId, double score) {
+        return groupedGuide(id, plantId, groupId, "WATERING", score);
+    }
+
+    private Evidence groupedGuide(String id, String plantId, String groupId, String knowledgeType, double score) {
         return new Evidence(id, EvidenceType.CARE_GUIDE, plantId, "PLANT", id, id, score, score, 1d, score,
-                Map.of("knowledgeType", "WATERING", "canonicalPlantId", plantId,
+                Map.of("knowledgeType", knowledgeType, "canonicalPlantId", plantId,
                         "matchedQueryGroupIds", groupId), null);
     }
 

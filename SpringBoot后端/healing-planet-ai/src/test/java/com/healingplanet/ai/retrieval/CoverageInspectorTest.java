@@ -48,6 +48,37 @@ class CoverageInspectorTest {
     }
 
     @Test
+    void groupLocalMissingCommunityDoesNotExpandAlreadyCoveredPlantSource() {
+        RagProperties properties = new RagProperties();
+        properties.getAdaptiveRecall().setMaxDenseTopK(60);
+        properties.getAdaptiveRecall().setMaxSparseTopK(60);
+        properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(1);
+        RagRuntimeConfig config = RagRuntimeConfig.from(properties);
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.REQUIRED,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup first = new RetrievalQueryGroup("Q1", "绿萝养护", GroupRole.ENTITY_FOCUS,
+                Set.of(), Set.of(), SourceScope.from(sourcePlan), true);
+        RetrievalQueryGroup second = new RetrievalQueryGroup("Q2", "虎尾兰养护", GroupRole.ENTITY_FOCUS,
+                Set.of(), Set.of(), SourceScope.from(sourcePlan), true);
+        RetrievalRequest request = new RetrievalRequest(RagQuery.of("绿萝和虎尾兰的官方与社区养护"),
+                new QueryAnalysis(QueryIntent.GENERAL_CARE, Set.of(), Set.of(), false, 0.9),
+                RetrievalConstraints.defaults(), new RetrievalPlan(sourcePlan, true, true, false, Set.of(), Set.of(),
+                "绿萝和虎尾兰的官方与社区养护", List.of(first, second)), null, "绿萝和虎尾兰的官方与社区养护");
+
+        RecallCoverage coverage = new CoverageInspector().inspect(request, List.of(
+                candidate("guide-q1", "Q1"), communityCandidate("post-q1", "Q1"), candidate("guide-q2", "Q2")), config);
+        RecallBudget expanded = new AdaptiveRecallPolicy().next(request, coverage,
+                new AdaptiveRecallPolicy().initial(config), config);
+
+        assertThat(coverage.missingRequiredSources()).isEmpty();
+        assertThat(coverage.groups().get("Q2").missingSources()).containsExactly(KnowledgeSource.COMMUNITY);
+        assertThat(expanded.plantDenseTopK()).isEqualTo(30);
+        assertThat(expanded.plantSparseTopK()).isEqualTo(30);
+        assertThat(expanded.communityDenseTopK()).isEqualTo(60);
+        assertThat(expanded.communitySparseTopK()).isEqualTo(60);
+    }
+
+    @Test
     void splitEntityTopicCoverageAcrossGroupsDoesNotSatisfyCoverage() {
         RagProperties properties = new RagProperties();
         properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(2);
@@ -144,6 +175,13 @@ class CoverageInspectorTest {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, plantId, id, id, plantId,
                 "植物", knowledgeType, List.of(), 1, false, 0, 0, 0, 0, Instant.EPOCH, Map.of());
         return new LogicalEvidenceCandidate("PLANT:" + id, document,
+                List.of(RetrievalFragmentHit.dense(document, 1, 1)), 1, null, 1d, null, 0.1, Set.of(groupId));
+    }
+
+    private LogicalEvidenceCandidate communityCandidate(String id, String groupId) {
+        KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.COMMUNITY, id, id, id, "",
+                "社区", "COMMUNITY_EXPERIENCE", List.of(), 0.5, false, 0, 0, 0, 0, Instant.EPOCH, Map.of());
+        return new LogicalEvidenceCandidate("COMMUNITY:" + id, document,
                 List.of(RetrievalFragmentHit.dense(document, 1, 1)), 1, null, 1d, null, 0.1, Set.of(groupId));
     }
 }

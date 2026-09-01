@@ -47,7 +47,7 @@ public class EvidenceSelector {
                 config.mixedSourceCommunityLimit());
         Set<String> topicHints = request.topicHints();
 
-        retainRequiredQueryGroupCoverage(request.plan().queryGroups(), ranked, state);
+        retainRequiredCoverage(request, ranked, state);
         retainSourceCoverage(ranked, state);
         retainTopicHintCoverage(ranked, topicHints, state);
         retainEntityCoverage(ranked, canonicalPlantIds, state);
@@ -81,13 +81,32 @@ public class EvidenceSelector {
         }
     }
 
-    private void retainRequiredQueryGroupCoverage(List<RetrievalQueryGroup> groups, List<Evidence> ranked,
-                                                   SelectionState state) {
-        for (RetrievalQueryGroup group : groups) {
-            if (!group.requiredCoverage()) continue;
-            ranked.stream().filter(evidence -> GroupCoverageMatcher.matches(evidence, group)).findFirst()
-                    .ifPresent(evidence -> state.add(evidence, "QUERY_GROUP_COVERAGE"));
+    private void retainRequiredCoverage(RetrievalRequest request, List<Evidence> ranked, SelectionState state) {
+        Map<String, RetrievalQueryGroup> groups = SelectionCoverageUnit.indexedGroups(request);
+        Set<SelectionCoverageUnit> uncovered = new LinkedHashSet<>(SelectionCoverageUnit.forFinalSelection(request));
+        while (!uncovered.isEmpty() && state.items().size() < state.capacity()) {
+            Evidence best = null;
+            Set<SelectionCoverageUnit> bestCoverage = Set.of();
+            for (Evidence evidence : ranked) {
+                if (!state.canAdd(evidence, "QUERY_GROUP_COVERAGE")) continue;
+                Set<SelectionCoverageUnit> coverage = coverageOf(evidence, uncovered, groups);
+                if (coverage.size() > bestCoverage.size()) {
+                    best = evidence;
+                    bestCoverage = coverage;
+                }
+            }
+            if (best == null || bestCoverage.isEmpty() || !state.add(best, "QUERY_GROUP_COVERAGE")) break;
+            uncovered.removeAll(bestCoverage);
         }
+    }
+
+    private Set<SelectionCoverageUnit> coverageOf(Evidence evidence, Set<SelectionCoverageUnit> uncovered,
+                                                   Map<String, RetrievalQueryGroup> groups) {
+        Set<SelectionCoverageUnit> result = new LinkedHashSet<>();
+        for (SelectionCoverageUnit unit : uncovered) {
+            if (unit.matches(evidence, groups)) result.add(unit);
+        }
+        return result;
     }
 
     private void retainTopicHintCoverage(List<Evidence> ranked, Set<String> topicHints,
@@ -153,15 +172,17 @@ public class EvidenceSelector {
             this.mixedSourceCommunityLimit = Math.max(0, mixedSourceCommunityLimit);
         }
 
-        private void add(Evidence evidence, String reason) {
-            if (items.containsKey(evidence.id()) || items.size() >= capacity || !canAdd(evidence, reason)) return;
+        private boolean add(Evidence evidence, String reason) {
+            if (!canAdd(evidence, reason)) return false;
             items.put(evidence.id(), evidence);
             reasons.put(evidence.id(), reason);
             logicalGroups.add(logicalGroup(evidence));
             if (isCommunity(evidence)) communitySourceIds.add(sourceKey(evidence));
+            return true;
         }
 
         private boolean canAdd(Evidence evidence, String reason) {
+            if (items.containsKey(evidence.id()) || items.size() >= capacity) return false;
             if (logicalGroups.contains(logicalGroup(evidence))) return false;
             if ("QUERY_GROUP_COVERAGE".equals(reason)) return true;
             return !sourcePlan.includeCommunity() || !isCommunity(evidence)

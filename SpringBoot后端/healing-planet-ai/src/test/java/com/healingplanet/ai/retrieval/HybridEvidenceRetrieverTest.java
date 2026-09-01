@@ -175,7 +175,7 @@ class HybridEvidenceRetrieverTest {
     }
 
     @Test
-    void shouldDeepenOnlyTheMissingRequiredSource() {
+    void shouldDeepenMissingGroupSourceAndTopic() {
         properties.getAdaptiveRecall().setEnabled(true);
         properties.getAdaptiveRecall().setMaxDenseTopK(60);
         properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(1);
@@ -189,7 +189,7 @@ class HybridEvidenceRetrieverTest {
 
         retriever.retrieveWithDiagnostics(request("绿萝浇水经验", sourcePlan), RagRuntimeConfig.from(properties));
 
-        verify(plantStore, times(1)).similaritySearch(any(SearchRequest.class));
+        verify(plantStore, times(2)).similaritySearch(any(SearchRequest.class));
         verify(communityStore, times(2)).similaritySearch(any(SearchRequest.class));
     }
 

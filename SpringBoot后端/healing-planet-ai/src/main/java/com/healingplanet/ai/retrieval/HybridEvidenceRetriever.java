@@ -127,7 +127,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         List<LogicalEvidenceCandidate> candidates = recall.candidates();
         RecallBudget budget = recall.budget();
         Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled = recall.recalled();
-        RerankResult rerank = rerankCandidates(request.searchQuery(), candidates, trace, runtimeSnapshot);
+        RerankResult rerank = rerankCandidates(request, request.searchQuery(), candidates, trace, runtimeSnapshot);
         QualifiedRecallCoverage qualification = recallQualificationPolicy.inspect(request, rerank.candidates(),
                 rerank.scores(), config);
         while (!qualification.sufficient()) {
@@ -140,7 +140,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             });
             budget = expanded;
             candidates = merge(recalled);
-            rerank = rerankCandidates(request.searchQuery(), candidates, trace, runtimeSnapshot);
+            rerank = rerankCandidates(request, request.searchQuery(), candidates, trace, runtimeSnapshot);
             qualification = recallQualificationPolicy.inspect(request, rerank.candidates(), rerank.scores(), config);
         }
         metrics.recordCandidates("fused", "all", candidates.size());
@@ -310,18 +310,21 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                 () -> metrics.time("embedding", sourceTag, () -> store.similaritySearch(request)));
     }
 
-    private Map<String, Double> rerank(String query, List<LogicalEvidenceCandidate> candidates,
+    private Map<String, Double> rerank(RetrievalRequest request, String query, List<LogicalEvidenceCandidate> candidates,
                                        RagRuntimeSnapshot runtimeSnapshot) {
+        if (reranker instanceof RequestAwareSnapshotReranker requestAwareReranker) {
+            return requestAwareReranker.rerank(request, query, candidates, runtimeSnapshot);
+        }
         if (reranker instanceof SnapshotReranker snapshotReranker) {
             return snapshotReranker.rerank(query, candidates, runtimeSnapshot);
         }
         return reranker.rerank(query, candidates);
     }
 
-    private RerankResult rerankCandidates(String query, List<LogicalEvidenceCandidate> candidates,
+    private RerankResult rerankCandidates(RetrievalRequest request, String query, List<LogicalEvidenceCandidate> candidates,
                                           RetrievalTraceCollector trace, RagRuntimeSnapshot runtimeSnapshot) {
         Map<String, Double> scores = trace.time("rerank", "all", "all",
-                () -> metrics.time("rerank", "all", () -> rerank(query, candidates, runtimeSnapshot)));
+                () -> metrics.time("rerank", "all", () -> rerank(request, query, candidates, runtimeSnapshot)));
         List<LogicalEvidenceCandidate> reranked = candidates.stream()
                 .map(candidate -> candidate.withRerankedRepresentative(scores))
                 .sorted(Comparator.comparingDouble((LogicalEvidenceCandidate candidate) -> scores

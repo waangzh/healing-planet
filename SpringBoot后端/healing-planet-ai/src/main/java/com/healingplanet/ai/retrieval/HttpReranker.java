@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-class HttpReranker implements SnapshotReranker {
+class HttpReranker implements RequestAwareSnapshotReranker {
 
     private final RagRuntimeConfigProvider runtimeConfigProvider;
     private final RerankFragmentSelector fragmentSelector = new RerankFragmentSelector();
@@ -28,11 +28,19 @@ class HttpReranker implements SnapshotReranker {
     @Override
     public Map<String, Double> rerank(String query, List<LogicalEvidenceCandidate> candidates,
                                        RagRuntimeSnapshot runtimeSnapshot) {
+        return rerank(null, query, candidates, runtimeSnapshot);
+    }
+
+    @Override
+    public Map<String, Double> rerank(RetrievalRequest request, String query, List<LogicalEvidenceCandidate> candidates,
+                                       RagRuntimeSnapshot runtimeSnapshot) {
         var config = runtimeSnapshot.config();
         if (!config.rerankerEnabled() || candidates.isEmpty()) return Map.of();
         RagRuntimeSnapshot.RerankerRuntimeClient client = runtimeSnapshot.rerankerClient();
         if (client == null) return Map.of();
-        List<RetrievalFragmentHit> rerankFragments = fragmentSelector.select(candidates, client.candidateTopK(),
+        List<LogicalEvidenceCandidate> rerankCandidates = new RerankCandidateSelector()
+                .select(request, candidates, client.candidateTopK());
+        List<RetrievalFragmentHit> rerankFragments = fragmentSelector.select(rerankCandidates, 0,
                 client.maxFragmentsPerLogicalEvidence(), client.maxFragmentsTotal(), config.rrfK());
         if (rerankFragments.isEmpty()) return Map.of();
         List<String> documents = rerankFragments.stream().map(fragment -> fragment.document().content()).toList();

@@ -35,14 +35,10 @@ public class AdaptiveRecallPolicy {
     }
 
     private Set<KnowledgeSource> expansionSources(RetrievalRequest request, RecallCoverage coverage) {
-        if (!coverage.missingRequiredSources().isEmpty()) return coverage.missingRequiredSources();
         Set<KnowledgeSource> result = new LinkedHashSet<>();
-        for (RetrievalQueryGroup group : request.plan().queryGroups()) {
-            if (coverage.missingRequiredQueryGroups().contains(group.id())) {
-                if (group.sourceScope().knowledge()) result.add(KnowledgeSource.PLANT);
-                if (group.sourceScope().community()) result.add(KnowledgeSource.COMMUNITY);
-            }
-        }
+        coverage.groups().values().stream().filter(group -> !group.sufficient())
+                .forEach(group -> result.addAll(group.missingSources()));
+        if (result.isEmpty()) result.addAll(coverage.missingRequiredSources());
         if (!coverage.missingEntities().isEmpty() || !coverage.missingTopics().isEmpty()) {
             if (request.plan().searchKnowledge()) result.add(KnowledgeSource.PLANT);
         }

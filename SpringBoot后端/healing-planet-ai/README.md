@@ -74,8 +74,9 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
   LLM query decomposition。CoverageInspector 在每个组内检查 `source × entity × topic`，存在结构缺口时
   才按缺失来源将 recall Top-K 有界扩展至配置上限。结构覆盖完成后，只有启用并实际取得 reranker 分数时，才会
   对弱的必需来源执行一次或多次有界 corrective recall；它不复用 Answerability 阈值。
-- Reranker 先按 logical evidence 限制候选数，再以“每条逻辑证据最多 N 个 fragment + 总 fragment 上限”
-  组成输入；同一长帖不能挤占全部 rerank slots。最终 selector 先保留每个必需 Query Group 的证据，再按全局排名补齐。
+- Reranker 先为必需 Query Group × Source 保留 logical-evidence 准入，再以“每条逻辑证据最多 N 个 fragment + 总
+  fragment 上限”组成输入；同一长帖不能挤占全部 rerank slots，也不会因全局融合排名错过必需来源。最终 selector
+  以 Query Group × Topic 与必需 Query Group × Source 为覆盖单元，尽量用最少证据覆盖后再按全局排名补齐。
 - Prompt 为每条逻辑证据保留来源、植物和章节等父上下文，并提供主相关片段与有限补充片段；片段数由独立的
   context-assembly 预算控制，避免长文在生成上下文中重新膨胀。
 - 社区帖子索引会基于标签、标题和明确植物提及写入 `resolvedPlantIds` 与置信度，并在多植物 Query Group 的
