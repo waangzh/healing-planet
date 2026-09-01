@@ -1,10 +1,14 @@
 package com.healingplanet.ai.ingestion;
 
+import com.healingplanet.ai.retrieval.PlantCatalogIndex;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class KnowledgeDocumentConverterTest {
 
@@ -44,6 +48,24 @@ class KnowledgeDocumentConverterTest {
                     .containsEntry("fragmentRole", "CONTENT");
             assertThat(document.metadata().get("fragmentId"))
                     .isEqualTo("COMMUNITY:post-1:" + document.metadata().get("fragmentIndex"));
+        });
+    }
+
+    @Test
+    void shouldStoreDeterministicCommunityPlantAffinityWithoutMakingItARetrievalFilter() {
+        PlantCatalogIndex catalog = mock(PlantCatalogIndex.class);
+        when(catalog.resolveCommunityPlants("绿萝浇水记录", "叶片下垂后浇透。", List.of("绿萝")))
+                .thenReturn(new PlantCatalogIndex.CommunityPlantResolution(List.of("plant-1"), "绿萝", 1d));
+        KnowledgeDocumentConverter catalogAware = new KnowledgeDocumentConverter(catalog);
+        var post = new KnowledgeRepository.PostRow("post-affinity", "绿萝浇水记录", "叶片下垂后浇透。",
+                0, 0, 0, 0, false, Instant.parse("2026-01-01T00:00:00Z"), "绿萝");
+
+        var documents = catalogAware.fromPost(post);
+
+        assertThat(documents).singleElement().satisfies(document -> {
+            assertThat(document.canonicalPlantId()).isEqualTo("plant-1");
+            assertThat(document.metadata()).containsEntry("resolvedPlantIds", "plant-1")
+                    .containsEntry("plantEntityConfidence", "1.0");
         });
     }
 

@@ -3,11 +3,14 @@ package com.healingplanet.ai.retrieval;
 import com.healingplanet.ai.domain.KnowledgeSource;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /** Facts observed after recall, before reranking and evidence selection. */
 public record RecallCoverage(
+        Map<String, QueryGroupCoverage> groups,
         Set<KnowledgeSource> coveredRequiredSources,
         Set<String> coveredRequiredQueryGroups,
         Set<String> coveredEntities,
@@ -20,6 +23,7 @@ public record RecallCoverage(
         int minimumUniqueLogicalCandidates
 ) {
     public RecallCoverage {
+        groups = immutableMap(groups);
         coveredRequiredSources = immutable(coveredRequiredSources);
         coveredRequiredQueryGroups = immutable(coveredRequiredQueryGroups);
         coveredEntities = immutable(coveredEntities);
@@ -40,5 +44,9 @@ public record RecallCoverage(
 
     private static <T> Set<T> immutable(Set<T> values) {
         return Collections.unmodifiableSet(new LinkedHashSet<>(values == null ? Set.of() : values));
+    }
+
+    private static Map<String, QueryGroupCoverage> immutableMap(Map<String, QueryGroupCoverage> values) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(values == null ? Map.of() : values));
     }
 }

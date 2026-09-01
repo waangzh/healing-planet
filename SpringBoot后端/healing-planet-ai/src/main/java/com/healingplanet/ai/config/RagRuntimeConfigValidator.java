@@ -33,6 +33,12 @@ public class RagRuntimeConfigValidator {
             positiveInRange("adaptiveRecall.minUniqueLogicalCandidates",
                     config.adaptiveRecall().minUniqueLogicalCandidates(), 1, 30, errors);
         }
+        if (config.recallQualification() == null) {
+            errors.add("recallQualification 不能为空");
+        } else {
+            finiteInRange("recallQualification.minimumRerankScore",
+                    config.recallQualification().minimumRerankScore(), 0, 1, errors);
+        }
         if (config.sourceAwareRanking() == null) {
             errors.add("sourceAwareRanking 不能为空");
             return errors;

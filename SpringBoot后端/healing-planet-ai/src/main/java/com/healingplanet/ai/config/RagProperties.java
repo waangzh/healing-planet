@@ -18,6 +18,7 @@ public class RagProperties {
     private RetrievalMode retrievalMode = RetrievalMode.HYBRID_RRF;
     private int rrfK = 60;
     private final AdaptiveRecall adaptiveRecall = new AdaptiveRecall();
+    private final RecallQualification recallQualification = new RecallQualification();
     private String internalApiKey = "";
     private Path dataDirectory = Path.of("data", "rag");
     private final Ingestion ingestion = new Ingestion();
@@ -49,6 +50,7 @@ public class RagProperties {
     public int getRrfK() { return rrfK; }
     public void setRrfK(int rrfK) { this.rrfK = rrfK; }
     public AdaptiveRecall getAdaptiveRecall() { return adaptiveRecall; }
+    public RecallQualification getRecallQualification() { return recallQualification; }
     public String getInternalApiKey() { return internalApiKey; }
     public void setInternalApiKey(String internalApiKey) { this.internalApiKey = internalApiKey; }
     public Path getDataDirectory() { return dataDirectory; }
@@ -91,6 +93,17 @@ public class RagProperties {
         public void setMaxSparseTopK(int value) { this.maxSparseTopK = value; }
         public int getMinUniqueLogicalCandidates() { return minUniqueLogicalCandidates; }
         public void setMinUniqueLogicalCandidates(int value) { this.minUniqueLogicalCandidates = value; }
+    }
+
+    /** Conservative reranker floor used only to decide whether bounded recall should continue. */
+    public static class RecallQualification {
+        private boolean enabled = true;
+        private double minimumRerankScore = 0.20;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public double getMinimumRerankScore() { return minimumRerankScore; }
+        public void setMinimumRerankScore(double value) { this.minimumRerankScore = value; }
     }
 
     public static class Ingestion {

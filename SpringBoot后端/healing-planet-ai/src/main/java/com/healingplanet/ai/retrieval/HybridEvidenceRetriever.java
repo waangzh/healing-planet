@@ -35,6 +35,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private final RagRuntimeConfigProvider runtimeConfigProvider;
     private final CoverageInspector coverageInspector;
     private final AdaptiveRecallPolicy adaptiveRecallPolicy;
+    private final RecallQualificationPolicy recallQualificationPolicy;
+    private final PlantCatalogIndex plantCatalogIndex;
     private final LogicalEvidenceCandidateMerger candidateMerger = new LogicalEvidenceCandidateMerger();
 
     @Autowired
@@ -44,7 +46,9 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                    Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
                                    EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties,
                                    RagRuntimeConfigProvider runtimeConfigProvider, CoverageInspector coverageInspector,
-                                   AdaptiveRecallPolicy adaptiveRecallPolicy) {
+                                   AdaptiveRecallPolicy adaptiveRecallPolicy,
+                                   RecallQualificationPolicy recallQualificationPolicy,
+                                   PlantCatalogIndex plantCatalogIndex) {
         this.plantStore = plantStore;
         this.communityStore = communityStore;
         this.sparseIndex = sparseIndex;
@@ -58,6 +62,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         this.runtimeConfigProvider = runtimeConfigProvider;
         this.coverageInspector = coverageInspector;
         this.adaptiveRecallPolicy = adaptiveRecallPolicy;
+        this.recallQualificationPolicy = recallQualificationPolicy;
+        this.plantCatalogIndex = plantCatalogIndex;
     }
 
     HybridEvidenceRetriever(VectorStore plantStore, VectorStore communityStore,
@@ -65,8 +71,18 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                             Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
                             EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties) {
         this(plantStore, communityStore, sparseIndex, documentMapper, reranker, ranker, entityResolver,
+                evidenceSelector, metrics, properties, PlantCatalogIndex.empty());
+    }
+
+    HybridEvidenceRetriever(VectorStore plantStore, VectorStore communityStore,
+                            SparseIndexService sparseIndex, KnowledgeDocumentMapper documentMapper,
+                            Reranker reranker, SourceAwareRanker ranker, PlantEntityResolver entityResolver,
+                            EvidenceSelector evidenceSelector, RetrievalMetrics metrics, RagProperties properties,
+                            PlantCatalogIndex plantCatalogIndex) {
+        this(plantStore, communityStore, sparseIndex, documentMapper, reranker, ranker, entityResolver,
                 evidenceSelector, metrics, properties, new RagRuntimeConfigProvider(properties),
-                new CoverageInspector(), new AdaptiveRecallPolicy());
+                new CoverageInspector(), new AdaptiveRecallPolicy(), new RecallQualificationPolicy(),
+                plantCatalogIndex);
     }
 
     @Override
@@ -106,31 +122,43 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         boolean includePlant = request.plan().searchKnowledge() && !identityBlocked;
         boolean includeCommunity = request.plan().searchCommunity() && !identityBlocked
                 && entity.kind() != PlantEntityResolver.ResolutionKind.PARTIAL;
-        List<LogicalEvidenceCandidate> candidates = recallWithCoverage(request, entity, includePlant, includeCommunity,
+        RecallState recall = recallWithCoverage(request, entity, includePlant, includeCommunity,
                 trace, config);
+        List<LogicalEvidenceCandidate> candidates = recall.candidates();
+        RecallBudget budget = recall.budget();
+        Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled = recall.recalled();
+        RerankResult rerank = rerankCandidates(request.searchQuery(), candidates, trace, runtimeSnapshot);
+        QualifiedRecallCoverage qualification = recallQualificationPolicy.inspect(request, rerank.candidates(),
+                rerank.scores(), config);
+        while (!qualification.sufficient()) {
+            RecallBudget expanded = adaptiveRecallPolicy.next(qualification, budget, config);
+            if (!adaptiveRecallPolicy.expanded(budget, expanded)) break;
+            Set<KnowledgeSource> sources = expandedSources(budget, expanded);
+            trace.time("corrective_recall", sourceTag(sources), "all", () -> {
+                recall(request, entity, includePlant, includeCommunity, expanded, sources, recalled, trace, config);
+                return null;
+            });
+            budget = expanded;
+            candidates = merge(recalled);
+            rerank = rerankCandidates(request.searchQuery(), candidates, trace, runtimeSnapshot);
+            qualification = recallQualificationPolicy.inspect(request, rerank.candidates(), rerank.scores(), config);
+        }
         metrics.recordCandidates("fused", "all", candidates.size());
         trace.filtered(candidates);
-        Map<String, Double> rerankScores = trace.time("rerank", "all", "all",
-                () -> metrics.time("rerank", "all", () -> rerank(request.searchQuery(), candidates, runtimeSnapshot)));
-        List<LogicalEvidenceCandidate> reranked = candidates.stream()
-                .map(candidate -> candidate.withRerankedRepresentative(rerankScores))
-                .sorted(Comparator.comparingDouble((LogicalEvidenceCandidate candidate) -> rerankScores
-                        .getOrDefault(candidate.representativeFragmentId(), Double.NEGATIVE_INFINITY)).reversed())
-                .toList();
-        trace.rerank(candidates, reranked, rerankScores);
+        RerankResult finalRerank = rerank;
+        trace.rerank(candidates, finalRerank.candidates(), finalRerank.scores());
         SelectionResult selection = trace.time("final_rank", "all", "all",
                 () -> metrics.time("final_rank", "all",
-                        () -> selectEvidence(request, reranked, rerankScores, entity, trace, runtimeSnapshot.config())));
+                        () -> selectEvidence(request, finalRerank.candidates(), finalRerank.scores(), entity, trace,
+                                runtimeSnapshot.config())));
         trace.selected(selection.evidence(), selection.reasons());
         metrics.recordCandidates("selected", "all", selection.evidence().size());
         return new RetrievalPayload(selection.evidence(), entity.diagnostics());
     }
 
-    private List<LogicalEvidenceCandidate> recallWithCoverage(RetrievalRequest request,
-                                                               PlantEntityResolver.Resolution entity,
-                                                               boolean includePlant, boolean includeCommunity,
-                                                               RetrievalTraceCollector trace,
-                                                               RagRuntimeConfig config) {
+    private RecallState recallWithCoverage(RetrievalRequest request, PlantEntityResolver.Resolution entity,
+                                           boolean includePlant, boolean includeCommunity,
+                                           RetrievalTraceCollector trace, RagRuntimeConfig config) {
         Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled = new LinkedHashMap<>();
         RecallBudget budget = adaptiveRecallPolicy.initial(config);
         recall(request, entity, includePlant, includeCommunity, budget,
@@ -149,7 +177,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
             candidates = merge(recalled);
             coverage = coverageInspector.inspect(request, candidates, config);
         }
-        return candidates;
+        return new RecallState(candidates, budget, recalled);
     }
 
     private void recall(RetrievalRequest request, PlantEntityResolver.Resolution entity, boolean includePlant,
@@ -221,10 +249,11 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                                           RetrievalTraceCollector trace, RagRuntimeConfig config) {
         String sourceTag = source.name().toLowerCase(java.util.Locale.ROOT);
         List<String> canonicalPlantIds = canonicalPlantIds(source, group, entity);
+        String query = sourceQuery(source, group);
         String scope = group.id() + ":" + (canonicalPlantIds.isEmpty() ? entity.kind().name()
                 : String.join(",", canonicalPlantIds));
         List<org.springframework.ai.document.Document> documents = config.retrievalMode().usesDense()
-                ? denseSearch(group.query(), source, store, canonicalPlantIds, budget.denseTopK(source), trace,
+                ? denseSearch(query, source, store, canonicalPlantIds, budget.denseTopK(source), trace,
                 sourceTag, scope, config) : List.of();
         List<RrfFusion.DenseHit> denseRaw = documents.stream()
                 .map(document -> new RrfFusion.DenseHit(documentMapper.fromSpring(document, source),
@@ -235,7 +264,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         List<SparseIndexService.SparseHit> sparseRaw = config.retrievalMode().usesSparse()
                 ? trace.time("sparse_search", sourceTag, scope,
                     () -> metrics.time("sparse_search", sourceTag,
-                            () -> sparseIndex.search(source, group.query(), budget.sparseTopK(source),
+                            () -> sparseIndex.search(source, query, budget.sparseTopK(source),
                                     canonicalPlantIds)))
                 : List.of();
         trace.sparse(sparseRaw, scope);
@@ -248,6 +277,14 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         trace.rrf(result, scope);
         metrics.recordCandidates("fused", sourceTag, result.size());
         return result;
+    }
+
+    private String sourceQuery(KnowledgeSource source, RetrievalQueryGroup group) {
+        if (source != KnowledgeSource.COMMUNITY || group.canonicalPlantIds().isEmpty()) return group.query();
+        String names = group.canonicalPlantIds().stream().map(plantCatalogIndex::canonicalPlantName)
+                .filter(name -> name != null && !name.isBlank()).distinct()
+                .collect(java.util.stream.Collectors.joining("、"));
+        return names.isBlank() ? group.query() : group.query() + "\n目标植物：" + names;
     }
 
     private List<String> canonicalPlantIds(KnowledgeSource source, RetrievalQueryGroup group,
@@ -281,10 +318,27 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         return reranker.rerank(query, candidates);
     }
 
+    private RerankResult rerankCandidates(String query, List<LogicalEvidenceCandidate> candidates,
+                                          RetrievalTraceCollector trace, RagRuntimeSnapshot runtimeSnapshot) {
+        Map<String, Double> scores = trace.time("rerank", "all", "all",
+                () -> metrics.time("rerank", "all", () -> rerank(query, candidates, runtimeSnapshot)));
+        List<LogicalEvidenceCandidate> reranked = candidates.stream()
+                .map(candidate -> candidate.withRerankedRepresentative(scores))
+                .sorted(Comparator.comparingDouble((LogicalEvidenceCandidate candidate) -> scores
+                        .getOrDefault(candidate.representativeFragmentId(), Double.NEGATIVE_INFINITY)).reversed())
+                .toList();
+        return new RerankResult(reranked, scores);
+    }
+
     private record RetrievalPayload(List<Evidence> evidence,
                                     com.healingplanet.ai.domain.EntityResolutionDiagnostics entityResolution) { }
 
     private record SelectionResult(List<Evidence> evidence, Map<String, String> reasons) { }
+
+    private record RecallState(List<LogicalEvidenceCandidate> candidates, RecallBudget budget,
+                               Map<RecallRoute, List<LogicalEvidenceCandidate>> recalled) { }
+
+    private record RerankResult(List<LogicalEvidenceCandidate> candidates, Map<String, Double> scores) { }
 
     private record RecallRoute(KnowledgeSource source, String groupId) { }
 

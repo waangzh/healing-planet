@@ -48,7 +48,7 @@ class CoverageInspectorTest {
     }
 
     @Test
-    void candidateFromEachRequiredEntityAndTopicSatisfiesCoverage() {
+    void splitEntityTopicCoverageAcrossGroupsDoesNotSatisfyCoverage() {
         RagProperties properties = new RagProperties();
         properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(2);
         RagRuntimeConfig config = RagRuntimeConfig.from(properties);
@@ -67,10 +67,73 @@ class CoverageInspectorTest {
         RecallCoverage coverage = new CoverageInspector().inspect(request,
                 List.of(candidate("water", "Q1", "1", "WATERING"), candidate("humidity", "Q2", "2", "HUMIDITY")), config);
 
-        assertThat(coverage.coveredRequiredQueryGroups()).containsExactlyInAnyOrder("Q1", "Q2");
+        assertThat(coverage.coveredRequiredQueryGroups()).isEmpty();
         assertThat(coverage.coveredEntities()).containsExactlyInAnyOrder("1", "2");
         assertThat(coverage.coveredTopics()).containsExactlyInAnyOrder("WATERING", "HUMIDITY");
+        assertThat(coverage.groups().get("Q1").missingTopics()).containsExactly("HUMIDITY");
+        assertThat(coverage.groups().get("Q2").missingTopics()).containsExactly("WATERING");
+        assertThat(coverage.missingRequiredQueryGroups()).containsExactlyInAnyOrder("Q1", "Q2");
+        assertThat(coverage.sufficient()).isFalse();
+    }
+
+    @Test
+    void allRequiredFacetsMustBeCoveredWithinEachGroup() {
+        RagProperties properties = new RagProperties();
+        properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(2);
+        RagRuntimeConfig config = RagRuntimeConfig.from(properties);
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.REQUIRED,
+                SourcePlan.SourceRequirement.FORBIDDEN, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup left = new RetrievalQueryGroup("Q1", "绿萝浇水湿度", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING", "HUMIDITY"), Set.of("1"), SourceScope.from(sourcePlan), true);
+        RetrievalQueryGroup right = new RetrievalQueryGroup("Q2", "虎尾兰浇水湿度", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING", "HUMIDITY"), Set.of("2"), SourceScope.from(sourcePlan), true);
+        RetrievalRequest request = new RetrievalRequest(RagQuery.of("对比绿萝和虎尾兰的浇水湿度"),
+                new QueryAnalysis(QueryIntent.GENERAL_CARE, Set.of(), Set.of("WATERING", "HUMIDITY"), false, 0.9),
+                RetrievalConstraints.defaults(), new RetrievalPlan(sourcePlan, true, false, false, Set.of(),
+                Set.of("WATERING", "HUMIDITY"), "对比绿萝和虎尾兰的浇水湿度", List.of(left, right)), null,
+                "对比绿萝和虎尾兰的浇水湿度");
+
+        RecallCoverage coverage = new CoverageInspector().inspect(request, List.of(
+                candidate("water-left", "Q1", "1", "WATERING"),
+                candidate("humidity-left", "Q1", "1", "HUMIDITY"),
+                candidate("water-right", "Q2", "2", "WATERING"),
+                candidate("humidity-right", "Q2", "2", "HUMIDITY")), config);
+
+        assertThat(coverage.coveredRequiredQueryGroups()).containsExactlyInAnyOrder("Q1", "Q2");
+        assertThat(coverage.groups().get("Q1").sufficient()).isTrue();
+        assertThat(coverage.groups().get("Q2").sufficient()).isTrue();
         assertThat(coverage.sufficient()).isTrue();
+    }
+
+    @Test
+    void oneCommunityPostCannotCoverEveryEntityFocusedGroupWithoutResolvedAffinity() {
+        RagProperties properties = new RagProperties();
+        properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(1);
+        RagRuntimeConfig config = RagRuntimeConfig.from(properties);
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.FORBIDDEN,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup left = new RetrievalQueryGroup("Q1", "对比绿萝和虎尾兰", GroupRole.ENTITY_FOCUS,
+                Set.of(), Set.of("1"), SourceScope.from(sourcePlan), true);
+        RetrievalQueryGroup right = new RetrievalQueryGroup("Q2", "对比绿萝和虎尾兰", GroupRole.ENTITY_FOCUS,
+                Set.of(), Set.of("2"), SourceScope.from(sourcePlan), true);
+        RetrievalRequest request = new RetrievalRequest(RagQuery.of("对比绿萝和虎尾兰，社区分别怎么养？"),
+                new QueryAnalysis(QueryIntent.COMMUNITY_SEARCH, Set.of(), Set.of(), false, 0.9),
+                RetrievalConstraints.defaults(), new RetrievalPlan(sourcePlan, false, true, false, Set.of(),
+                Set.of(), "对比绿萝和虎尾兰，社区分别怎么养？", List.of(left, right)), null,
+                "对比绿萝和虎尾兰，社区分别怎么养？");
+        KnowledgeDocument document = new KnowledgeDocument("post", KnowledgeSource.COMMUNITY, "post", "绿萝经验",
+                "绿萝经验", "1", "绿萝", "COMMUNITY_EXPERIENCE", List.of(), 0.5, false,
+                0, 0, 0, 0, Instant.EPOCH, Map.of("resolvedPlantIds", "1"));
+        LogicalEvidenceCandidate candidate = new LogicalEvidenceCandidate("COMMUNITY:post", document,
+                List.of(RetrievalFragmentHit.dense(document, 1, 0.9)), 1, null, 0.9, null, 0.1,
+                Set.of("Q1", "Q2"));
+
+        RecallCoverage coverage = new CoverageInspector().inspect(request, List.of(candidate), config);
+
+        assertThat(coverage.groups().get("Q1").coveredSources()).containsExactly(KnowledgeSource.COMMUNITY);
+        assertThat(coverage.groups().get("Q2").missingSources()).containsExactly(KnowledgeSource.COMMUNITY);
+        assertThat(coverage.missingRequiredQueryGroups()).containsExactly("Q2");
+        assertThat(coverage.sufficient()).isFalse();
     }
 
     private LogicalEvidenceCandidate candidate(String id, String groupId) {

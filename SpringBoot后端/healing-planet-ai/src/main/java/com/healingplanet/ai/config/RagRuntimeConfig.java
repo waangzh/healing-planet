@@ -12,6 +12,7 @@ public record RagRuntimeConfig(
         RagProperties.RetrievalMode retrievalMode,
         int rrfK,
         AdaptiveRecall adaptiveRecall,
+        RecallQualification recallQualification,
         boolean rerankerEnabled,
         SourceAwareRanking sourceAwareRanking,
         boolean evidenceSelectorEnabled,
@@ -23,6 +24,7 @@ public record RagRuntimeConfig(
     public static RagRuntimeConfig from(RagProperties properties) {
         RagProperties.SourceAwareRanking ranking = properties.getSourceAwareRanking();
         RagProperties.AdaptiveRecall adaptiveRecall = properties.getAdaptiveRecall();
+        RagProperties.RecallQualification qualification = properties.getRecallQualification();
         return new RagRuntimeConfig(
                 0,
                 properties.getDenseTopK(),
@@ -33,6 +35,7 @@ public record RagRuntimeConfig(
                 properties.getRrfK(),
                 new AdaptiveRecall(adaptiveRecall.isEnabled(), adaptiveRecall.getMaxDenseTopK(),
                         adaptiveRecall.getMaxSparseTopK(), adaptiveRecall.getMinUniqueLogicalCandidates()),
+                new RecallQualification(qualification.isEnabled(), qualification.getMinimumRerankScore()),
                 properties.getReranker().isEnabled(),
                 new SourceAwareRanking(
                         ranking.isEnabled(), ranking.getRrfNormalizationFactor(), ranking.getDenseWeight(),
@@ -58,7 +61,7 @@ public record RagRuntimeConfig(
 
     public RagRuntimeConfig withRevision(long value) {
         return new RagRuntimeConfig(value, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
-                rrfK, adaptiveRecall, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                rrfK, adaptiveRecall, recallQualification, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
                 answerability, generation, rerankerClient);
     }
 
@@ -66,6 +69,7 @@ public record RagRuntimeConfig(
     public RagRuntimeConfig completeWith(RagRuntimeConfig fallback) {
         return new RagRuntimeConfig(revision, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
                 rrfK, adaptiveRecall == null ? fallback.adaptiveRecall : adaptiveRecall,
+                recallQualification == null ? fallback.recallQualification : recallQualification,
                 rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
                 answerability == null ? fallback.answerability : answerability,
                 generation == null ? fallback.generation : generation,
@@ -96,6 +100,9 @@ public record RagRuntimeConfig(
 
     public record AdaptiveRecall(boolean enabled, int maxDenseTopK, int maxSparseTopK,
                                  int minUniqueLogicalCandidates) {
+    }
+
+    public record RecallQualification(boolean enabled, double minimumRerankScore) {
     }
 
     public record Generation(String model, double temperature, int maxTokens) {

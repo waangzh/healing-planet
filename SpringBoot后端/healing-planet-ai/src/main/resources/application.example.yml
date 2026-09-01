@@ -64,6 +64,11 @@ app:
       max-dense-top-k: ${RAG_ADAPTIVE_RECALL_MAX_DENSE_TOP_K:120}
       max-sparse-top-k: ${RAG_ADAPTIVE_RECALL_MAX_SPARSE_TOP_K:120}
       min-unique-logical-candidates: ${RAG_ADAPTIVE_RECALL_MIN_UNIQUE_CANDIDATES:2}
+    # 首轮 rerank 已有候选却全部偏弱时，才允许按缺口来源继续扩召回。
+    # 该阈值只代表“值得停止继续召回”，显著低于 Answerability，且 reranker 无分数时不生效。
+    recall-qualification:
+      enabled: ${RAG_RECALL_QUALIFICATION_ENABLED:true}
+      minimum-rerank-score: ${RAG_RECALL_QUALIFICATION_MIN_RERANK_SCORE:0.20}
     # 以下参数由 RAG 配置版本控制，并在每次 ChatClient 调用时覆盖默认 options。
     generation:
       model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}

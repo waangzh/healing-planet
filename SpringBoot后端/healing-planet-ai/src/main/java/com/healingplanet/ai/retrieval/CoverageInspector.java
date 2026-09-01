@@ -5,8 +5,10 @@ import com.healingplanet.ai.domain.KnowledgeSource;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /** Evaluates observable recall gaps; it deliberately does not infer language intent. */
@@ -17,57 +19,83 @@ public class CoverageInspector {
                                   RagRuntimeConfig config) {
         List<LogicalEvidenceCandidate> values = candidates == null ? List.of() : candidates;
         Set<KnowledgeSource> requiredSources = requiredSources(request.sourcePlan());
-        Set<KnowledgeSource> observedSources = values.stream().map(candidate -> candidate.representative().source())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<KnowledgeSource> coveredSources = intersection(requiredSources, observedSources);
+        Map<String, QueryGroupCoverage> groups = new LinkedHashMap<>();
+        Set<String> coveredGroups = new LinkedHashSet<>();
+        Set<String> coveredEntities = new LinkedHashSet<>();
+        Set<String> coveredTopics = new LinkedHashSet<>();
+        Set<String> missingEntities = new LinkedHashSet<>();
+        Set<String> missingTopics = new LinkedHashSet<>();
+        Set<String> missingGroups = new LinkedHashSet<>();
+        Set<KnowledgeSource> observedRequiredSources = new LinkedHashSet<>();
 
-        Set<String> requiredGroups = request.plan().queryGroups().stream()
-                .filter(RetrievalQueryGroup::requiredCoverage).map(RetrievalQueryGroup::id)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<String> observedGroups = values.stream().flatMap(candidate -> candidate.matchedQueryGroupIds().stream())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<String> coveredGroups = intersection(requiredGroups, observedGroups);
+        for (RetrievalQueryGroup group : request.plan().queryGroups()) {
+            if (!group.requiredCoverage()) continue;
+            QueryGroupCoverage groupCoverage = inspectGroup(group, request, values, requiredSources);
+            groups.put(group.id(), groupCoverage);
+            coveredEntities.addAll(groupCoverage.coveredEntities());
+            coveredTopics.addAll(groupCoverage.coveredTopics());
+            missingEntities.addAll(groupCoverage.missingEntities());
+            missingTopics.addAll(groupCoverage.missingTopics());
+            observedRequiredSources.addAll(groupCoverage.coveredSources());
+            if (groupCoverage.sufficient()) coveredGroups.add(group.id());
+            else missingGroups.add(group.id());
+        }
+        Set<KnowledgeSource> coveredSources = intersection(requiredSources, observedRequiredSources);
 
-        Set<String> requiredEntities = requiredEntities(request);
-        Set<String> observedEntities = values.stream().map(candidate -> candidate.representative().canonicalPlantId())
+        return new RecallCoverage(groups, coveredSources, coveredGroups, coveredEntities, coveredTopics,
+                (int) values.stream().map(LogicalEvidenceCandidate::logicalEvidenceId).distinct().count(),
+                difference(requiredSources, coveredSources), missingGroups,
+                missingEntities, missingTopics,
+                config.adaptiveRecall().minUniqueLogicalCandidates());
+    }
+
+    private QueryGroupCoverage inspectGroup(RetrievalQueryGroup group, RetrievalRequest request,
+                                            List<LogicalEvidenceCandidate> candidates,
+                                            Set<KnowledgeSource> requiredSources) {
+        List<LogicalEvidenceCandidate> matching = candidates.stream()
+                .filter(candidate -> GroupCoverageMatcher.matches(candidate, group)).toList();
+        Set<KnowledgeSource> groupRequiredSources = requiredSources.stream()
+                .filter(group.sourceScope()::includes)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<KnowledgeSource> observedSources = matching.stream().map(candidate -> candidate.representative().source())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<KnowledgeSource> coveredSources = intersection(groupRequiredSources, observedSources);
+
+        Set<String> requiredEntities = request.plan().searchKnowledge()
+                ? new LinkedHashSet<>(group.canonicalPlantIds()) : Set.of();
+        Set<String> observedEntities = matching.stream()
+                .filter(candidate -> candidate.representative().source() == KnowledgeSource.PLANT)
+                .map(candidate -> candidate.representative().canonicalPlantId())
                 .filter(value -> value != null && !value.isBlank())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         Set<String> coveredEntities = intersection(requiredEntities, observedEntities);
 
-        Set<String> requiredTopics = request.plan().searchKnowledge()
-                ? new LinkedHashSet<>(request.topicHints()) : Set.of();
-        Set<String> observedTopics = values.stream()
+        Set<String> requiredTopics = request.plan().searchKnowledge() ? normalized(group.topicHints()) : Set.of();
+        Set<String> observedTopics = matching.stream()
                 .filter(candidate -> candidate.representative().source() == KnowledgeSource.PLANT)
                 .map(candidate -> candidate.representative().knowledgeType())
-                .filter(value -> value != null && !value.isBlank()).map(value -> value.toUpperCase(Locale.ROOT))
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.toUpperCase(Locale.ROOT))
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<String> normalizedTopics = requiredTopics.stream().map(value -> value.toUpperCase(Locale.ROOT))
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<String> coveredTopics = intersection(normalizedTopics, observedTopics);
+        Set<String> coveredTopics = intersection(requiredTopics, observedTopics);
 
-        return new RecallCoverage(coveredSources, coveredGroups, coveredEntities, coveredTopics,
-                (int) values.stream().map(LogicalEvidenceCandidate::logicalEvidenceId).distinct().count(),
-                difference(requiredSources, coveredSources), difference(requiredGroups, coveredGroups),
-                difference(requiredEntities, coveredEntities), difference(normalizedTopics, coveredTopics),
-                config.adaptiveRecall().minUniqueLogicalCandidates());
+        return new QueryGroupCoverage(group.id(), coveredEntities, difference(requiredEntities, coveredEntities),
+                coveredTopics, difference(requiredTopics, coveredTopics), coveredSources,
+                difference(groupRequiredSources, coveredSources),
+                (int) matching.stream().map(LogicalEvidenceCandidate::logicalEvidenceId).distinct().count());
     }
 
-    private Set<String> requiredEntities(RetrievalRequest request) {
-        Set<String> values = request.plan().queryGroups().stream()
-                .flatMap(group -> group.canonicalPlantIds().stream())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (!values.isEmpty()) return values;
-        if (request.entityResolution() != null && request.entityResolution().canonicalPlantIds().size() > 1) {
-            values.addAll(request.entityResolution().canonicalPlantIds());
-        }
-        return values;
-    }
-
-    private Set<KnowledgeSource> requiredSources(SourcePlan sourcePlan) {
+    static Set<KnowledgeSource> requiredSources(SourcePlan sourcePlan) {
         Set<KnowledgeSource> values = new LinkedHashSet<>();
         if (sourcePlan.knowledge().required()) values.add(KnowledgeSource.PLANT);
         if (sourcePlan.community().required()) values.add(KnowledgeSource.COMMUNITY);
         return values;
+    }
+
+    private static Set<String> normalized(Set<String> values) {
+        return values.stream().filter(value -> value != null && !value.isBlank())
+                .map(value -> value.toUpperCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     private static <T> Set<T> intersection(Set<T> expected, Set<T> actual) {

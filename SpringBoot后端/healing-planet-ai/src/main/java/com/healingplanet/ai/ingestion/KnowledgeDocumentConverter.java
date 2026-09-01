@@ -2,6 +2,8 @@ package com.healingplanet.ai.ingestion;
 
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
+import com.healingplanet.ai.retrieval.PlantCatalogIndex;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -17,7 +19,18 @@ import java.util.UUID;
 
 @Component
 public class KnowledgeDocumentConverter {
-    private static final String INDEX_VERSION = "logical-evidence-v1";
+    private static final String INDEX_VERSION = "logical-evidence-v2";
+    private final PlantCatalogIndex plantCatalogIndex;
+
+    /** Kept for focused converter tests that do not need a catalog snapshot. */
+    KnowledgeDocumentConverter() {
+        this(null);
+    }
+
+    @Autowired
+    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex) {
+        this.plantCatalogIndex = plantCatalogIndex;
+    }
 
     public List<KnowledgeDocument> fromPlant(KnowledgeRepository.PlantRow plant) {
         List<KnowledgeDocument> documents = new ArrayList<>();
@@ -34,6 +47,13 @@ public class KnowledgeDocumentConverter {
         List<String> tags = post.tags() == null || post.tags().isBlank()
                 ? List.of()
                 : Arrays.stream(post.tags().split(",")).map(String::trim).filter(s -> !s.isBlank()).toList();
+        PlantCatalogIndex.CommunityPlantResolution plantResolution = plantCatalogIndex == null
+                ? PlantCatalogIndex.CommunityPlantResolution.empty()
+                : plantCatalogIndex.resolveCommunityPlants(post.title(), post.content(), tags);
+        String canonicalPlantId = plantResolution.resolvedPlantIds().size() == 1
+                ? plantResolution.resolvedPlantIds().get(0) : "";
+        String plantName = plantResolution.primaryPlantName().isBlank()
+                ? inferPlantName(tags) : plantResolution.primaryPlantName();
         String contentPrefix = "标题：%s\n标签：%s\n\n".formatted(safe(post.title()), String.join("、", tags));
         int contentBudget = Math.max(1, TokenAwareTextChunker.COMMUNITY_MAX_TOKENS
                 - TokenAwareTextChunker.countTokens(contentPrefix));
@@ -45,13 +65,16 @@ public class KnowledgeDocumentConverter {
             String content = contentPrefix + chunk.content();
             String documentId = id("post", post.id() + ":" + i);
             String fragmentId = "COMMUNITY:" + post.id() + ":" + i;
+            Map<String, String> metadata = new LinkedHashMap<>(fragmentMetadata(
+                    "COMMUNITY:" + post.id(), fragmentId, i, chunks.size(), chunk.section(), content,
+                    sourceUpdatedAt(post.updatedAt(), post.createdAt())));
+            metadata.put("resolvedPlantIds", String.join(",", plantResolution.resolvedPlantIds()));
+            metadata.put("plantEntityConfidence", Double.toString(plantResolution.confidence()));
             result.add(new KnowledgeDocument(
                     documentId, KnowledgeSource.COMMUNITY, post.id(), safe(post.title()), content,
-                    "", inferPlantName(tags), "COMMUNITY_EXPERIENCE", tags,
+                    canonicalPlantId, plantName, "COMMUNITY_EXPERIENCE", tags,
                     post.essence() ? 0.75 : 0.5, post.essence(), post.likes(), post.collects(),
-                    post.comments(), post.views(), post.createdAt(), fragmentMetadata(
-                    "COMMUNITY:" + post.id(), fragmentId, i, chunks.size(), chunk.section(), content,
-                    sourceUpdatedAt(post.updatedAt(), post.createdAt()))
+                    post.comments(), post.views(), post.createdAt(), metadata
             ));
         }
         return result;

@@ -33,6 +33,7 @@ class HybridEvidenceRetrieverTest {
     private VectorStore communityStore;
     private SparseIndexService sparseIndex;
     private PlantEntityResolver entityResolver;
+    private Reranker reranker;
     private HybridEvidenceRetriever retriever;
     private RagProperties properties;
 
@@ -42,13 +43,14 @@ class HybridEvidenceRetrieverTest {
         communityStore = mock(VectorStore.class);
         sparseIndex = mock(SparseIndexService.class);
         entityResolver = mock(PlantEntityResolver.class);
+        reranker = mock(Reranker.class);
         properties = new RagProperties();
         properties.getReranker().setEnabled(false);
         properties.getSourceAwareRanking().setEnabled(false);
         properties.getEvidenceSelector().setEnabled(false);
         properties.getAdaptiveRecall().setEnabled(false);
         retriever = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
-                new KnowledgeDocumentMapper(), mock(Reranker.class), new SourceAwareRanker(properties),
+                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(properties),
                 entityResolver, new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties);
     }
 
@@ -189,6 +191,58 @@ class HybridEvidenceRetrieverTest {
 
         verify(plantStore, times(1)).similaritySearch(any(SearchRequest.class));
         verify(communityStore, times(2)).similaritySearch(any(SearchRequest.class));
+    }
+
+    @Test
+    void shouldAddEntityNameToCommunityGroupQueryWithoutFilteringTheCommunityStore() {
+        properties.setRetrievalMode(RagProperties.RetrievalMode.DENSE_ONLY);
+        PlantCatalogIndex catalog = mock(PlantCatalogIndex.class);
+        when(catalog.canonicalPlantName("1")).thenReturn("绿萝");
+        HybridEvidenceRetriever catalogAware = new HybridEvidenceRetriever(plantStore, communityStore, sparseIndex,
+                new KnowledgeDocumentMapper(), reranker, new SourceAwareRanker(properties), entityResolver,
+                new EvidenceSelector(properties), new RetrievalMetrics(new SimpleMeterRegistry()), properties, catalog);
+        when(entityResolver.resolve(any())).thenReturn(known("1"));
+        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("post", "1")));
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.FORBIDDEN,
+                SourcePlan.SourceRequirement.ALLOWED, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup group = new RetrievalQueryGroup("Q1", "对比绿萝和虎尾兰的社区经验", GroupRole.ENTITY_FOCUS,
+                Set.of(), Set.of("1"), SourceScope.from(sourcePlan), true);
+        RetrievalRequest request = new RetrievalRequest(RagQuery.of("对比绿萝和虎尾兰的社区经验"),
+                new QueryAnalysis(QueryIntent.COMMUNITY_SEARCH, Set.of(), Set.of(), false, 0.9d),
+                RetrievalConstraints.defaults(), new RetrievalPlan(sourcePlan, false, true, false, Set.of(), Set.of(),
+                "对比绿萝和虎尾兰的社区经验", List.of(group)), null, "对比绿萝和虎尾兰的社区经验");
+
+        catalogAware.retrieve(request);
+
+        ArgumentCaptor<SearchRequest> dense = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(communityStore).similaritySearch(dense.capture());
+        assertThat(dense.getValue().getQuery()).contains("对比绿萝和虎尾兰的社区经验", "目标植物：绿萝");
+        assertThat(dense.getValue().hasFilterExpression()).isFalse();
+    }
+
+    @Test
+    void shouldCorrectivelyDeepenRequiredSourceWhenInitialRerankCoverageIsWeak() {
+        properties.getAdaptiveRecall().setEnabled(true);
+        properties.getAdaptiveRecall().setMaxDenseTopK(60);
+        properties.getAdaptiveRecall().setMinUniqueLogicalCandidates(1);
+        properties.setRetrievalMode(RagProperties.RetrievalMode.DENSE_ONLY);
+        properties.getReranker().setEnabled(true);
+        when(entityResolver.resolve(any())).thenReturn(known("1"));
+        when(plantStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+        when(communityStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(document("post", "1")));
+        when(reranker.rerank(any(), any())).thenReturn(Map.of("post", 0.1), Map.of("post", 0.3));
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.REQUIRED, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalRequest request = new RetrievalRequest(RagQuery.of("绿萝社区经验"),
+                new QueryAnalysis(QueryIntent.COMMUNITY_SEARCH, Set.of(), Set.of(), false, 0.9d),
+                RetrievalConstraints.defaults(), new RetrievalPlan(sourcePlan, true, true, false, Set.of(),
+                Set.of(), "绿萝社区经验"), null, "绿萝社区经验");
+
+        retriever.retrieveWithDiagnostics(request, RagRuntimeConfig.from(properties));
+
+        verify(plantStore, times(1)).similaritySearch(any(SearchRequest.class));
+        verify(communityStore, times(2)).similaritySearch(any(SearchRequest.class));
+        verify(reranker, times(2)).rerank(any(), any());
     }
 
     private PlantEntityResolver.Resolution known(String id) {

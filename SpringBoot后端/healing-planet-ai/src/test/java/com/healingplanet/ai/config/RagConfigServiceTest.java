@@ -22,7 +22,7 @@ class RagConfigServiceTest {
         RagRuntimeConfig current = RagRuntimeConfig.from(defaults);
         RagRuntimeConfig invalid = new RagRuntimeConfig(0, current.denseTopK(), current.sparseTopK(),
                 current.finalTopK(), current.similarityThreshold(), current.retrievalMode(), current.rrfK(),
-                current.adaptiveRecall(),
+                current.adaptiveRecall(), current.recallQualification(),
                 current.rerankerEnabled(), new RagRuntimeConfig.SourceAwareRanking(
                 true, 31, 0.8, 0.8, 0.7, 0.2, 0.1, 0.62, 0.15, 0.13, 0.05, 0.05,
                 0.2, 0.8, 2, 1.5, 0.05, 1000, 365), true, 3,
@@ -40,7 +40,7 @@ class RagConfigServiceTest {
         RagProperties defaults = new RagProperties();
         RagRuntimeConfig oldConfig = RagRuntimeConfig.from(defaults).withRevision(1);
         RagRuntimeConfig newConfig = new RagRuntimeConfig(2, 40, 35, 8, 0.3,
-                RagProperties.RetrievalMode.HYBRID_RRF, 70, oldConfig.adaptiveRecall(), true,
+                RagProperties.RetrievalMode.HYBRID_RRF, 70, oldConfig.adaptiveRecall(), oldConfig.recallQualification(), true,
                 oldConfig.sourceAwareRanking(), true, 3,
                 oldConfig.answerability(), oldConfig.generation(), oldConfig.rerankerClient());
         RagConfigRevision current = revision(1, RagConfigStatus.ACTIVE, oldConfig);

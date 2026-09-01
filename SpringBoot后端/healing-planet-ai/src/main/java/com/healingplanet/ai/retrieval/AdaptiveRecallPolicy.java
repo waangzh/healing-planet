@@ -19,15 +19,7 @@ public class AdaptiveRecallPolicy {
                              RagRuntimeConfig config) {
         if (!config.adaptiveRecall().enabled() || coverage.sufficient()) return current;
         Set<KnowledgeSource> targets = expansionSources(request, coverage);
-        int plantDense = expand(current.plantDenseTopK(), config.adaptiveRecall().maxDenseTopK(),
-                targets.contains(KnowledgeSource.PLANT) && config.retrievalMode().usesDense());
-        int plantSparse = expand(current.plantSparseTopK(), config.adaptiveRecall().maxSparseTopK(),
-                targets.contains(KnowledgeSource.PLANT) && config.retrievalMode().usesSparse());
-        int communityDense = expand(current.communityDenseTopK(), config.adaptiveRecall().maxDenseTopK(),
-                targets.contains(KnowledgeSource.COMMUNITY) && config.retrievalMode().usesDense());
-        int communitySparse = expand(current.communitySparseTopK(), config.adaptiveRecall().maxSparseTopK(),
-                targets.contains(KnowledgeSource.COMMUNITY) && config.retrievalMode().usesSparse());
-        return new RecallBudget(plantDense, plantSparse, communityDense, communitySparse);
+        return expand(current, targets, config);
     }
 
     public boolean expanded(RecallBudget before, RecallBudget after) {
@@ -35,6 +27,11 @@ public class AdaptiveRecallPolicy {
                 || before.plantSparseTopK() != after.plantSparseTopK()
                 || before.communityDenseTopK() != after.communityDenseTopK()
                 || before.communitySparseTopK() != after.communitySparseTopK();
+    }
+
+    public RecallBudget next(QualifiedRecallCoverage coverage, RecallBudget current, RagRuntimeConfig config) {
+        if (!config.adaptiveRecall().enabled() || coverage.sufficient()) return current;
+        return expand(current, coverage.missingRequiredSources(), config);
     }
 
     private Set<KnowledgeSource> expansionSources(RetrievalRequest request, RecallCoverage coverage) {
@@ -54,6 +51,18 @@ public class AdaptiveRecallPolicy {
             if (request.plan().searchCommunity()) result.add(KnowledgeSource.COMMUNITY);
         }
         return result;
+    }
+
+    private RecallBudget expand(RecallBudget current, Set<KnowledgeSource> targets, RagRuntimeConfig config) {
+        int plantDense = expand(current.plantDenseTopK(), config.adaptiveRecall().maxDenseTopK(),
+                targets.contains(KnowledgeSource.PLANT) && config.retrievalMode().usesDense());
+        int plantSparse = expand(current.plantSparseTopK(), config.adaptiveRecall().maxSparseTopK(),
+                targets.contains(KnowledgeSource.PLANT) && config.retrievalMode().usesSparse());
+        int communityDense = expand(current.communityDenseTopK(), config.adaptiveRecall().maxDenseTopK(),
+                targets.contains(KnowledgeSource.COMMUNITY) && config.retrievalMode().usesDense());
+        int communitySparse = expand(current.communitySparseTopK(), config.adaptiveRecall().maxSparseTopK(),
+                targets.contains(KnowledgeSource.COMMUNITY) && config.retrievalMode().usesSparse());
+        return new RecallBudget(plantDense, plantSparse, communityDense, communitySparse);
     }
 
     private int expand(int current, int maximum, boolean selected) {

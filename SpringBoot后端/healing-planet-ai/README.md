@@ -42,7 +42,7 @@ Query
   -> RetrievalPlanner（每个请求只生成一次计划）
   -> StateAwareEvidenceRetriever
        -> Retrieval Query Groups + Dense/BM25 + logical-evidence RRF
-       -> CoverageInspector + source-aware Adaptive Recall + 可选 reranker
+       -> QueryGroup-local Coverage + source-aware Adaptive Recall + 可选 reranker
        -> PlantStateClient / PlantStateAnalyzer
   -> SourceAwareRanker + EvidenceSelector
   -> AnswerabilityEvaluator
@@ -55,7 +55,9 @@ planning / coverage hint。宽召回之后由 Evidence 的相关性、必需来�
 必需来源覆盖要求每个 `REQUIRED` 来源分别存在相关 Evidence，不能由其它来源的高相关证据代偿。
 Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `RagRuntimeConfig`，默认值在
 `application.example.yml` 的 `app.rag.answerability` 下配置；切换检索模式或 reranker 后应重新校准。
-每个请求只捕获一次不可变 `RagRuntimeSnapshot`，检索、reranker、Answerability 和生成共享同一版本。
+每个请求只捕获一次不可变 `RagRuntimeSnapshot`，检索、reranker、Answerability 和生成共享同一版本。Coverage
+按 `RetrievalQueryGroup` 分别检查实体、主题和必需来源的组合，不能用其它植物或其它主题的候选代偿；当 reranker
+实际返回分数时，宽松的 `RecallQualificationPolicy` 会在首轮重排后识别“已召回但仍偏弱”的必需来源，再做有界补召回。
 
 ## 核心特性
 
@@ -69,8 +71,11 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 - 每条知识先以一个逻辑证据及其一个或多个 fragment 建模；RRF 按逻辑证据在 dense / BM25
   路径中的最佳 fragment 名次融合，不因同一长文的多个 chunk 重复加分。
 - 多个已解析植物会形成确定性的 Retrieval Query Groups；普通查询仍保留单个原始查询组，不使用
-  LLM query decomposition。首轮召回后 CoverageInspector 只检查必需来源、查询组、实体、主题和
-  候选数量；存在缺口时才按缺失来源将 recall Top-K 有界扩展至配置上限。
+  LLM query decomposition。CoverageInspector 在每个组内检查 `source × entity × topic`，存在结构缺口时
+  才按缺失来源将 recall Top-K 有界扩展至配置上限。结构覆盖完成后，只有启用并实际取得 reranker 分数时，才会
+  对弱的必需来源执行一次或多次有界 corrective recall；它不复用 Answerability 阈值。
+- 社区帖子索引会基于标签、标题和明确植物提及写入 `resolvedPlantIds` 与置信度，并在多植物 Query Group 的
+  coverage 中作为软实体归属信号。它只提升/归因候选，不会对社区检索施加硬过滤。
 - 可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
 - 已知植物优先使用 `canonicalPlantId` 过滤检索空间，并在融合前校验证据实体；明确点名但无法映射到知识库的植物不会退化为其它植物的同主题结果。
 - 同步问答、SSE 流式问答、语义搜索及 Evidence 引用。
@@ -160,6 +165,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_INTERNAL_API_KEY` | 内部索引接口密钥 | 空（生产必填） |
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
 | `RAG_ADAPTIVE_RECALL_*` | 覆盖缺口时的有界、按来源扩召回配置 | 最大 `120`，最少逻辑候选 `2` |
+| `RAG_RECALL_QUALIFICATION_*` | 首轮 rerank 后判定必需来源是否仍偏弱的宽松阈值；没有 rerank 分数时跳过 | 启用，`0.20` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
 | `RAG_RETRIEVAL_MODE` | 检索模式：`BM25_ONLY` / `DENSE_ONLY` / `HYBRID_RRF` | `HYBRID_RRF` |
 | `RAG_ANSWERABILITY_MIN_RETRIEVAL_RELEVANCE` / `RAG_ANSWERABILITY_MIN_RERANK_RELEVANCE` | Answerability 的 retrieval / rerank 最低相关性 | `0.45` / `0.40` |
@@ -184,6 +190,9 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 curl -X POST http://localhost:8010/internal/index/full \
   -H "X-Internal-Api-Key: replace-with-a-random-secret"
 ```
+
+社区实体归属元数据随 `logical-evidence-v2` 写入。部署包含该版本的服务后，应在低峰期显式执行一次
+`POST /internal/index/community`，让已有帖子获得 `resolvedPlantIds`；该操作不涉及植物正式知识或设备状态。
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 
