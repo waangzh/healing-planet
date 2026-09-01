@@ -74,7 +74,8 @@ public class RagExternalClientManager {
     private RagRuntimeSnapshot.RerankerRuntimeClient buildReranker(RagRuntimeConfig.RerankerClient clientConfig) {
         RagProperties.RerankerConnection connection = resolve(clientConfig.connectionId());
         return new RagRuntimeSnapshot.RerankerRuntimeClient(restClient(connection), clientConfig.path(),
-                clientConfig.model(), clientConfig.candidateTopK(), clientConfig.connectionId());
+                clientConfig.model(), clientConfig.candidateTopK(), clientConfig.maxFragmentsPerLogicalEvidence(),
+                clientConfig.maxFragmentsTotal(), clientConfig.connectionId());
     }
 
     private RagProperties.RerankerConnection resolve(String connectionId) {

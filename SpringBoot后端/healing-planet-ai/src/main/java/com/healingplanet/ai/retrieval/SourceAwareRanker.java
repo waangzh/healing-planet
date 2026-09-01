@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,13 +40,13 @@ public class SourceAwareRanker {
         // change priority without applying another score-distribution-dependent cutoff.
         return candidates.stream()
                 .map(candidate -> toEvidence(query, candidate,
-                        rerankScores.get(candidate.representativeFragmentId()), config))
+                        rerankScores.get(candidate.representativeFragmentId()), rerankScores, config))
                 .sorted((left, right) -> Double.compare(right.finalScore(), left.finalScore()))
                 .toList();
     }
 
     private Evidence toEvidence(RagQuery query, LogicalEvidenceCandidate candidate, Double rerankScore,
-                                RagRuntimeConfig config) {
+                                Map<String, Double> rerankScores, RagRuntimeConfig config) {
         KnowledgeDocument document = candidate.representative();
         RagRuntimeConfig.SourceAwareRanking ranking = config.sourceAwareRanking();
         double retrieval = retrievalScore(candidate, ranking, config.retrievalMode());
@@ -71,9 +72,31 @@ public class SourceAwareRanker {
                 document.id(), document.source() == KnowledgeSource.PLANT
                     ? EvidenceType.CARE_GUIDE : EvidenceType.COMMUNITY_POST,
                 document.sourceId(), document.source().name(), document.title(), document.content(),
-                retrieval, rerankScore, document.trustScore(), clamp(finalScore), candidate.evidenceMetadata(),
+                retrieval, rerankScore, document.trustScore(), clamp(finalScore),
+                evidenceMetadata(candidate, rerankScores, config),
                 document.createdAt()
         );
+    }
+
+    private Map<String, Object> evidenceMetadata(LogicalEvidenceCandidate candidate,
+                                                 Map<String, Double> rerankScores, RagRuntimeConfig config) {
+        Map<String, Object> metadata = new LinkedHashMap<>(candidate.evidenceMetadata());
+        List<Map<String, String>> contextFragments = candidate.contextFragments(rerankScores,
+                        config.contextAssembly().maxFragmentsPerLogicalEvidence(), config.rrfK()).stream()
+                .map(fragment -> contextFragment(fragment.document(), fragment.fragmentId())).toList();
+        metadata.put("contextFragments", contextFragments);
+        metadata.put("contextFragmentCount", contextFragments.size());
+        return Map.copyOf(metadata);
+    }
+
+    private Map<String, String> contextFragment(KnowledgeDocument document, String fragmentId) {
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("fragmentId", fragmentId);
+        result.put("content", document.content() == null ? "" : document.content());
+        result.put("section", document.attributes().getOrDefault("fragmentSection",
+                document.attributes().getOrDefault("section", "")));
+        result.put("index", document.attributes().getOrDefault("fragmentIndex", "0"));
+        return Map.copyOf(result);
     }
 
     private double retrievalScore(LogicalEvidenceCandidate candidate, RagRuntimeConfig.SourceAwareRanking ranking,

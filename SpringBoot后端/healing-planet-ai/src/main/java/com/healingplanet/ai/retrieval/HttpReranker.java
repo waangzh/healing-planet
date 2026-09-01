@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -15,6 +14,7 @@ import java.util.Map;
 class HttpReranker implements SnapshotReranker {
 
     private final RagRuntimeConfigProvider runtimeConfigProvider;
+    private final RerankFragmentSelector fragmentSelector = new RerankFragmentSelector();
 
     HttpReranker(RagRuntimeConfigProvider runtimeConfigProvider) {
         this.runtimeConfigProvider = runtimeConfigProvider;
@@ -32,10 +32,9 @@ class HttpReranker implements SnapshotReranker {
         if (!config.rerankerEnabled() || candidates.isEmpty()) return Map.of();
         RagRuntimeSnapshot.RerankerRuntimeClient client = runtimeSnapshot.rerankerClient();
         if (client == null) return Map.of();
-        int configuredTopK = client.candidateTopK();
-        List<LogicalEvidenceCandidate> rerankCandidates = configuredTopK > 0
-                ? candidates.stream().limit(configuredTopK).toList() : candidates;
-        List<RetrievalFragmentHit> rerankFragments = uniqueFragments(rerankCandidates);
+        List<RetrievalFragmentHit> rerankFragments = fragmentSelector.select(candidates, client.candidateTopK(),
+                client.maxFragmentsPerLogicalEvidence(), client.maxFragmentsTotal(), config.rrfK());
+        if (rerankFragments.isEmpty()) return Map.of();
         List<String> documents = rerankFragments.stream().map(fragment -> fragment.document().content()).toList();
         RerankResponse response = client.client().post().uri(client.path())
                 .body(new RerankRequest(client.model(), query, documents))
@@ -48,16 +47,6 @@ class HttpReranker implements SnapshotReranker {
             }
         });
         return scores;
-    }
-
-    private List<RetrievalFragmentHit> uniqueFragments(List<LogicalEvidenceCandidate> candidates) {
-        Map<String, RetrievalFragmentHit> fragments = new LinkedHashMap<>();
-        for (LogicalEvidenceCandidate candidate : candidates) {
-            for (RetrievalFragmentHit fragment : candidate.fragments()) {
-                fragments.putIfAbsent(fragment.fragmentId(), fragment);
-            }
-        }
-        return List.copyOf(fragments.values());
     }
 
     private record RerankRequest(String model, String query, List<String> documents) { }

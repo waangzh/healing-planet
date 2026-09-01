@@ -82,6 +82,29 @@ class SourceAwareRankerTest {
         assertThat(result).extracting(Evidence::id).containsExactly("rrf-favored", "dense-favored");
     }
 
+    @Test
+    void shouldKeepRepresentativeAndBestSupplementalFragmentForPromptAssembly() {
+        var properties = new com.healingplanet.ai.config.RagProperties();
+        properties.getContextAssembly().setMaxFragmentsPerLogicalEvidence(2);
+        SourceAwareRanker configuredRanker = new SourceAwareRanker(properties);
+        KnowledgeDocument first = document("first");
+        KnowledgeDocument best = document("best");
+        KnowledgeDocument supplemental = document("supplemental");
+        LogicalEvidenceCandidate candidate = new LogicalEvidenceCandidate("logical", first, List.of(
+                RetrievalFragmentHit.dense(first, 1, 0.9), RetrievalFragmentHit.dense(best, 2, 0.8),
+                RetrievalFragmentHit.dense(supplemental, 3, 0.7)), 1, null, 0.9, null, 0.1)
+                .withRerankedRepresentative(Map.of("first", 0.4, "best", 0.9, "supplemental", 0.8));
+
+        Evidence evidence = configuredRanker.rank(RagQuery.of("绿萝光照"), List.of(candidate),
+                Map.of("first", 0.4, "best", 0.9, "supplemental", 0.8)).get(0);
+
+        assertThat(evidence.id()).isEqualTo("best");
+        List<?> contextFragments = (List<?>) evidence.metadata().get("contextFragments");
+        assertThat(contextFragments).hasSize(2);
+        assertThat(((Map<?, ?>) contextFragments.get(0)).get("content")).isEqualTo("best");
+        assertThat(((Map<?, ?>) contextFragments.get(1)).get("content")).isEqualTo("supplemental");
+    }
+
     private LogicalEvidenceCandidate candidate(String id) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
                 "1", "绿萝", "LIGHT", List.of("光照"), 1, false,
@@ -108,5 +131,11 @@ class SourceAwareRankerTest {
                 denseScore == null ? 0d : denseScore);
         return new LogicalEvidenceCandidate(document.id(), document, List.of(fragment),
                 denseScore == null ? null : 1, null, denseScore, null, fusionScore);
+    }
+
+    private KnowledgeDocument document(String id) {
+        return new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id, "1", "绿萝", "LIGHT",
+                List.of("光照"), 1, false, 0, 0, 0, 0, Instant.EPOCH,
+                Map.of("fragmentId", id, "logicalEvidenceId", "logical"));
     }
 }

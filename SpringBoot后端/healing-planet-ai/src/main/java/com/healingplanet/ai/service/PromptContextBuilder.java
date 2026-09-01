@@ -5,7 +5,9 @@ import com.healingplanet.ai.domain.EvidenceType;
 import com.healingplanet.ai.domain.EntityResolutionDiagnostics;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class PromptContextBuilder {
@@ -21,7 +23,7 @@ public class PromptContextBuilder {
         StringBuilder community = new StringBuilder();
         for (int i = 0; i < evidence.size(); i++) {
             Evidence item = evidence.get(i);
-            String block = "[E%d] %s\n%s\n\n".formatted(i + 1, item.title(), item.content());
+            String block = evidenceBlock(i + 1, item);
             if (item.type() == EvidenceType.COMMUNITY_POST) community.append(block);
             else if (item.type() == EvidenceType.VISUAL_OBSERVATION) visual.append(block);
             else if (item.type() == EvidenceType.LIVE_STATE || item.type() == EvidenceType.SENSOR_HISTORY) state.append(block);
@@ -54,6 +56,51 @@ public class PromptContextBuilder {
                 </UNTRUSTED_COMMUNITY_CONTENT>
                 """.formatted(entityResolutionContext(entityResolution), trusted, visual, state, community);
     }
+
+    private String evidenceBlock(int number, Evidence item) {
+        List<ContextFragment> fragments = contextFragments(item);
+        if (fragments.isEmpty()) return "[E%d] %s\n%s\n\n".formatted(number, item.title(), item.content());
+        ContextFragment primary = fragments.get(0);
+        String source = item.type() == EvidenceType.COMMUNITY_POST ? "社区帖子《%s》".formatted(item.title())
+                : "正式养护知识《%s》".formatted(item.title());
+        String plantName = metadata(item, "plantName");
+        List<String> sections = fragments.stream().map(ContextFragment::section).filter(value -> !value.isBlank())
+                .distinct().toList();
+        StringBuilder block = new StringBuilder("[E%d]\n来源：%s\n".formatted(number, source));
+        if (!plantName.isBlank()) block.append("植物：").append(plantName).append('\n');
+        if (!sections.isEmpty()) block.append("相关章节：").append(String.join("、", sections)).append('\n');
+        block.append("主要相关片段：\n").append(primary.content());
+        if (fragments.size() > 1) {
+            block.append("\n补充相关片段：\n");
+            block.append(fragments.subList(1, fragments.size()).stream().map(ContextFragment::content)
+                    .collect(java.util.stream.Collectors.joining("\n\n")));
+        }
+        return block.append("\n\n").toString();
+    }
+
+    private List<ContextFragment> contextFragments(Evidence item) {
+        Object value = item.metadata().get("contextFragments");
+        if (!(value instanceof List<?> values)) return List.of();
+        List<ContextFragment> result = new ArrayList<>();
+        for (Object itemValue : values) {
+            if (!(itemValue instanceof Map<?, ?> fragment)) continue;
+            String content = value(fragment, "content");
+            if (!content.isBlank()) result.add(new ContextFragment(content, value(fragment, "section")));
+        }
+        return List.copyOf(result);
+    }
+
+    private String metadata(Evidence item, String key) {
+        Object value = item.metadata().get(key);
+        return value == null ? "" : value.toString();
+    }
+
+    private String value(Map<?, ?> values, String key) {
+        Object value = values.get(key);
+        return value == null ? "" : value.toString();
+    }
+
+    private record ContextFragment(String content, String section) { }
 
     private String entityResolutionContext(EntityResolutionDiagnostics entityResolution) {
         if (entityResolution == null) return "";

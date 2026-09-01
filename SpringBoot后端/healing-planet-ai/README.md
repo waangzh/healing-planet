@@ -74,6 +74,10 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
   LLM query decomposition。CoverageInspector 在每个组内检查 `source × entity × topic`，存在结构缺口时
   才按缺失来源将 recall Top-K 有界扩展至配置上限。结构覆盖完成后，只有启用并实际取得 reranker 分数时，才会
   对弱的必需来源执行一次或多次有界 corrective recall；它不复用 Answerability 阈值。
+- Reranker 先按 logical evidence 限制候选数，再以“每条逻辑证据最多 N 个 fragment + 总 fragment 上限”
+  组成输入；同一长帖不能挤占全部 rerank slots。最终 selector 先保留每个必需 Query Group 的证据，再按全局排名补齐。
+- Prompt 为每条逻辑证据保留来源、植物和章节等父上下文，并提供主相关片段与有限补充片段；片段数由独立的
+  context-assembly 预算控制，避免长文在生成上下文中重新膨胀。
 - 社区帖子索引会基于标签、标题和明确植物提及写入 `resolvedPlantIds` 与置信度，并在多植物 Query Group 的
   coverage 中作为软实体归属信号。它只提升/归因候选，不会对社区检索施加硬过滤。
 - 可选 BGE reranker、来源可信度 / 帖子质量 / 时效 / 植物匹配排序。
@@ -166,6 +170,8 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_DENSE_TOP_K` / `RAG_SPARSE_TOP_K` / `RAG_FINAL_TOP_K` | 检索 Top-K | `30` / `30` / `6` |
 | `RAG_ADAPTIVE_RECALL_*` | 覆盖缺口时的有界、按来源扩召回配置 | 最大 `120`，最少逻辑候选 `2` |
 | `RAG_RECALL_QUALIFICATION_*` | 首轮 rerank 后判定必需来源是否仍偏弱的宽松阈值；没有 rerank 分数时跳过 | 启用，`0.20` |
+| `RERANKER_CANDIDATE_TOP_K` / `RERANKER_MAX_FRAGMENTS_PER_LOGICAL_EVIDENCE` / `RERANKER_MAX_FRAGMENTS_TOTAL` | rerank 的 logical evidence、单证据 fragment 与总 fragment 两级预算 | `20` / `2` / `40` |
+| `RAG_CONTEXT_ASSEMBLY_MAX_FRAGMENTS_PER_LOGICAL_EVIDENCE` | 每条最终逻辑证据写入 Prompt 的主/补充 fragment 上限 | `2` |
 | `RAG_SIMILARITY_THRESHOLD` | 相似度阈值 | `0.25` |
 | `RAG_RETRIEVAL_MODE` | 检索模式：`BM25_ONLY` / `DENSE_ONLY` / `HYBRID_RRF` | `HYBRID_RRF` |
 | `RAG_ANSWERABILITY_MIN_RETRIEVAL_RELEVANCE` / `RAG_ANSWERABILITY_MIN_RERANK_RELEVANCE` | Answerability 的 retrieval / rerank 最低相关性 | `0.45` / `0.40` |
@@ -225,7 +231,7 @@ RabbitMQ 使用持久化 exchange/queue，并为无效消息保留死信队列�
 }
 ```
 
-响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据；知识证据的元数据含 `logicalEvidenceId`、`fragmentId`、`fragmentRole`、`fragmentIndex`、`fragmentCount`、`fragmentSection`，其中 `id` 仍是具体 fragment 的引用锚点。`entityResolution` 返回实体解析诊断，包括 `resolutionKind`、`resolutionMethod`、`canonicalPlantId`、`canonicalPlantIds`、`top1Score`、`top2Score`、`scoreMargin`、`candidateCount` 和 `rejectionReason`。
+响应的 `answer` 使用 `[E1]` 引用，`evidence` 返回对应来源、内容、各阶段分数和元数据；知识证据的元数据含 `logicalEvidenceId`、`fragmentId`、`fragmentRole`、`fragmentIndex`、`fragmentCount`、`fragmentSection` 与 `contextFragments`。其中 `contextFragments` 按“主相关片段 + 补充片段”顺序保留实际写入 Prompt 的有限子集，`id` 仍是具体代表 fragment 的引用锚点。`entityResolution` 返回实体解析诊断，包括 `resolutionKind`、`resolutionMethod`、`canonicalPlantId`、`canonicalPlantIds`、`top1Score`、`top2Score`、`scoreMargin`、`candidateCount` 和 `rejectionReason`。
 
 ### 流式问答
 

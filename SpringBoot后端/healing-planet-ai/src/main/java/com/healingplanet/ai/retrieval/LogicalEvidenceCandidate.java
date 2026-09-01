@@ -80,6 +80,24 @@ record LogicalEvidenceCandidate(
                 .orElse(representative.id());
     }
 
+    List<RetrievalFragmentHit> contextFragments(Map<String, Double> rerankScores, int maxFragments,
+                                                int rrfK) {
+        if (maxFragments < 1) return List.of();
+        List<RetrievalFragmentHit> ranked = FragmentRanking.rank(fragments, rrfK, rerankScores);
+        String primaryId = representativeFragmentId();
+        List<RetrievalFragmentHit> selected = new java.util.ArrayList<>();
+        ranked.stream().filter(hit -> primaryId.equals(hit.fragmentId())).findFirst().ifPresent(selected::add);
+        if (selected.isEmpty()) {
+            selected.add(new RetrievalFragmentHit(primaryId, logicalEvidenceId, representative,
+                    RetrievalPath.DENSE, Integer.MAX_VALUE, 0d));
+        }
+        for (RetrievalFragmentHit fragment : ranked) {
+            if (selected.size() >= maxFragments) break;
+            if (!primaryId.equals(fragment.fragmentId())) selected.add(fragment);
+        }
+        return List.copyOf(selected);
+    }
+
     private List<RetrievalFragmentHit> uniqueFragments() {
         Map<String, RetrievalFragmentHit> unique = new LinkedHashMap<>();
         for (RetrievalFragmentHit fragment : fragments) {

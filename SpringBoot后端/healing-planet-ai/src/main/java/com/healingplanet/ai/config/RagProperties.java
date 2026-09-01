@@ -29,6 +29,7 @@ public class RagProperties {
     private final Generation generation = new Generation();
     private final SourceAwareRanking sourceAwareRanking = new SourceAwareRanking();
     private final EvidenceSelector evidenceSelector = new EvidenceSelector();
+    private final ContextAssembly contextAssembly = new ContextAssembly();
     private final Answerability answerability = new Answerability();
     private final PlantState plantState = new PlantState();
     private final DiseaseDetector diseaseDetector = new DiseaseDetector();
@@ -63,6 +64,7 @@ public class RagProperties {
     public Generation getGeneration() { return generation; }
     public SourceAwareRanking getSourceAwareRanking() { return sourceAwareRanking; }
     public EvidenceSelector getEvidenceSelector() { return evidenceSelector; }
+    public ContextAssembly getContextAssembly() { return contextAssembly; }
     public Answerability getAnswerability() { return answerability; }
     public PlantState getPlantState() { return plantState; }
     public DiseaseDetector getDiseaseDetector() { return diseaseDetector; }
@@ -213,6 +215,13 @@ public class RagProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public int getMixedSourceCommunityLimit() { return mixedSourceCommunityLimit; }
         public void setMixedSourceCommunityLimit(int value) { this.mixedSourceCommunityLimit = value; }
+    }
+
+    public static class ContextAssembly {
+        private int maxFragmentsPerLogicalEvidence = 2;
+
+        public int getMaxFragmentsPerLogicalEvidence() { return maxFragmentsPerLogicalEvidence; }
+        public void setMaxFragmentsPerLogicalEvidence(int value) { this.maxFragmentsPerLogicalEvidence = value; }
     }
 
     public static class Answerability {
@@ -405,7 +414,9 @@ public class RagProperties {
         private String path = "/rerank";
         private String apiKey = "";
         private String model = "BAAI/bge-reranker-v2-m3";
-        private int candidateTopK;
+        private int candidateTopK = 20;
+        private int maxFragmentsPerLogicalEvidence = 2;
+        private int maxFragmentsTotal = 40;
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -419,6 +430,10 @@ public class RagProperties {
         public void setModel(String model) { this.model = model; }
         public int getCandidateTopK() { return candidateTopK; }
         public void setCandidateTopK(int candidateTopK) { this.candidateTopK = candidateTopK; }
+        public int getMaxFragmentsPerLogicalEvidence() { return maxFragmentsPerLogicalEvidence; }
+        public void setMaxFragmentsPerLogicalEvidence(int value) { this.maxFragmentsPerLogicalEvidence = value; }
+        public int getMaxFragmentsTotal() { return maxFragmentsTotal; }
+        public void setMaxFragmentsTotal(int value) { this.maxFragmentsTotal = value; }
     }
 
     public static class RerankerConnection {

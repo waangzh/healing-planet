@@ -26,6 +26,7 @@ class RagConfigServiceTest {
                 current.rerankerEnabled(), new RagRuntimeConfig.SourceAwareRanking(
                 true, 31, 0.8, 0.8, 0.7, 0.2, 0.1, 0.62, 0.15, 0.13, 0.05, 0.05,
                 0.2, 0.8, 2, 1.5, 0.05, 1000, 365), true, 3,
+                current.contextAssembly(),
                 current.answerability(), current.generation(), current.rerankerClient());
         RagConfigRepository repository = mock(RagConfigRepository.class);
         RagConfigService service = service(repository, defaults);
@@ -42,6 +43,7 @@ class RagConfigServiceTest {
         RagRuntimeConfig newConfig = new RagRuntimeConfig(2, 40, 35, 8, 0.3,
                 RagProperties.RetrievalMode.HYBRID_RRF, 70, oldConfig.adaptiveRecall(), oldConfig.recallQualification(), true,
                 oldConfig.sourceAwareRanking(), true, 3,
+                oldConfig.contextAssembly(),
                 oldConfig.answerability(), oldConfig.generation(), oldConfig.rerankerClient());
         RagConfigRevision current = revision(1, RagConfigStatus.ACTIVE, oldConfig);
         RagConfigRevision target = revision(2, RagConfigStatus.VALIDATED, newConfig);

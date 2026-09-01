@@ -47,6 +47,7 @@ public class EvidenceSelector {
                 config.mixedSourceCommunityLimit());
         Set<String> topicHints = request.topicHints();
 
+        retainRequiredQueryGroupCoverage(request.plan().queryGroups(), ranked, state);
         retainSourceCoverage(ranked, state);
         retainTopicHintCoverage(ranked, topicHints, state);
         retainEntityCoverage(ranked, canonicalPlantIds, state);
@@ -77,6 +78,15 @@ public class EvidenceSelector {
             if (isCommunity(evidence)) {
                 state.add(evidence, "SOURCE_RETENTION");
             }
+        }
+    }
+
+    private void retainRequiredQueryGroupCoverage(List<RetrievalQueryGroup> groups, List<Evidence> ranked,
+                                                   SelectionState state) {
+        for (RetrievalQueryGroup group : groups) {
+            if (!group.requiredCoverage()) continue;
+            ranked.stream().filter(evidence -> GroupCoverageMatcher.matches(evidence, group)).findFirst()
+                    .ifPresent(evidence -> state.add(evidence, "QUERY_GROUP_COVERAGE"));
         }
     }
 
@@ -144,15 +154,16 @@ public class EvidenceSelector {
         }
 
         private void add(Evidence evidence, String reason) {
-            if (items.containsKey(evidence.id()) || items.size() >= capacity || !canAdd(evidence)) return;
+            if (items.containsKey(evidence.id()) || items.size() >= capacity || !canAdd(evidence, reason)) return;
             items.put(evidence.id(), evidence);
             reasons.put(evidence.id(), reason);
             logicalGroups.add(logicalGroup(evidence));
             if (isCommunity(evidence)) communitySourceIds.add(sourceKey(evidence));
         }
 
-        private boolean canAdd(Evidence evidence) {
+        private boolean canAdd(Evidence evidence, String reason) {
             if (logicalGroups.contains(logicalGroup(evidence))) return false;
+            if ("QUERY_GROUP_COVERAGE".equals(reason)) return true;
             return !sourcePlan.includeCommunity() || !isCommunity(evidence)
                     || !communitySourceIds.contains(sourceKey(evidence))
                     && communitySourceIds.size() < Math.min(mixedSourceCommunityLimit, Math.max(0, capacity - 1));

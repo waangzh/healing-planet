@@ -6,6 +6,7 @@ import org.springframework.web.client.RestClient;
 public record RagRuntimeSnapshot(RagRuntimeConfig config, RerankerRuntimeClient rerankerClient) {
 
     public record RerankerRuntimeClient(RestClient client, String path, String model, int candidateTopK,
+                                        int maxFragmentsPerLogicalEvidence, int maxFragmentsTotal,
                                         String connectionId) {
     }
 }

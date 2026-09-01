@@ -47,6 +47,22 @@ class PromptContextBuilderTest {
         assertThat(context).contains("部分完成", "常春藤", "未收录不等于它不是植物");
     }
 
+    @Test
+    void shouldAssembleLogicalEvidenceAsParentContextAndBestFragments() {
+        Evidence post = new Evidence("post", EvidenceType.COMMUNITY_POST, "post-1", "COMMUNITY", "我的绿萝两年养护经验",
+                "代表片段", 0.8, 0.9, 0.5, 0.9, Map.of(
+                "logicalEvidenceId", "COMMUNITY:post-1", "plantName", "绿萝",
+                "contextFragments", List.of(
+                        Map.of("content", "冬季应减少浇水频率。", "section", "冬季浇水"),
+                        Map.of("content", "盆土干透后再浇。", "section", "浇水观察"))), Instant.EPOCH);
+
+        String context = new PromptContextBuilder().build(List.of(post));
+
+        assertThat(context).contains("来源：社区帖子《我的绿萝两年养护经验》", "植物：绿萝",
+                "相关章节：冬季浇水、浇水观察", "主要相关片段：", "冬季应减少浇水频率。",
+                "补充相关片段：", "盆土干透后再浇。");
+    }
+
     private Evidence evidence(String id, EvidenceType type, String content) {
         return new Evidence(id, type, id, type.name(), id, content,
                 0.8, null, 1.0, 0.9, Map.of(), Instant.EPOCH);

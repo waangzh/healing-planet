@@ -95,12 +95,42 @@ class EvidenceSelectorTest {
                 .extracting(Evidence::sourceId).containsExactly("post-a", "post-b");
     }
 
+    @Test
+    void shouldRetainRequiredQueryGroupsBeforeGlobalRankingFillsTheBudget() {
+        SourcePlan sourcePlan = new SourcePlan(SourcePlan.SourceRequirement.ALLOWED,
+                SourcePlan.SourceRequirement.FORBIDDEN, SourcePlan.SourceRequirement.FORBIDDEN);
+        RetrievalQueryGroup pothos = new RetrievalQueryGroup("Q1", "绿萝浇水", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING"), Set.of("plant-1"), SourceScope.from(sourcePlan), true);
+        RetrievalQueryGroup sansevieria = new RetrievalQueryGroup("Q2", "虎尾兰浇水", GroupRole.ENTITY_FOCUS,
+                Set.of("WATERING"), Set.of("plant-2"), SourceScope.from(sourcePlan), true);
+        RagQuery query = RagQuery.of("绿萝和虎尾兰分别怎么浇水？");
+        RetrievalRequest request = new RetrievalRequest(query, new QueryAnalysis(QueryIntent.GENERAL_CARE,
+                Set.of(), Set.of("WATERING"), false, 0.9d), RetrievalConstraints.defaults(),
+                new RetrievalPlan(sourcePlan, true, false, false, Set.of(), Set.of("WATERING"), query.query(),
+                        List.of(pothos, sansevieria)), null, query.query());
+        Evidence q1 = groupedGuide("pothos", "plant-1", "Q1", 0.99);
+        Evidence q2 = groupedGuide("sansevieria", "plant-2", "Q2", 0.50);
+
+        EvidenceSelector.Selection result = selector.select(request, List.of(q1, q2), 2,
+                List.of("plant-1", "plant-2"));
+
+        assertThat(result.evidence()).extracting(Evidence::id).containsExactly("pothos", "sansevieria");
+        assertThat(result.reasons()).containsEntry("pothos", "QUERY_GROUP_COVERAGE")
+                .containsEntry("sansevieria", "QUERY_GROUP_COVERAGE");
+    }
+
     private Evidence guide(String id, String plantId, String knowledgeType, double score) {
         return evidence(id, EvidenceType.CARE_GUIDE, plantId, knowledgeType, score, plantId);
     }
 
     private Evidence community(String id, String sourceId, double score) {
         return evidence(id, EvidenceType.COMMUNITY_POST, sourceId, "COMMUNITY_EXPERIENCE", score, "");
+    }
+
+    private Evidence groupedGuide(String id, String plantId, String groupId, double score) {
+        return new Evidence(id, EvidenceType.CARE_GUIDE, plantId, "PLANT", id, id, score, score, 1d, score,
+                Map.of("knowledgeType", "WATERING", "canonicalPlantId", plantId,
+                        "matchedQueryGroupIds", groupId), null);
     }
 
     private Evidence evidence(String id, EvidenceType type, String sourceId, String knowledgeType,

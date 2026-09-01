@@ -71,6 +71,12 @@ public class RagRuntimeConfigValidator {
         finiteInRange("engagementNormalization", ranking.engagementNormalization(), 1, 100000, errors);
         finiteInRange("recencyDecayDays", ranking.recencyDecayDays(), 1, 3650, errors);
         positiveInRange("mixedSourceCommunityLimit", config.mixedSourceCommunityLimit(), 0, 30, errors);
+        if (config.contextAssembly() == null) {
+            errors.add("contextAssembly 不能为空");
+        } else {
+            positiveInRange("contextAssembly.maxFragmentsPerLogicalEvidence",
+                    config.contextAssembly().maxFragmentsPerLogicalEvidence(), 1, 5, errors);
+        }
         if (config.answerability() == null) {
             errors.add("answerability 不能为空");
         } else {
@@ -112,6 +118,9 @@ public class RagRuntimeConfigValidator {
                 errors.add("rerankerClient.model 必须是 1 到 200 个字符");
             }
             positiveInRange("rerankerClient.candidateTopK", config.rerankerClient().candidateTopK(), 0, 100, errors);
+            positiveInRange("rerankerClient.maxFragmentsPerLogicalEvidence",
+                    config.rerankerClient().maxFragmentsPerLogicalEvidence(), 1, 10, errors);
+            positiveInRange("rerankerClient.maxFragmentsTotal", config.rerankerClient().maxFragmentsTotal(), 1, 500, errors);
         }
         return errors;
     }

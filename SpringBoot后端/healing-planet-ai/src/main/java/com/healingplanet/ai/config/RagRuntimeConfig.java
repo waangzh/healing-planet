@@ -17,6 +17,7 @@ public record RagRuntimeConfig(
         SourceAwareRanking sourceAwareRanking,
         boolean evidenceSelectorEnabled,
         int mixedSourceCommunityLimit,
+        ContextAssembly contextAssembly,
         Answerability answerability,
         Generation generation,
         RerankerClient rerankerClient) {
@@ -48,6 +49,7 @@ public record RagRuntimeConfig(
                         ranking.getEngagementNormalization(), ranking.getRecencyDecayDays()),
                 properties.getEvidenceSelector().isEnabled(),
                 properties.getEvidenceSelector().getMixedSourceCommunityLimit(),
+                new ContextAssembly(properties.getContextAssembly().getMaxFragmentsPerLogicalEvidence()),
                 new Answerability(properties.getAnswerability().getMinRetrievalRelevance(),
                         properties.getAnswerability().getMinRerankRelevance(),
                         properties.getAnswerability().getMinAlignedSemanticRelevance(),
@@ -56,13 +58,15 @@ public record RagRuntimeConfig(
                 new Generation(properties.getGeneration().getModel(), properties.getGeneration().getTemperature(),
                         properties.getGeneration().getMaxTokens()),
                 new RerankerClient("default", properties.getReranker().getPath(), properties.getReranker().getModel(),
-                        properties.getReranker().getCandidateTopK()));
+                        properties.getReranker().getCandidateTopK(),
+                        properties.getReranker().getMaxFragmentsPerLogicalEvidence(),
+                        properties.getReranker().getMaxFragmentsTotal()));
     }
 
     public RagRuntimeConfig withRevision(long value) {
         return new RagRuntimeConfig(value, denseTopK, sparseTopK, finalTopK, similarityThreshold, retrievalMode,
                 rrfK, adaptiveRecall, recallQualification, rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
-                answerability, generation, rerankerClient);
+                contextAssembly, answerability, generation, rerankerClient);
     }
 
     /** 兼容第一阶段已经落库、尚未包含本阶段字段的版本。 */
@@ -71,9 +75,18 @@ public record RagRuntimeConfig(
                 rrfK, adaptiveRecall == null ? fallback.adaptiveRecall : adaptiveRecall,
                 recallQualification == null ? fallback.recallQualification : recallQualification,
                 rerankerEnabled, sourceAwareRanking, evidenceSelectorEnabled, mixedSourceCommunityLimit,
+                contextAssembly == null ? fallback.contextAssembly : contextAssembly,
                 answerability == null ? fallback.answerability : answerability,
                 generation == null ? fallback.generation : generation,
-                rerankerClient == null ? fallback.rerankerClient : rerankerClient);
+                completeRerankerClient(rerankerClient, fallback.rerankerClient));
+    }
+
+    private static RerankerClient completeRerankerClient(RerankerClient value, RerankerClient fallback) {
+        if (value == null) return fallback;
+        return new RerankerClient(value.connectionId(), value.path(), value.model(), value.candidateTopK(),
+                value.maxFragmentsPerLogicalEvidence() > 0 ? value.maxFragmentsPerLogicalEvidence()
+                        : fallback.maxFragmentsPerLogicalEvidence(),
+                value.maxFragmentsTotal() > 0 ? value.maxFragmentsTotal() : fallback.maxFragmentsTotal());
     }
 
     public record SourceAwareRanking(
@@ -105,6 +118,9 @@ public record RagRuntimeConfig(
     public record RecallQualification(boolean enabled, double minimumRerankScore) {
     }
 
+    public record ContextAssembly(int maxFragmentsPerLogicalEvidence) {
+    }
+
     public record Generation(String model, double temperature, int maxTokens) {
     }
 
@@ -117,6 +133,7 @@ public record RagRuntimeConfig(
     }
 
     /** 仅保存部署侧 profile 标识和非敏感调用参数；URL、密钥和探活地址保留在应用配置中。 */
-    public record RerankerClient(String connectionId, String path, String model, int candidateTopK) {
+    public record RerankerClient(String connectionId, String path, String model, int candidateTopK,
+                                 int maxFragmentsPerLogicalEvidence, int maxFragmentsTotal) {
     }
 }
