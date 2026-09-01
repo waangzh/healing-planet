@@ -18,7 +18,7 @@ spring:
     password: ${COMMUNITY_DB_PASSWORD:}
     hikari:
       maximum-pool-size: 5
-      # 仅写入 rag_embedding_state；业务表仍由应用约束保持只读。
+      # 仅写入 rag_embedding_state 与 rag_index_status；业务表仍由应用约束保持只读。
       read-only: false
   ai:
     retry:
@@ -102,6 +102,9 @@ app:
       plant-general-care-max-tokens: ${RAG_PLANT_GENERAL_CARE_MAX_TOKENS:800}
       community-max-tokens: ${RAG_COMMUNITY_MAX_TOKENS:800}
       disease-max-tokens: ${RAG_DISEASE_MAX_TOKENS:800}
+    # 状态查询只读；不会触发扫描、修复或全量重建。超过此时长的社区/病害源滞后会进入 alerts 与指标。
+    index-observability:
+      source-lag-alert-threshold: ${RAG_INDEX_SOURCE_LAG_ALERT_THRESHOLD:15m}
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     qdrant:
       host: ${QDRANT_HOST:localhost}

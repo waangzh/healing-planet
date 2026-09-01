@@ -165,6 +165,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `RAG_EMBEDDING_MODEL_VERSION` | 模型、维度或归一化策略版本 | `EMBEDDING_MODEL` |
 | `RAG_EMBEDDING_CONTENT_VERSION` / `RAG_CHUNK_SCHEMA_VERSION` | embedding 文本契约 / token 分块与 fragment schema 版本；任一变化会改变 `IndexFingerprint` | `embedding-content-v2` / `chunk-schema-v2` |
 | `RAG_PLANT_GENERAL_CARE_MAX_TOKENS` / `RAG_COMMUNITY_MAX_TOKENS` / `RAG_DISEASE_MAX_TOKENS` | `ChunkPolicy` 的植物综合养护 / 社区 / 病害 fragment token 预算；改动时同步提升 chunk schema 版本 | `800` / `800` / `800` |
+| `RAG_INDEX_SOURCE_LAG_ALERT_THRESHOLD` | `/internal/index/status` 将社区、病害 source lag 写入告警与指标的阈值；不触发自动索引 | `15m` |
 | `RAG_EMBEDDING_BATCH_MAX_TOKENS` / `RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE` | Spring AI 内层 token 批处理上限与预留比例 | `8000` / `0.1` |
 | `QDRANT_HOST` / `QDRANT_GRPC_PORT` | Qdrant 连接 | `localhost` / `6334` |
 | `QDRANT_PLANT_COLLECTION` | 植物知识 collection | `plant_knowledge` |
@@ -195,7 +196,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 fragment；只有内容、索引版本或 `embeddingModelVersion` 变化的 fragment 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
 
-首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)、[`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql) 与 [`V6__rag_embedding_state_payload_hash.sql`](src/main/resources/db/migration/V6__rag_embedding_state_payload_hash.sql)，再显式触发扫描：
+首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)、[`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql)、[`V6__rag_embedding_state_payload_hash.sql`](src/main/resources/db/migration/V6__rag_embedding_state_payload_hash.sql) 与 [`V7__rag_index_observability.sql`](src/main/resources/db/migration/V7__rag_index_observability.sql)，再显式触发扫描：
 
 ```bash
 curl -X POST http://localhost:8010/internal/index/full \
@@ -206,6 +207,10 @@ curl -X POST http://localhost:8010/internal/index/full \
 `POST /internal/index/community`，让已有帖子获得 `resolvedPlantIds`；该操作不涉及植物正式知识或设备状态。
 已有兼容 `index_fingerprint` 的 `rag_embedding_state` 行在执行 V6 后首次同步只会覆盖 payload，不会因 payload hash
 缺失而重新调用 embedding；旧 fingerprint 仍按既有兼容性规则重新向量化。
+
+每次内部索引接口返回 `IndexRunReport`：除保留原有的植物/社区/病害/删除计数外，还会说明已跳过、已 embedding、仅覆盖
+payload、已更新稀疏索引、创建的 fragment / logical evidence、失败 fragment 和 `new_document`、`content_changed`、
+`fingerprint_changed` 等重新向量化原因。该报告不保存原文、向量或用户输入。
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 
@@ -260,6 +265,11 @@ Actuator 暴露 `health`、`info`、`metrics` 和 `prometheus`。Spring AI 自�
 ```text
 healing.planet.rag.retrieval.stage
 healing.planet.rag.retrieval.candidates
+healing.planet.rag.index.run
+healing.planet.rag.index.documents
+healing.planet.rag.index.reembed
+healing.planet.rag.index.stale_fragments
+healing.planet.rag.index.source_lag_seconds
 ```
 
 阶段耗时的低基数标签包括 `stage`、`source` 和 `status`。当前阶段包括：
@@ -291,6 +301,8 @@ curl "http://localhost:8010/actuator/prometheus"
 ```
 
 指标不会使用原始问题、植物名称或文档 ID 作为 tag，避免泄露用户输入及造成高基数时间序列。
+索引指标同样只以有限的 `operation`、`source`、`status`、`outcome`、`reason` 和 `kind` 为标签；
+`stale_fragments` 与 `source_lag_seconds` 在调用 `/internal/index/status` 时刷新，可直接由 Prometheus 告警规则消费。
 
 ### 索引管理
 
@@ -303,8 +315,14 @@ curl "http://localhost:8010/actuator/prometheus"
 | `DELETE` | `/internal/index/post/{postId}` | 单帖子删除 |
 | `POST` | `/internal/index/diseases` | 仅病害知识 |
 | `POST` | `/internal/index/disease/{diseaseId}` | 单病害更新 |
+| `GET` | `/internal/index/status` | 持久化运行状态、当前 fingerprint、新鲜度与告警（只读，不触发索引） |
 
-> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。`rag_embedding_state` 是 AI 服务唯一需要写入的表，部署账号应只被授予该表的写权限，其他业务表保持只读权限。
+> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。AI 服务只写入 `rag_embedding_state` 与 `rag_index_status`；部署账号应只被授予这两张表的写权限，其他业务表保持只读权限。
+
+`/internal/index/status` 依据 `rag_index_status` 和 `rag_embedding_state` 报告每个 source 的最近成功/失败运行、已索引
+fragment 数及 stale fingerprint 数。社区和病害会额外只读其权威 `updated_at` 字段来计算 source lag；当前植物目录表没有
+稳定的更新时间字段，因此该 source 的 lag 明确返回不支持，而不会用扫描时间猜测。该接口不会执行补偿扫描、自动修复或
+全量重索引。
 
 ### 多模态病害辅助分析
 

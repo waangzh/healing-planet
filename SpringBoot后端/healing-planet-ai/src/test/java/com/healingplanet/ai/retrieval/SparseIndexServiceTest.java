@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -110,6 +111,22 @@ class SparseIndexServiceTest {
 
         assertThat(index.search(KnowledgeSource.PLANT, "耐旱", 5))
                 .extracting(hit -> hit.document().id()).contains("p2");
+    }
+
+    @Test
+    void shouldStoreTheSameStaticRetrievalMetadataAsTheDensePayload() {
+        KnowledgeDocument original = new KnowledgeDocument("community-1", KnowledgeSource.COMMUNITY, "post-1",
+                "绿萝黄叶记录", "标题：绿萝黄叶记录\n正文：改善通风后恢复。", "改善通风后恢复。", "1", "绿萝",
+                "COMMUNITY_EXPERIENCE", List.of("绿萝"), 0.8, true, 42, 3, 2, 100, Instant.EPOCH,
+                Map.of("logicalEvidenceId", "COMMUNITY:post-1", "fragmentId", "COMMUNITY:post-1:0",
+                        "payloadHash", "must-not-enter-index-metadata"));
+
+        index.upsert(original);
+
+        KnowledgeDocument restored = index.documentsByIds(KnowledgeSource.COMMUNITY, Set.of("community-1"))
+                .get("community-1");
+        assertThat(restored.retrievalMetadata()).isEqualTo(original.retrievalMetadata());
+        assertThat(restored.attributes()).doesNotContainKey("payloadHash");
     }
 
     private KnowledgeDocument plantDocument(String id, String plantId, String plantName, String content) {

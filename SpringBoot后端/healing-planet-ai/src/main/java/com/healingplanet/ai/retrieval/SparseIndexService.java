@@ -265,6 +265,7 @@ public class SparseIndexService {
 
     private Document toLucene(KnowledgeDocument source) {
         Document document = new Document();
+        Map<String, Object> metadata = source.retrievalMetadata();
         document.add(new StringField("id", source.id(), Field.Store.YES));
         document.add(new TextField("searchText", source.title() + "\n" + source.embeddingText() + "\n" +
                 source.plantName() + "\n" + String.join(" ", source.tags()), Field.Store.NO));
@@ -276,22 +277,22 @@ public class SparseIndexService {
             }
         }
         put(document, "source", source.source().name());
-        put(document, "sourceId", source.sourceId());
-        put(document, "title", source.title());
+        put(document, "sourceId", value(metadata, "sourceId", source.sourceId()));
+        put(document, "title", value(metadata, "title", source.title()));
         put(document, "embeddingText", source.embeddingText());
-        put(document, "displayContent", source.displayContent());
-        put(document, "canonicalPlantId", source.canonicalPlantId());
-        put(document, "plantName", source.plantName());
-        put(document, "knowledgeType", source.knowledgeType());
+        put(document, "displayContent", value(metadata, "displayContent", source.displayContent()));
+        put(document, "canonicalPlantId", value(metadata, "canonicalPlantId", source.canonicalPlantId()));
+        put(document, "plantName", value(metadata, "plantName", source.plantName()));
+        put(document, "knowledgeType", value(metadata, "knowledgeType", source.knowledgeType()));
         put(document, "tags", json(source.tags()));
-        put(document, "trustScore", Double.toString(source.trustScore()));
-        put(document, "essence", Boolean.toString(source.essence()));
-        put(document, "likes", Integer.toString(source.likes()));
-        put(document, "collects", Integer.toString(source.collects()));
-        put(document, "comments", Integer.toString(source.comments()));
-        put(document, "views", Integer.toString(source.views()));
-        put(document, "createdAt", source.createdAt() == null ? "" : source.createdAt().toString());
-        put(document, "attributes", json(source.attributes()));
+        put(document, "trustScore", value(metadata, "trustScore", "0"));
+        put(document, "essence", value(metadata, "essence", "false"));
+        put(document, "likes", value(metadata, "likes", "0"));
+        put(document, "collects", value(metadata, "collects", "0"));
+        put(document, "comments", value(metadata, "comments", "0"));
+        put(document, "views", value(metadata, "views", "0"));
+        put(document, "createdAt", value(metadata, "createdAt", ""));
+        put(document, "attributes", json(staticAttributes(source, metadata)));
         return document;
     }
 
@@ -325,6 +326,19 @@ public class SparseIndexService {
 
     private void put(Document document, String name, String value) {
         document.add(new StringField(name, value == null ? "" : value, Field.Store.YES));
+    }
+
+    private String value(Map<String, Object> metadata, String name, Object fallback) {
+        Object value = metadata.get(name);
+        return value == null ? String.valueOf(fallback == null ? "" : fallback) : String.valueOf(value);
+    }
+
+    private Map<String, String> staticAttributes(KnowledgeDocument source, Map<String, Object> metadata) {
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        source.attributes().forEach((key, value) -> {
+            if (metadata.containsKey(key)) result.put(key, value);
+        });
+        return result;
     }
 
     private String json(Object value) {

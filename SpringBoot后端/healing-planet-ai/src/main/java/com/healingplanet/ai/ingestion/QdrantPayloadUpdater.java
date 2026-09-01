@@ -61,7 +61,7 @@ final class QdrantPayloadUpdater implements VectorPayloadUpdater {
     }
 
     private Map<String, Value> payload(KnowledgeDocument document) {
-        return document.vectorPayloadMetadata().entrySet().stream()
+        return document.retrievalMetadata().entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,
                         entry -> value(entry.getValue()), (left, right) -> right, java.util.LinkedHashMap::new));
     }

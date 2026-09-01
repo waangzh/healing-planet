@@ -76,12 +76,21 @@ public record KnowledgeDocument(
      * Community engagement is hydrated after recall from the business database, so a view increment never rewrites
      * the vector store.
      */
-    public Map<String, Object> vectorPayloadMetadata() {
+    /**
+     * Canonical static retrieval metadata contract shared by Qdrant payloads and Lucene's stored metadata.
+     * Runtime community engagement stays outside it because it is hydrated from the business database after recall.
+     */
+    public Map<String, Object> retrievalMetadata() {
         Map<String, Object> result = new java.util.LinkedHashMap<>(metadata());
         result.remove("payloadHash");
         if (source == KnowledgeSource.COMMUNITY) {
             COMMUNITY_DYNAMIC_RANKING_FIELDS.forEach(result::remove);
         }
         return Map.copyOf(result);
+    }
+
+    /** Compatibility name for callers that write the canonical retrieval metadata to a vector payload. */
+    public Map<String, Object> vectorPayloadMetadata() {
+        return retrievalMetadata();
     }
 }

@@ -3,6 +3,7 @@ package com.healingplanet.ai.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -22,6 +23,7 @@ public class RagProperties {
     private String internalApiKey = "";
     private Path dataDirectory = Path.of("data", "rag");
     private final Ingestion ingestion = new Ingestion();
+    private final IndexObservability indexObservability = new IndexObservability();
     private final Qdrant qdrant = new Qdrant();
     private final EntityResolution entityResolution = new EntityResolution();
     private final Reranker reranker = new Reranker();
@@ -57,6 +59,7 @@ public class RagProperties {
     public Path getDataDirectory() { return dataDirectory; }
     public void setDataDirectory(Path dataDirectory) { this.dataDirectory = dataDirectory; }
     public Ingestion getIngestion() { return ingestion; }
+    public IndexObservability getIndexObservability() { return indexObservability; }
     public Qdrant getQdrant() { return qdrant; }
     public EntityResolution getEntityResolution() { return entityResolution; }
     public Reranker getReranker() { return reranker; }
@@ -143,6 +146,14 @@ public class RagProperties {
         public void setCommunityMaxTokens(int value) { this.communityMaxTokens = value; }
         public int getDiseaseMaxTokens() { return diseaseMaxTokens; }
         public void setDiseaseMaxTokens(int value) { this.diseaseMaxTokens = value; }
+    }
+
+    public static class IndexObservability {
+        /** A status query keeps reporting lag immediately; this threshold controls the alert and alerting gauge. */
+        private Duration sourceLagAlertThreshold = Duration.ofMinutes(15);
+
+        public Duration getSourceLagAlertThreshold() { return sourceLagAlertThreshold; }
+        public void setSourceLagAlertThreshold(Duration value) { this.sourceLagAlertThreshold = value; }
     }
 
     public static class Generation {

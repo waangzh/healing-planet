@@ -210,6 +210,36 @@ class IngestionServiceTest {
         verify(stateRepository).upsertAll(anyList());
     }
 
+    @Test
+    void shouldReportNewFragmentsAndTheReasonForEmbedding() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        KnowledgeRepository.PostRow row = postRow();
+        when(repository.findPublishedPost("post-1")).thenReturn(row);
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.idsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of());
+
+        IngestionService service = new IngestionService(repository, new KnowledgeDocumentConverter(),
+                new PlantEntityDocumentConverter(), mock(PlantCatalogIndex.class), sparseIndex,
+                mock(VectorStore.class), mock(VectorStore.class), mock(VectorStore.class), mock(VectorStore.class),
+                mock(DiseaseKnowledgeRepository.class), mock(DiseaseKnowledgeConverter.class), stateRepository,
+                new RagProperties());
+
+        var report = service.indexPost("post-1");
+
+        assertThat(report.status()).isEqualTo(com.healingplanet.ai.domain.IndexRunReport.Status.SUCCEEDED);
+        assertThat(report.documentsSeen()).isEqualTo(1);
+        assertThat(report.documentsEmbedded()).isEqualTo(1);
+        assertThat(report.fragmentsCreated()).isEqualTo(1);
+        assertThat(report.logicalEvidencesCreated()).isEqualTo(1);
+        assertThat(report.reembedReasons()).containsEntry("new_document", 1);
+        assertThat(report.sources()).singleElement().satisfies(source ->
+                assertThat(source.source()).isEqualTo(KnowledgeSource.COMMUNITY));
+    }
+
     private IngestionService service(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
                                      SparseIndexService sparseIndex, VectorStore communityStore,
                                      EmbeddingStateRepository stateRepository, VectorPayloadUpdater payloadUpdater) {
