@@ -14,8 +14,6 @@ import java.util.regex.Pattern;
  * 优先保留文档结构，仅在结构边界无法满足 token 预算时才硬切文本。
  */
 final class TokenAwareTextChunker {
-    static final int COMMUNITY_MAX_TOKENS = 800;
-    static final int DISEASE_MAX_TOKENS = 800;
     private static final double HARD_SPLIT_OVERLAP_RATIO = 0.10d;
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^#{1,6}\\s+(.+?)\\s*$");
     private static final Encoding TOKEN_ENCODING = defaultEncoding();

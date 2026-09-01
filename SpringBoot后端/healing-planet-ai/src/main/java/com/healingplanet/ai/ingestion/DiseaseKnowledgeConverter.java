@@ -1,7 +1,9 @@
 package com.healingplanet.ai.ingestion;
 
+import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -20,6 +22,16 @@ import java.util.UUID;
 public class DiseaseKnowledgeConverter {
 
     private static final String INDEX_VERSION = "logical-evidence-v1";
+    private final ChunkPolicy chunkPolicy;
+
+    public DiseaseKnowledgeConverter() {
+        this(new ChunkPolicy(new RagProperties()));
+    }
+
+    @Autowired
+    public DiseaseKnowledgeConverter(ChunkPolicy chunkPolicy) {
+        this.chunkPolicy = chunkPolicy;
+    }
 
     /**
      * 兼容旧调用方的完整病害视图；索引流程应使用 {@link #convertAll(DiseaseKnowledgeRepository.DiseaseRow)}。
@@ -58,7 +70,7 @@ public class DiseaseKnowledgeConverter {
                 别名：%s
 
                 """.formatted(safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases));
-        int contentBudget = Math.max(1, TokenAwareTextChunker.DISEASE_MAX_TOKENS
+        int contentBudget = Math.max(1, chunkPolicy.maxTokens(KnowledgeSource.DISEASE)
                 - TokenAwareTextChunker.countTokens(prefix));
         List<DiseaseChunk> chunks = new ArrayList<>();
         addSection(chunks, "症状", joinFields("常见症状", row.symptoms(), "视觉特征", row.visualSymptoms()), contentBudget);

@@ -94,6 +94,10 @@ app:
       # Spring AI TokenCountBatchingStrategy 的内层 token 批处理配置。
       embedding-batch-max-tokens: ${RAG_EMBEDDING_BATCH_MAX_TOKENS:8000}
       embedding-batch-reserve-percentage: ${RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE:0.1}
+      # 文本分块使用统一的 TokenAwareTextChunker；不同来源可保留不同上下文预算。
+      plant-general-care-max-tokens: ${RAG_PLANT_GENERAL_CARE_MAX_TOKENS:800}
+      community-max-tokens: ${RAG_COMMUNITY_MAX_TOKENS:800}
+      disease-max-tokens: ${RAG_DISEASE_MAX_TOKENS:800}
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     qdrant:
       host: ${QDRANT_HOST:localhost}

@@ -1,5 +1,6 @@
 package com.healingplanet.ai.ingestion;
 
+import com.healingplanet.ai.config.RagProperties;
 import com.healingplanet.ai.domain.KnowledgeDocument;
 import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.retrieval.PlantCatalogIndex;
@@ -21,15 +22,21 @@ import java.util.UUID;
 public class KnowledgeDocumentConverter {
     private static final String INDEX_VERSION = "logical-evidence-v2";
     private final PlantCatalogIndex plantCatalogIndex;
+    private final ChunkPolicy chunkPolicy;
 
     /** Kept for focused converter tests that do not need a catalog snapshot. */
     KnowledgeDocumentConverter() {
-        this(null);
+        this(null, new ChunkPolicy(new RagProperties()));
+    }
+
+    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex) {
+        this(plantCatalogIndex, new ChunkPolicy(new RagProperties()));
     }
 
     @Autowired
-    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex) {
+    public KnowledgeDocumentConverter(PlantCatalogIndex plantCatalogIndex, ChunkPolicy chunkPolicy) {
         this.plantCatalogIndex = plantCatalogIndex;
+        this.chunkPolicy = chunkPolicy;
     }
 
     public List<KnowledgeDocument> fromPlant(KnowledgeRepository.PlantRow plant) {
@@ -39,7 +46,12 @@ public class KnowledgeDocumentConverter {
         addPlantTopic(documents, plant, "TEMPERATURE", "温度", plant.temperaturePreference());
         addPlantTopic(documents, plant, "HUMIDITY", "湿度", plant.humidityPreference());
         addPlantTopic(documents, plant, "FERTILIZING", "施肥", plant.fertilizingTips());
-        addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护", semanticChunks(plant.detailAdvice(), 300));
+        addPlantTopic(documents, plant, "GENERAL_CARE", "综合养护",
+                TokenAwareTextChunker.split(plant.detailAdvice(), Math.max(1,
+                                chunkPolicy.maxTokens(KnowledgeSource.PLANT)
+                                        - TokenAwareTextChunker.countTokens(plantPrefix(plant, "综合养护"))))
+                        .stream().map(chunk -> new PlantChunk(chunk.content(),
+                                chunk.section().isBlank() ? "综合养护" : chunk.section())).toList());
         return documents;
     }
 
@@ -55,7 +67,7 @@ public class KnowledgeDocumentConverter {
         String plantName = plantResolution.primaryPlantName().isBlank()
                 ? inferPlantName(tags) : plantResolution.primaryPlantName();
         String contentPrefix = "标题：%s\n标签：%s\n\n".formatted(safe(post.title()), String.join("、", tags));
-        int contentBudget = Math.max(1, TokenAwareTextChunker.COMMUNITY_MAX_TOKENS
+        int contentBudget = Math.max(1, chunkPolicy.maxTokens(KnowledgeSource.COMMUNITY)
                 - TokenAwareTextChunker.countTokens(contentPrefix));
         List<TokenAwareTextChunker.Chunk> chunks = TokenAwareTextChunker.split(post.content(), contentBudget);
         if (chunks.isEmpty()) chunks = List.of(new TokenAwareTextChunker.Chunk("", ""));
@@ -85,69 +97,39 @@ public class KnowledgeDocumentConverter {
         if (value == null || value.isBlank()) {
             return;
         }
-        addPlantTopic(target, plant, type, topic, List.of(value.trim()));
+        addPlantTopic(target, plant, type, topic, List.of(new PlantChunk(value.trim(), topic)));
     }
 
     private void addPlantTopic(List<KnowledgeDocument> target, KnowledgeRepository.PlantRow plant,
-                               String type, String topic, List<String> fragments) {
+                               String type, String topic, List<PlantChunk> fragments) {
         if (fragments.isEmpty()) {
             return;
         }
         String logicalEvidenceId = "PLANT:" + plant.id() + ":" + type;
         String title = safe(plant.commonName()) + topic + "指南";
         for (int index = 0; index < fragments.size(); index++) {
-            String value = fragments.get(index);
-            String content = "植物：%s\n学名：%s\n养护主题：%s\n\n%s".formatted(
-                    safe(plant.commonName()), safe(plant.scientificName()), topic, value.trim());
+            PlantChunk fragment = fragments.get(index);
+            String value = fragment.content();
+            String content = plantPrefix(plant, topic) + value.trim();
             String documentId = id("plant", plant.id() + ":" + type + ":" + target.size());
             String fragmentId = logicalEvidenceId + ":" + index;
             target.add(new KnowledgeDocument(
                     documentId, KnowledgeSource.PLANT, plant.id(), title, content,
                     plant.id(), safe(plant.commonName()), type, List.of(topic),
                     1.0, false, 0, 0, 0, 0, Instant.EPOCH,
-                    fragmentMetadata(logicalEvidenceId, fragmentId, index, fragments.size(), topic, content, Instant.EPOCH)
+                    fragmentMetadata(logicalEvidenceId, fragmentId, index, fragments.size(), fragment.section(),
+                            content, Instant.EPOCH)
             ));
         }
     }
 
-    static List<String> semanticChunks(String text, int maxCharacters) {
-        if (text == null || text.isBlank()) {
-            return List.of();
-        }
-        String cleaned = stripMarkdown(text);
-        String[] paragraphs = cleaned.split("(?:\\r?\\n){2,}");
-        List<String> chunks = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        for (String paragraph : paragraphs) {
-            String value = paragraph.trim();
-            if (value.isBlank()) continue;
-            if (current.length() > 0 && current.length() + value.length() + 2 > maxCharacters) {
-                chunks.add(current.toString());
-                current.setLength(0);
-            }
-            if (value.length() > maxCharacters) {
-                if (current.length() > 0) {
-                    chunks.add(current.toString());
-                    current.setLength(0);
-                }
-                for (int start = 0; start < value.length(); start += maxCharacters) {
-                    chunks.add(value.substring(start, Math.min(value.length(), start + maxCharacters)));
-                }
-            } else {
-                if (current.length() > 0) current.append("\n\n");
-                current.append(value);
-            }
-        }
-        if (current.length() > 0) chunks.add(current.toString());
-        return chunks;
-    }
-
-    static String stripMarkdown(String value) {
-        return MarkdownPlainTextSanitizer.strip(value);
-    }
-
     private String inferPlantName(List<String> tags) {
         return tags.isEmpty() ? "" : tags.get(0);
+    }
+
+    private String plantPrefix(KnowledgeRepository.PlantRow plant, String topic) {
+        return "植物：%s\n学名：%s\n养护主题：%s\n\n".formatted(
+                safe(plant.commonName()), safe(plant.scientificName()), topic);
     }
 
     private String safe(String value) {
@@ -193,5 +175,8 @@ public class KnowledgeDocumentConverter {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("当前 JVM 不支持 SHA-256", exception);
         }
+    }
+
+    private record PlantChunk(String content, String section) {
     }
 }

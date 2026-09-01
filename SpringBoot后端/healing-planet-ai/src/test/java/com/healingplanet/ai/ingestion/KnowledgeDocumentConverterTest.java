@@ -1,5 +1,7 @@
 package com.healingplanet.ai.ingestion;
 
+import com.healingplanet.ai.config.RagProperties;
+import com.healingplanet.ai.domain.KnowledgeSource;
 import com.healingplanet.ai.retrieval.PlantCatalogIndex;
 import org.junit.jupiter.api.Test;
 
@@ -81,7 +83,7 @@ class KnowledgeDocumentConverterTest {
 
         assertThat(documents).hasSizeGreaterThan(2).allSatisfy(document -> {
             assertThat(TokenAwareTextChunker.countTokens(document.content()))
-                    .isLessThanOrEqualTo(TokenAwareTextChunker.COMMUNITY_MAX_TOKENS);
+                    .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.COMMUNITY));
             assertThat(document.metadata()).containsKeys("chunkIndex", "chunkCount", "section", "contentHash",
                     "sourceUpdatedAt", "indexVersion", "logicalEvidenceId", "fragmentId",
                     "fragmentRole", "fragmentIndex", "fragmentCount", "fragmentSection");
@@ -97,10 +99,10 @@ class KnowledgeDocumentConverterTest {
     }
 
     @Test
-    void shouldSplitLongDetailAdviceIntoGeneralCareChunksOfAtMost300Characters() {
-        String detailAdvice = "第一段综合养护建议。".repeat(20) + "\n\n"
-                + "第二段综合养护建议。".repeat(20) + "\n\n"
-                + "第三段综合养护建议。".repeat(20);
+    void shouldSplitLongDetailAdviceWithThePlantTokenBudget() {
+        String detailAdvice = "第一段综合养护建议。".repeat(150) + "\n\n"
+                + "第二段综合养护建议。".repeat(150) + "\n\n"
+                + "第三段综合养护建议。".repeat(150);
         var plant = new KnowledgeRepository.PlantRow("plant-1", "Epipremnum aureum", "绿萝",
                 "明亮散射光", "表土干后浇透", "15-30℃", "较高湿度", "生长期薄肥", detailAdvice);
 
@@ -108,18 +110,36 @@ class KnowledgeDocumentConverterTest {
                 .filter(document -> document.knowledgeType().equals("GENERAL_CARE"))
                 .toList();
 
-        assertThat(generalCare).hasSize(3).allSatisfy(document -> {
+        assertThat(generalCare).hasSizeGreaterThan(1).allSatisfy(document -> {
             assertThat(document.sourceId()).isEqualTo("plant-1");
-            assertThat(document.content()).hasSizeLessThanOrEqualTo(360);
+            assertThat(TokenAwareTextChunker.countTokens(document.content()))
+                    .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.PLANT));
             assertThat(document.metadata()).containsKeys("logicalEvidenceId", "fragmentId", "fragmentIndex",
                     "fragmentRole", "fragmentCount", "fragmentSection");
         });
         assertThat(generalCare).extracting(document -> document.metadata().get("logicalEvidenceId"))
                 .containsOnly(generalCare.get(0).metadata().get("logicalEvidenceId"));
         assertThat(generalCare).extracting(document -> document.metadata().get("fragmentIndex"))
-                .containsExactly("0", "1", "2");
+                .containsExactlyElementsOf(java.util.stream.IntStream.range(0, generalCare.size())
+                        .mapToObj(String::valueOf).toList());
         assertThat(generalCare).extracting(document -> document.metadata().get("logicalEvidenceId"))
                 .allMatch(id -> String.valueOf(id).startsWith("PLANT:plant-1:GENERAL_CARE"));
+    }
+
+    @Test
+    void shouldApplyConfiguredTokenBudgetToGeneralCare() {
+        RagProperties properties = new RagProperties();
+        properties.getIngestion().setPlantGeneralCareMaxTokens(64);
+        KnowledgeDocumentConverter configured = new KnowledgeDocumentConverter(null, new ChunkPolicy(properties));
+        String detailAdvice = "连续综合养护建议。".repeat(200);
+        var plant = new KnowledgeRepository.PlantRow("plant-1", "Epipremnum aureum", "绿萝",
+                null, null, null, null, null, detailAdvice);
+
+        var generalCare = configured.fromPlant(plant).stream()
+                .filter(document -> document.knowledgeType().equals("GENERAL_CARE")).toList();
+
+        assertThat(generalCare).hasSizeGreaterThan(1).allSatisfy(document ->
+                assertThat(TokenAwareTextChunker.countTokens(document.content())).isLessThanOrEqualTo(64));
     }
 
     @Test

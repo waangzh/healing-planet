@@ -1,6 +1,7 @@
 package com.healingplanet.ai.ingestion;
 
 import com.healingplanet.ai.domain.KnowledgeSource;
+import com.healingplanet.ai.config.RagProperties;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -35,7 +36,7 @@ class DiseaseKnowledgeConverterTest {
         assertThat(documents).hasSize(4).allSatisfy(document -> {
             assertThat(document.sourceId()).isEqualTo("d2");
             assertThat(TokenAwareTextChunker.countTokens(document.content()))
-                    .isLessThanOrEqualTo(TokenAwareTextChunker.DISEASE_MAX_TOKENS);
+                    .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.DISEASE));
             assertThat(document.metadata()).containsEntry("diseaseId", "d2")
                     .containsKeys("chunkIndex", "chunkCount", "section", "contentHash", "sourceUpdatedAt", "indexVersion",
                             "logicalEvidenceId", "fragmentId", "fragmentRole", "fragmentIndex", "fragmentCount",

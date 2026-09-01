@@ -113,6 +113,9 @@ public class RagProperties {
         private String embeddingModelVersion = "BAAI/bge-m3";
         private int embeddingBatchMaxTokens = 8000;
         private double embeddingBatchReservePercentage = 0.1;
+        private int plantGeneralCareMaxTokens = 800;
+        private int communityMaxTokens = 800;
+        private int diseaseMaxTokens = 800;
 
         public int getBatchSize() { return batchSize; }
         public void setBatchSize(int batchSize) { this.batchSize = batchSize; }
@@ -128,6 +131,12 @@ public class RagProperties {
         public void setEmbeddingBatchReservePercentage(double embeddingBatchReservePercentage) {
             this.embeddingBatchReservePercentage = embeddingBatchReservePercentage;
         }
+        public int getPlantGeneralCareMaxTokens() { return plantGeneralCareMaxTokens; }
+        public void setPlantGeneralCareMaxTokens(int value) { this.plantGeneralCareMaxTokens = value; }
+        public int getCommunityMaxTokens() { return communityMaxTokens; }
+        public void setCommunityMaxTokens(int value) { this.communityMaxTokens = value; }
+        public int getDiseaseMaxTokens() { return diseaseMaxTokens; }
+        public void setDiseaseMaxTokens(int value) { this.diseaseMaxTokens = value; }
     }
 
     public static class Generation {
