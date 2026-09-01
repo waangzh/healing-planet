@@ -170,11 +170,13 @@ public class IngestionService {
         }
         Set<String> ids = documentIds(documents);
         Map<String, EmbeddingStateRepository.EmbeddingState> states = embeddingStateRepository.findByDocumentIds(ids);
+        IndexFingerprint fingerprint = indexFingerprint();
         List<KnowledgeDocument> documentsToEmbed = documents.stream()
-                .filter(document -> needsEmbedding(document, states.get(document.id()))).toList();
+                .filter(document -> needsEmbedding(document, states.get(document.id()), fingerprint)).toList();
         if (!documentsToEmbed.isEmpty()) {
             vectorStore.add(toSpringDocuments(documentsToEmbed));
-            embeddingStateRepository.upsertAll(documentsToEmbed.stream().map(this::toEmbeddingState).toList());
+            embeddingStateRepository.upsertAll(documentsToEmbed.stream()
+                    .map(document -> toEmbeddingState(document, fingerprint)).toList());
         }
 
         Map<String, KnowledgeDocument> sparseDocuments = sparseIndex.documentsByIds(source, ids);
@@ -184,13 +186,17 @@ public class IngestionService {
     }
 
     private List<KnowledgeDocument> prepare(List<KnowledgeDocument> documents) {
-        return documents.stream().map(this::withEmbeddingMetadata).toList();
+        IndexFingerprint fingerprint = indexFingerprint();
+        return documents.stream().map(document -> withEmbeddingMetadata(document, fingerprint)).toList();
     }
 
-    private KnowledgeDocument withEmbeddingMetadata(KnowledgeDocument document) {
+    private KnowledgeDocument withEmbeddingMetadata(KnowledgeDocument document, IndexFingerprint fingerprint) {
         Map<String, String> attributes = new LinkedHashMap<>(document.attributes());
         attributes.put("contentHash", contentHash(document));
-        attributes.put("embeddingModelVersion", embeddingModelVersion());
+        attributes.put("embeddingModelVersion", fingerprint.embeddingModelVersion());
+        attributes.put("embeddingContentVersion", fingerprint.embeddingContentVersion());
+        attributes.put("chunkSchemaVersion", fingerprint.chunkSchemaVersion());
+        attributes.put("indexFingerprint", fingerprint.value());
         return new KnowledgeDocument(document.id(), document.source(), document.sourceId(), document.title(),
                 document.embeddingText(), document.displayContent(), document.canonicalPlantId(), document.plantName(),
                 document.knowledgeType(),
@@ -198,15 +204,18 @@ public class IngestionService {
                 document.comments(), document.views(), document.createdAt(), attributes);
     }
 
-    private boolean needsEmbedding(KnowledgeDocument document, EmbeddingStateRepository.EmbeddingState state) {
+    private boolean needsEmbedding(KnowledgeDocument document, EmbeddingStateRepository.EmbeddingState state,
+                                   IndexFingerprint fingerprint) {
         return state == null
                 || !document.attributes().get("contentHash").equals(state.contentHash())
-                || !embeddingModelVersion().equals(state.embeddingModelVersion());
+                || !fingerprint.value().equals(state.indexFingerprint());
     }
 
-    private EmbeddingStateRepository.EmbeddingState toEmbeddingState(KnowledgeDocument document) {
+    private EmbeddingStateRepository.EmbeddingState toEmbeddingState(KnowledgeDocument document,
+                                                                      IndexFingerprint fingerprint) {
         return new EmbeddingStateRepository.EmbeddingState(document.id(), document.source(), document.sourceId(),
-                document.attributes().get("contentHash"), embeddingModelVersion());
+                document.attributes().get("contentHash"), fingerprint.embeddingModelVersion(),
+                fingerprint.embeddingContentVersion(), fingerprint.chunkSchemaVersion(), fingerprint.value());
     }
 
     private Set<String> existingIds(KnowledgeSource source) {
@@ -233,12 +242,10 @@ public class IngestionService {
         return size;
     }
 
-    private String embeddingModelVersion() {
-        String version = properties.getIngestion().getEmbeddingModelVersion();
-        if (version == null || version.isBlank()) {
-            throw new IllegalStateException("app.rag.ingestion.embedding-model-version 不能为空");
-        }
-        return version.trim();
+    private IndexFingerprint indexFingerprint() {
+        var ingestion = properties.getIngestion();
+        return new IndexFingerprint(ingestion.getEmbeddingModelVersion(), ingestion.getEmbeddingContentVersion(),
+                ingestion.getChunkSchemaVersion());
     }
 
     private void deleteIds(KnowledgeSource source, Set<String> ids, VectorStore vectorStore) {

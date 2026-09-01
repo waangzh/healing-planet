@@ -24,13 +24,17 @@ public class EmbeddingStateRepository {
 
     private static final String UPSERT_SQL = """
             insert into rag_embedding_state
-                    (document_id, source, source_id, content_hash, embedding_model_version)
-            values (?, ?, ?, ?, ?)
+                    (document_id, source, source_id, content_hash, embedding_model_version,
+                     embedding_content_version, chunk_schema_version, index_fingerprint)
+            values (?, ?, ?, ?, ?, ?, ?, ?)
             on duplicate key update
                     source = values(source),
                     source_id = values(source_id),
                     content_hash = values(content_hash),
                     embedding_model_version = values(embedding_model_version),
+                    embedding_content_version = values(embedding_content_version),
+                    chunk_schema_version = values(chunk_schema_version),
+                    index_fingerprint = values(index_fingerprint),
                     updated_at = current_timestamp
             """;
 
@@ -46,12 +50,14 @@ public class EmbeddingStateRepository {
         }
         String placeholders = documentIds.stream().map(id -> "?").collect(Collectors.joining(", "));
         List<EmbeddingState> states = jdbcTemplate.query("""
-                select document_id, source, source_id, content_hash, embedding_model_version
+                select document_id, source, source_id, content_hash, embedding_model_version,
+                       embedding_content_version, chunk_schema_version, index_fingerprint
                 from rag_embedding_state
                 where document_id in (""" + placeholders + ")", (rs, rowNum) -> new EmbeddingState(
                 rs.getString("document_id"), KnowledgeSource.valueOf(rs.getString("source")),
                 rs.getString("source_id"), rs.getString("content_hash"),
-                rs.getString("embedding_model_version")), documentIds.toArray());
+                rs.getString("embedding_model_version"), rs.getString("embedding_content_version"),
+                rs.getString("chunk_schema_version"), rs.getString("index_fingerprint")), documentIds.toArray());
         Map<String, EmbeddingState> result = new HashMap<>();
         states.forEach(state -> result.put(state.documentId(), state));
         return result;
@@ -86,6 +92,9 @@ public class EmbeddingStateRepository {
                 statement.setString(3, state.sourceId());
                 statement.setString(4, state.contentHash());
                 statement.setString(5, state.embeddingModelVersion());
+                statement.setString(6, state.embeddingContentVersion());
+                statement.setString(7, state.chunkSchemaVersion());
+                statement.setString(8, state.indexFingerprint());
             }
 
             @Override
@@ -105,6 +114,15 @@ public class EmbeddingStateRepository {
     }
 
     public record EmbeddingState(String documentId, KnowledgeSource source, String sourceId,
-                                 String contentHash, String embeddingModelVersion) {
+                                 String contentHash, String embeddingModelVersion,
+                                 String embeddingContentVersion, String chunkSchemaVersion,
+                                 String indexFingerprint) {
+        /** 兼容仅以模型版本去重的旧测试和调用方。 */
+        public EmbeddingState(String documentId, KnowledgeSource source, String sourceId,
+                              String contentHash, String embeddingModelVersion) {
+            this(documentId, source, sourceId, contentHash, embeddingModelVersion,
+                    "embedding-content-v2", "chunk-schema-v2",
+                    new IndexFingerprint(embeddingModelVersion, "embedding-content-v2", "chunk-schema-v2").value());
+        }
     }
 }

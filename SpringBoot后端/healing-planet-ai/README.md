@@ -146,7 +146,7 @@ healing-planet-ai:  PLANT_STATE_API_KEY
 smart_green_plant:  PLANT_INTERNAL_API_KEY
 ```
 
-首次启动会在 embedding 模型返回向量维度后创建 Qdrant collection。模型维度变更时应使用新 collection 名称或手动迁移，不能直接复用原 collection。模型、归一化策略或维度变更后，还必须同步修改 `RAG_EMBEDDING_MODEL_VERSION`，使已有 chunk 在下一次补偿扫描中重新向量化。
+首次启动会在 embedding 模型返回向量维度后创建 Qdrant collection。模型维度变更时应使用新 collection 名称或手动迁移，不能直接复用原 collection。模型、归一化策略或维度变更后，还必须同步修改 `RAG_EMBEDDING_MODEL_VERSION`；`EmbeddingTextBuilder` 的字段或前缀变化时提升 `RAG_EMBEDDING_CONTENT_VERSION`；`ChunkPolicy`、token 预算或 fragment 组织变化时提升 `RAG_CHUNK_SCHEMA_VERSION`。三者共同组成 `IndexFingerprint`，任一变化都会让已有 fragment 在下一次受控补偿扫描中重新向量化。
 
 ## 配置说明
 
@@ -160,7 +160,9 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 聊天模型 | `change-me` / `https://api.siliconflow.cn` / `Qwen/Qwen3.5-397B-A17B` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | Embedding 模型 | `https://api.siliconflow.cn` / `BAAI/bge-m3` |
 | `RAG_INGESTION_BATCH_SIZE` | 每次读取与写入的外层 chunk 批次，范围 50–200 | `100` |
-| `RAG_EMBEDDING_MODEL_VERSION` | 向量化版本；模型或 embedding 策略变动时必须修改 | `EMBEDDING_MODEL` |
+| `RAG_EMBEDDING_MODEL_VERSION` | 模型、维度或归一化策略版本 | `EMBEDDING_MODEL` |
+| `RAG_EMBEDDING_CONTENT_VERSION` / `RAG_CHUNK_SCHEMA_VERSION` | embedding 文本契约 / token 分块与 fragment schema 版本；任一变化会改变 `IndexFingerprint` | `embedding-content-v2` / `chunk-schema-v2` |
+| `RAG_PLANT_GENERAL_CARE_MAX_TOKENS` / `RAG_COMMUNITY_MAX_TOKENS` / `RAG_DISEASE_MAX_TOKENS` | `ChunkPolicy` 的植物综合养护 / 社区 / 病害 fragment token 预算；改动时同步提升 chunk schema 版本 | `800` / `800` / `800` |
 | `RAG_EMBEDDING_BATCH_MAX_TOKENS` / `RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE` | Spring AI 内层 token 批处理上限与预留比例 | `8000` / `0.1` |
 | `QDRANT_HOST` / `QDRANT_GRPC_PORT` | Qdrant 连接 | `localhost` / `6334` |
 | `QDRANT_PLANT_COLLECTION` | 植物知识 collection | `plant_knowledge` |
@@ -191,7 +193,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 fragment；只有内容、索引版本或 `embeddingModelVersion` 变化的 fragment 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
 
-首次引入该机制或需要补数时，先由数据库发布流程执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)，再显式触发扫描：
+首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql) 与 [`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql)，再显式触发扫描：
 
 ```bash
 curl -X POST http://localhost:8010/internal/index/full \

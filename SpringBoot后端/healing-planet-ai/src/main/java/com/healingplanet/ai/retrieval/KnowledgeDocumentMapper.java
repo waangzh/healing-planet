@@ -57,6 +57,7 @@ class KnowledgeDocumentMapper {
                 "environmentConditions", "source", "sourceLevel", "diseaseId", "chunkIndex",
                 "chunkCount", "section", "logicalEvidenceId", "fragmentId", "fragmentIndex",
                 "fragmentCount", "fragmentRole", "fragmentSection", "contentHash", "sourceUpdatedAt", "indexVersion",
+                "embeddingModelVersion", "embeddingContentVersion", "chunkSchemaVersion", "indexFingerprint",
                 "resolvedPlantIds", "plantEntityConfidence")) {
             Object value = metadata.get(key);
             if (value != null && !value.toString().isBlank()) result.put(key, value.toString());

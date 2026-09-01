@@ -91,6 +91,10 @@ app:
       batch-size: ${RAG_INGESTION_BATCH_SIZE:100}
       # 模型、维度或归一化策略变化时必须改变此值，使已有 chunk 被重新向量化。
       embedding-model-version: ${RAG_EMBEDDING_MODEL_VERSION:${EMBEDDING_MODEL:BAAI/bge-m3}}
+      # EmbeddingTextBuilder 的字段、前缀或顺序变化时提升此版本。
+      embedding-content-version: ${RAG_EMBEDDING_CONTENT_VERSION:embedding-content-v2}
+      # ChunkPolicy、token 预算或 fragment 组织规则变化时提升此版本。
+      chunk-schema-version: ${RAG_CHUNK_SCHEMA_VERSION:chunk-schema-v2}
       # Spring AI TokenCountBatchingStrategy 的内层 token 批处理配置。
       embedding-batch-max-tokens: ${RAG_EMBEDDING_BATCH_MAX_TOKENS:8000}
       embedding-batch-reserve-percentage: ${RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE:0.1}

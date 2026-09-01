@@ -111,6 +111,8 @@ public class RagProperties {
     public static class Ingestion {
         private int batchSize = 100;
         private String embeddingModelVersion = "BAAI/bge-m3";
+        private String embeddingContentVersion = "embedding-content-v2";
+        private String chunkSchemaVersion = "chunk-schema-v2";
         private int embeddingBatchMaxTokens = 8000;
         private double embeddingBatchReservePercentage = 0.1;
         private int plantGeneralCareMaxTokens = 800;
@@ -123,6 +125,10 @@ public class RagProperties {
         public void setEmbeddingModelVersion(String embeddingModelVersion) {
             this.embeddingModelVersion = embeddingModelVersion;
         }
+        public String getEmbeddingContentVersion() { return embeddingContentVersion; }
+        public void setEmbeddingContentVersion(String value) { this.embeddingContentVersion = value; }
+        public String getChunkSchemaVersion() { return chunkSchemaVersion; }
+        public void setChunkSchemaVersion(String value) { this.chunkSchemaVersion = value; }
         public int getEmbeddingBatchMaxTokens() { return embeddingBatchMaxTokens; }
         public void setEmbeddingBatchMaxTokens(int embeddingBatchMaxTokens) {
             this.embeddingBatchMaxTokens = embeddingBatchMaxTokens;
