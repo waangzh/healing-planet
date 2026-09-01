@@ -266,7 +266,7 @@ public class SparseIndexService {
     private Document toLucene(KnowledgeDocument source) {
         Document document = new Document();
         document.add(new StringField("id", source.id(), Field.Store.YES));
-        document.add(new TextField("searchText", source.title() + "\n" + source.content() + "\n" +
+        document.add(new TextField("searchText", source.title() + "\n" + source.embeddingText() + "\n" +
                 source.plantName() + "\n" + String.join(" ", source.tags()), Field.Store.NO));
         if (source.source() == KnowledgeSource.PLANT_ENTITY) {
             String names = source.attributes().getOrDefault("normalizedNames", "");
@@ -278,7 +278,8 @@ public class SparseIndexService {
         put(document, "source", source.source().name());
         put(document, "sourceId", source.sourceId());
         put(document, "title", source.title());
-        put(document, "content", source.content());
+        put(document, "embeddingText", source.embeddingText());
+        put(document, "displayContent", source.displayContent());
         put(document, "canonicalPlantId", source.canonicalPlantId());
         put(document, "plantName", source.plantName());
         put(document, "knowledgeType", source.knowledgeType());
@@ -298,7 +299,8 @@ public class SparseIndexService {
         try {
             return new KnowledgeDocument(
                     d.get("id"), KnowledgeSource.valueOf(d.get("source")), d.get("sourceId"),
-                    d.get("title"), d.get("content"), d.get("canonicalPlantId"), d.get("plantName"),
+                    d.get("title"), valueOrLegacy(d, "embeddingText"), valueOrLegacy(d, "displayContent"),
+                    d.get("canonicalPlantId"), d.get("plantName"),
                     d.get("knowledgeType"), objectMapper.readValue(d.get("tags"), new TypeReference<>() {}),
                     Double.parseDouble(d.get("trustScore")), Boolean.parseBoolean(d.get("essence")),
                     Integer.parseInt(d.get("likes")), Integer.parseInt(d.get("collects")),
@@ -314,6 +316,11 @@ public class SparseIndexService {
     private Map<String, String> readAttributes(String value) throws JsonProcessingException {
         if (value == null || value.isBlank()) return Map.of();
         return objectMapper.readValue(value, new TypeReference<>() {});
+    }
+
+    private String valueOrLegacy(Document document, String name) {
+        String value = document.get(name);
+        return value == null ? document.get("content") : value;
     }
 
     private void put(Document document, String name, String value) {

@@ -20,6 +20,7 @@ class KnowledgeDocumentMapper {
         String createdAt = string(m, "createdAt");
         return new KnowledgeDocument(
                 document.getId(), source, string(m, "sourceId"), string(m, "title"), document.getText(),
+                valueOrDefault(m, "displayContent", document.getText()),
                 string(m, "canonicalPlantId"), string(m, "plantName"), string(m, "knowledgeType"), tags,
                 number(m, "trustScore").doubleValue(), bool(m, "essence"),
                 number(m, "likes").intValue(), number(m, "collects").intValue(),
@@ -31,6 +32,11 @@ class KnowledgeDocumentMapper {
     private String string(Map<String, Object> metadata, String key) {
         Object value = metadata.get(key);
         return value == null ? "" : value.toString();
+    }
+
+    private String valueOrDefault(Map<String, Object> metadata, String key, String fallback) {
+        String value = string(metadata, key);
+        return value.isBlank() ? fallback : value;
     }
 
     private Number number(Map<String, Object> metadata, String key) {

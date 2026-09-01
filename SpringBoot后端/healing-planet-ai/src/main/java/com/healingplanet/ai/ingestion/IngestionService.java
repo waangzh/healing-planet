@@ -192,7 +192,8 @@ public class IngestionService {
         attributes.put("contentHash", contentHash(document));
         attributes.put("embeddingModelVersion", embeddingModelVersion());
         return new KnowledgeDocument(document.id(), document.source(), document.sourceId(), document.title(),
-                document.content(), document.canonicalPlantId(), document.plantName(), document.knowledgeType(),
+                document.embeddingText(), document.displayContent(), document.canonicalPlantId(), document.plantName(),
+                document.knowledgeType(),
                 document.tags(), document.trustScore(), document.essence(), document.likes(), document.collects(),
                 document.comments(), document.views(), document.createdAt(), attributes);
     }
@@ -254,7 +255,7 @@ public class IngestionService {
 
     private List<Document> toSpringDocuments(List<KnowledgeDocument> documents) {
         return documents.stream().map(document -> new Document(
-                document.id(), document.content(), document.metadata())).toList();
+                document.id(), document.embeddingText(), document.metadata())).toList();
     }
 
     private String sha256(String value) {
@@ -268,7 +269,8 @@ public class IngestionService {
 
     private String contentHash(KnowledgeDocument document) {
         String indexVersion = document.attributes().getOrDefault("indexVersion", "");
-        String value = indexVersion.isBlank() ? document.content() : indexVersion + "\u0000" + document.content();
+        String value = indexVersion.isBlank() ? document.embeddingText()
+                : indexVersion + "\u0000" + document.embeddingText();
         return sha256(value);
     }
 

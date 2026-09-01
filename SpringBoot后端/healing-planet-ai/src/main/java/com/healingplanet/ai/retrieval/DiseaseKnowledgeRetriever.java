@@ -82,7 +82,7 @@ public class DiseaseKnowledgeRetriever {
         double nameMatch = matches(detection.diseaseName(), document.tags()) ? 1d : 0d;
         double score = clamp(0.65 * semantic + 0.25 * document.trustScore() + 0.10 * nameMatch);
         return new Evidence(document.id(), EvidenceType.DISEASE_KNOWLEDGE, document.sourceId(),
-                KnowledgeSource.DISEASE.name(), document.title(), document.content(), retrieval, rerank,
+                KnowledgeSource.DISEASE.name(), document.title(), document.displayContent(), retrieval, rerank,
                 document.trustScore(), score, candidate.evidenceMetadata(), document.createdAt());
     }
 

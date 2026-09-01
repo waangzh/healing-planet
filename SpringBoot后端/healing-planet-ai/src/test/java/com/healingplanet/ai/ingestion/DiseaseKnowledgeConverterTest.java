@@ -35,7 +35,7 @@ class DiseaseKnowledgeConverterTest {
 
         assertThat(documents).hasSize(4).allSatisfy(document -> {
             assertThat(document.sourceId()).isEqualTo("d2");
-            assertThat(TokenAwareTextChunker.countTokens(document.content()))
+            assertThat(TokenAwareTextChunker.countTokens(document.embeddingText()))
                     .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.DISEASE));
             assertThat(document.metadata()).containsEntry("diseaseId", "d2")
                     .containsKeys("chunkIndex", "chunkCount", "section", "contentHash", "sourceUpdatedAt", "indexVersion",

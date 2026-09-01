@@ -105,6 +105,20 @@ class SourceAwareRankerTest {
         assertThat(((Map<?, ?>) contextFragments.get(1)).get("content")).isEqualTo("supplemental");
     }
 
+    @Test
+    void shouldUseDisplayContentForEvidenceAndPromptFragments() {
+        KnowledgeDocument document = new KnowledgeDocument("fragment", KnowledgeSource.PLANT, "1", "绿萝光照",
+                "植物：绿萝\n养护主题：光照\n\n正文片段", "正文片段", "1", "绿萝", "LIGHT",
+                List.of("光照"), 1, false, 0, 0, 0, 0, Instant.EPOCH,
+                Map.of("fragmentId", "fragment", "logicalEvidenceId", "logical"));
+
+        Evidence evidence = ranker.rank(RagQuery.of("绿萝光照"), List.of(candidate(document, 0.8, 0.1)), Map.of()).get(0);
+
+        assertThat(evidence.content()).isEqualTo("正文片段");
+        List<?> contextFragments = (List<?>) evidence.metadata().get("contextFragments");
+        assertThat(((Map<?, ?>) contextFragments.get(0)).get("content")).isEqualTo("正文片段");
+    }
+
     private LogicalEvidenceCandidate candidate(String id) {
         KnowledgeDocument document = new KnowledgeDocument(id, KnowledgeSource.PLANT, "1", id, id,
                 "1", "绿萝", "LIGHT", List.of("光照"), 1, false,

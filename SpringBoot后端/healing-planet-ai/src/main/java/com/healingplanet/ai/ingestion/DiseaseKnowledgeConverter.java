@@ -38,10 +38,7 @@ public class DiseaseKnowledgeConverter {
      */
     public KnowledgeDocument convert(DiseaseKnowledgeRepository.DiseaseRow row) {
         List<String> aliases = split(row.aliases());
-        String content = """
-                植物：%s
-                病害：%s
-                别名：%s
+        String displayContent = """
                 常见症状：%s
                 视觉特征：%s
                 诱发条件：%s
@@ -49,14 +46,16 @@ public class DiseaseKnowledgeConverter {
                 处理方法：%s
                 预防方法：%s
                 知识来源：%s
-                """.formatted(safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases),
+                """.formatted(
                 safe(row.symptoms()), safe(row.visualSymptoms()), safe(row.triggerConditions()),
                 safe(row.environmentConditions()), safe(row.treatment()), safe(row.prevention()), safe(row.source()));
+        String content = "植物：%s\n病害：%s\n别名：%s\n\n%s".formatted(
+                safe(row.plantName()), safe(row.diseaseName()), String.join("、", aliases), displayContent);
         String documentId = id(row.id());
         String fragmentId = "DISEASE:" + row.id() + ":完整资料:0";
         return new KnowledgeDocument(documentId, KnowledgeSource.DISEASE, row.id(),
                 safe(row.plantName()) + safe(row.diseaseName()) + "知识",
-                content, safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
+                content, displayContent, safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
                 combineTags(row.diseaseName(), aliases), trust(row.sourceLevel()), false,
                 0, 0, 0, 0, sourceUpdatedAt(row), fragmentMetadata(row,
                 logicalEvidenceId(row.id(), "完整资料"), fragmentId, 0, 1, 0, 1, "完整资料", content));
@@ -97,7 +96,7 @@ public class DiseaseKnowledgeConverter {
             result.add(new KnowledgeDocument(
                     documentId, KnowledgeSource.DISEASE, row.id(),
                     safe(row.plantName()) + safe(row.diseaseName()) + "知识", content,
-                    safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
+                    chunk.content(), safe(row.canonicalPlantId()), safe(row.plantName()), "DISEASE_KNOWLEDGE",
                     combineTags(row.diseaseName(), aliases), trust(row.sourceLevel()), false,
                     0, 0, 0, 0, sourceUpdatedAt(row),
                     fragmentMetadata(row, logicalEvidenceId(row.id(), sectionName(chunk.section())), fragmentId,

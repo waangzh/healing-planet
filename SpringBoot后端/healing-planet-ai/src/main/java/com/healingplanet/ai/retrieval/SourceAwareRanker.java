@@ -71,7 +71,7 @@ public class SourceAwareRanker {
         return new Evidence(
                 document.id(), document.source() == KnowledgeSource.PLANT
                     ? EvidenceType.CARE_GUIDE : EvidenceType.COMMUNITY_POST,
-                document.sourceId(), document.source().name(), document.title(), document.content(),
+                document.sourceId(), document.source().name(), document.title(), document.displayContent(),
                 retrieval, rerankScore, document.trustScore(), clamp(finalScore),
                 evidenceMetadata(candidate, rerankScores, config),
                 document.createdAt()
@@ -92,7 +92,7 @@ public class SourceAwareRanker {
     private Map<String, String> contextFragment(KnowledgeDocument document, String fragmentId) {
         Map<String, String> result = new LinkedHashMap<>();
         result.put("fragmentId", fragmentId);
-        result.put("content", document.content() == null ? "" : document.content());
+        result.put("content", document.displayContent());
         result.put("section", document.attributes().getOrDefault("fragmentSection",
                 document.attributes().getOrDefault("section", "")));
         result.put("index", document.attributes().getOrDefault("fragmentIndex", "0"));

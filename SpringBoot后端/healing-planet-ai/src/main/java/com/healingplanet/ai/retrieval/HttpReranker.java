@@ -43,7 +43,7 @@ class HttpReranker implements RequestAwareSnapshotReranker {
         List<RetrievalFragmentHit> rerankFragments = fragmentSelector.select(rerankCandidates, 0,
                 client.maxFragmentsPerLogicalEvidence(), client.maxFragmentsTotal(), config.rrfK());
         if (rerankFragments.isEmpty()) return Map.of();
-        List<String> documents = rerankFragments.stream().map(fragment -> fragment.document().content()).toList();
+        List<String> documents = rerankFragments.stream().map(fragment -> fragment.document().embeddingText()).toList();
         RerankResponse response = client.client().post().uri(client.path())
                 .body(new RerankRequest(client.model(), query, documents))
                 .retrieve().body(RerankResponse.class);

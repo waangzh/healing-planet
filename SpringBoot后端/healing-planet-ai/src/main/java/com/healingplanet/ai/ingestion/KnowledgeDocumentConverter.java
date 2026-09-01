@@ -84,7 +84,7 @@ public class KnowledgeDocumentConverter {
             metadata.put("plantEntityConfidence", Double.toString(plantResolution.confidence()));
             result.add(new KnowledgeDocument(
                     documentId, KnowledgeSource.COMMUNITY, post.id(), safe(post.title()), content,
-                    canonicalPlantId, plantName, "COMMUNITY_EXPERIENCE", tags,
+                    chunk.content(), canonicalPlantId, plantName, "COMMUNITY_EXPERIENCE", tags,
                     post.essence() ? 0.75 : 0.5, post.essence(), post.likes(), post.collects(),
                     post.comments(), post.views(), post.createdAt(), metadata
             ));
@@ -115,7 +115,7 @@ public class KnowledgeDocumentConverter {
             String fragmentId = logicalEvidenceId + ":" + index;
             target.add(new KnowledgeDocument(
                     documentId, KnowledgeSource.PLANT, plant.id(), title, content,
-                    plant.id(), safe(plant.commonName()), type, List.of(topic),
+                    value.trim(), plant.id(), safe(plant.commonName()), type, List.of(topic),
                     1.0, false, 0, 0, 0, 0, Instant.EPOCH,
                     fragmentMetadata(logicalEvidenceId, fragmentId, index, fragments.size(), fragment.section(),
                             content, Instant.EPOCH)

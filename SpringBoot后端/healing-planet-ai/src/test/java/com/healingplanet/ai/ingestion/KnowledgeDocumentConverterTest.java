@@ -29,7 +29,9 @@ class KnowledgeDocumentConverterTest {
                 .containsExactlyElementsOf(second.stream().map(document -> document.id()).toList());
         assertThat(first).anySatisfy(document -> {
             assertThat(document.knowledgeType()).isEqualTo("WATERING");
-            assertThat(document.content()).contains("绿萝", "浇水", "表土干后浇透");
+            assertThat(document.embeddingText()).contains("绿萝", "浇水", "表土干后浇透");
+            assertThat(document.displayContent()).isEqualTo("表土干后浇透");
+            assertThat(document.metadata()).containsEntry("displayContent", "表土干后浇透");
         });
     }
 
@@ -82,7 +84,7 @@ class KnowledgeDocumentConverterTest {
         var documents = converter.fromPost(post);
 
         assertThat(documents).hasSizeGreaterThan(2).allSatisfy(document -> {
-            assertThat(TokenAwareTextChunker.countTokens(document.content()))
+            assertThat(TokenAwareTextChunker.countTokens(document.embeddingText()))
                     .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.COMMUNITY));
             assertThat(document.metadata()).containsKeys("chunkIndex", "chunkCount", "section", "contentHash",
                     "sourceUpdatedAt", "indexVersion", "logicalEvidenceId", "fragmentId",
@@ -112,7 +114,7 @@ class KnowledgeDocumentConverterTest {
 
         assertThat(generalCare).hasSizeGreaterThan(1).allSatisfy(document -> {
             assertThat(document.sourceId()).isEqualTo("plant-1");
-            assertThat(TokenAwareTextChunker.countTokens(document.content()))
+            assertThat(TokenAwareTextChunker.countTokens(document.embeddingText()))
                     .isLessThanOrEqualTo(new ChunkPolicy(new RagProperties()).maxTokens(KnowledgeSource.PLANT));
             assertThat(document.metadata()).containsKeys("logicalEvidenceId", "fragmentId", "fragmentIndex",
                     "fragmentRole", "fragmentCount", "fragmentSection");
@@ -139,7 +141,7 @@ class KnowledgeDocumentConverterTest {
                 .filter(document -> document.knowledgeType().equals("GENERAL_CARE")).toList();
 
         assertThat(generalCare).hasSizeGreaterThan(1).allSatisfy(document ->
-                assertThat(TokenAwareTextChunker.countTokens(document.content())).isLessThanOrEqualTo(64));
+                assertThat(TokenAwareTextChunker.countTokens(document.embeddingText())).isLessThanOrEqualTo(64));
     }
 
     @Test
