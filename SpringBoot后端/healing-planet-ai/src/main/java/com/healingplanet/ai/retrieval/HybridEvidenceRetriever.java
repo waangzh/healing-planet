@@ -37,6 +37,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
     private final AdaptiveRecallPolicy adaptiveRecallPolicy;
     private final RecallQualificationPolicy recallQualificationPolicy;
     private final PlantCatalogIndex plantCatalogIndex;
+    private final CommunityRankingFeatureHydrator communityRankingFeatureHydrator;
     private final LogicalEvidenceCandidateMerger candidateMerger = new LogicalEvidenceCandidateMerger();
 
     @Autowired
@@ -48,7 +49,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
                                    RagRuntimeConfigProvider runtimeConfigProvider, CoverageInspector coverageInspector,
                                    AdaptiveRecallPolicy adaptiveRecallPolicy,
                                    RecallQualificationPolicy recallQualificationPolicy,
-                                   PlantCatalogIndex plantCatalogIndex) {
+                                   PlantCatalogIndex plantCatalogIndex,
+                                   CommunityRankingFeatureHydrator communityRankingFeatureHydrator) {
         this.plantStore = plantStore;
         this.communityStore = communityStore;
         this.sparseIndex = sparseIndex;
@@ -64,6 +66,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         this.adaptiveRecallPolicy = adaptiveRecallPolicy;
         this.recallQualificationPolicy = recallQualificationPolicy;
         this.plantCatalogIndex = plantCatalogIndex;
+        this.communityRankingFeatureHydrator = communityRankingFeatureHydrator;
     }
 
     HybridEvidenceRetriever(VectorStore plantStore, VectorStore communityStore,
@@ -82,7 +85,7 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         this(plantStore, communityStore, sparseIndex, documentMapper, reranker, ranker, entityResolver,
                 evidenceSelector, metrics, properties, new RagRuntimeConfigProvider(properties),
                 new CoverageInspector(), new AdaptiveRecallPolicy(), new RecallQualificationPolicy(),
-                plantCatalogIndex);
+                plantCatalogIndex, CommunityRankingFeatureHydrator.noOp());
     }
 
     @Override
@@ -145,7 +148,8 @@ public class HybridEvidenceRetriever implements EvidenceRetriever {
         }
         metrics.recordCandidates("fused", "all", candidates.size());
         trace.filtered(candidates);
-        RerankResult finalRerank = rerank;
+        RerankResult finalRerank = new RerankResult(communityRankingFeatureHydrator.hydrate(rerank.candidates()),
+                rerank.scores());
         trace.rerank(candidates, finalRerank.candidates(), finalRerank.scores());
         SelectionResult selection = trace.time("final_rank", "all", "all",
                 () -> metrics.time("final_rank", "all",

@@ -58,6 +58,8 @@ Answerability 的 retrieval、rerank、对齐与强恢复阈值属于版本化 `
 每个请求只捕获一次不可变 `RagRuntimeSnapshot`，检索、reranker、Answerability 和生成共享同一版本。Coverage
 按 `RetrievalQueryGroup` 分别检查实体、主题和必需来源的组合，不能用其它植物或其它主题的候选代偿；当 reranker
 实际返回分数时，宽松的 `RecallQualificationPolicy` 会在首轮重排后识别“已召回但仍偏弱”的必需来源，再做有界补召回。
+索引状态也将 embedding 与 payload 兼容性分开：文本或向量化契约变化才调用 embedding；静态 retrieval payload
+变化只覆盖 Qdrant payload；社区互动指标在召回后从业务库批量 hydrate，不以高频浏览/互动变化重写向量或 Lucene 索引。
 
 ## 核心特性
 
@@ -193,7 +195,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 fragment；只有内容、索引版本或 `embeddingModelVersion` 变化的 fragment 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
 
-首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql) 与 [`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql)，再显式触发扫描：
+首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)、[`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql) 与 [`V6__rag_embedding_state_payload_hash.sql`](src/main/resources/db/migration/V6__rag_embedding_state_payload_hash.sql)，再显式触发扫描：
 
 ```bash
 curl -X POST http://localhost:8010/internal/index/full \
@@ -202,6 +204,8 @@ curl -X POST http://localhost:8010/internal/index/full \
 
 社区实体归属元数据随 `logical-evidence-v2` 写入。部署包含该版本的服务后，应在低峰期显式执行一次
 `POST /internal/index/community`，让已有帖子获得 `resolvedPlantIds`；该操作不涉及植物正式知识或设备状态。
+已有兼容 `index_fingerprint` 的 `rag_embedding_state` 行在执行 V6 后首次同步只会覆盖 payload，不会因 payload hash
+缺失而重新调用 embedding；旧 fingerprint 仍按既有兼容性规则重新向量化。
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 

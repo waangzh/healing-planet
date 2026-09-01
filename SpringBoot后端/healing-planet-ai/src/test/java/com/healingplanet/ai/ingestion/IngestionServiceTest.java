@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.clearInvocations;
 
 class IngestionServiceTest {
 
@@ -92,6 +93,84 @@ class IngestionServiceTest {
     }
 
     @Test
+    void changedCommunityAffinityShouldOverwritePayloadWithoutEmbedding() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        KnowledgeRepository.PostRow row = postRow();
+        when(repository.findPublishedPost("post-1")).thenReturn(row);
+        KnowledgeDocument initial = communityDocument("plant-1", 10, 100);
+        KnowledgeDocument affinityChanged = communityDocument("plant-2", 10, 100);
+        KnowledgeDocumentConverter converter = mock(KnowledgeDocumentConverter.class);
+        when(converter.fromPost(row)).thenReturn(List.of(initial), List.of(affinityChanged));
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.idsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of());
+        VectorStore communityStore = mock(VectorStore.class);
+        VectorPayloadUpdater payloadUpdater = mock(VectorPayloadUpdater.class);
+        IngestionService service = service(repository, converter, sparseIndex, communityStore, stateRepository, payloadUpdater);
+
+        service.indexPost("post-1");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<EmbeddingStateRepository.EmbeddingState>> states = ArgumentCaptor.forClass(List.class);
+        verify(stateRepository).upsertAll(states.capture());
+        EmbeddingStateRepository.EmbeddingState state = states.getValue().get(0);
+        clearInvocations(communityStore, payloadUpdater, sparseIndex, stateRepository);
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of(initial.id(), state));
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of(initial.id(), initial));
+
+        service.indexPost("post-1");
+
+        verify(communityStore, never()).add(anyList());
+        verify(payloadUpdater).overwritePayloads(eq(KnowledgeSource.COMMUNITY), org.mockito.ArgumentMatchers.argThat(
+                documents -> documents.size() == 1 && "plant-2".equals(
+                        documents.get(0).attributes().get("resolvedPlantIds"))));
+        verify(sparseIndex).upsertAll(anyList());
+        verify(stateRepository).upsertAll(anyList());
+    }
+
+    @Test
+    void changedCommunityEngagementShouldHydrateAtQueryTimeWithoutAnyIndexWrite() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        KnowledgeRepository.PostRow row = postRow();
+        when(repository.findPublishedPost("post-1")).thenReturn(row);
+        KnowledgeDocument initial = communityDocument("plant-1", 10, 100);
+        KnowledgeDocument engagementChanged = communityDocument("plant-1", 11, 101);
+        KnowledgeDocumentConverter converter = mock(KnowledgeDocumentConverter.class);
+        when(converter.fromPost(row)).thenReturn(List.of(initial), List.of(engagementChanged));
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.idsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of());
+        VectorStore communityStore = mock(VectorStore.class);
+        VectorPayloadUpdater payloadUpdater = mock(VectorPayloadUpdater.class);
+        IngestionService service = service(repository, converter, sparseIndex, communityStore, stateRepository, payloadUpdater);
+
+        service.indexPost("post-1");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<EmbeddingStateRepository.EmbeddingState>> states = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<KnowledgeDocument>> sparseDocuments = ArgumentCaptor.forClass(List.class);
+        verify(stateRepository).upsertAll(states.capture());
+        verify(sparseIndex).upsertAll(sparseDocuments.capture());
+        EmbeddingStateRepository.EmbeddingState state = states.getValue().get(0);
+        KnowledgeDocument indexedDocument = sparseDocuments.getValue().get(0);
+        clearInvocations(communityStore, payloadUpdater, sparseIndex, stateRepository);
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of(initial.id(), state));
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of(initial.id(), indexedDocument));
+
+        service.indexPost("post-1");
+
+        verify(communityStore, never()).add(anyList());
+        verify(payloadUpdater, never()).overwritePayloads(any(), anyList());
+        verify(sparseIndex, never()).upsertAll(anyList());
+        verify(stateRepository, never()).upsertAll(anyList());
+    }
+
+    @Test
     void changedIndexFingerprintShouldReEmbedUnchangedPostContent() {
         KnowledgeRepository repository = mock(KnowledgeRepository.class);
         KnowledgeRepository.PostRow row = new KnowledgeRepository.PostRow("post-1", "绿萝黄叶记录", "改善通风后恢复。",
@@ -129,5 +208,27 @@ class IngestionServiceTest {
                 .containsEntry("embeddingContentVersion", "embedding-content-v2")
                 .containsEntry("chunkSchemaVersion", "chunk-schema-v2");
         verify(stateRepository).upsertAll(anyList());
+    }
+
+    private IngestionService service(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
+                                     SparseIndexService sparseIndex, VectorStore communityStore,
+                                     EmbeddingStateRepository stateRepository, VectorPayloadUpdater payloadUpdater) {
+        return new IngestionService(repository, converter, new PlantEntityDocumentConverter(),
+                mock(PlantCatalogIndex.class), sparseIndex, mock(VectorStore.class), mock(VectorStore.class),
+                communityStore, mock(VectorStore.class), mock(DiseaseKnowledgeRepository.class),
+                mock(DiseaseKnowledgeConverter.class), stateRepository, new RagProperties(), payloadUpdater);
+    }
+
+    private KnowledgeRepository.PostRow postRow() {
+        return new KnowledgeRepository.PostRow("post-1", "绿萝黄叶记录", "改善通风后恢复。",
+                0, 0, 0, 0, false, java.time.Instant.parse("2026-01-01T00:00:00Z"), "绿萝");
+    }
+
+    private KnowledgeDocument communityDocument(String resolvedPlantId, int likes, int views) {
+        return new KnowledgeDocument("6f1eb1f1-7e70-45dc-af62-c139c85a177e", KnowledgeSource.COMMUNITY,
+                "post-1", "绿萝黄叶记录", "标题：绿萝黄叶记录\n正文：改善通风后恢复。", "改善通风后恢复。", "", "绿萝",
+                "COMMUNITY_EXPERIENCE", List.of("绿萝"), 0.5, false, likes, 1, 2, views,
+                java.time.Instant.parse("2026-01-01T00:00:00Z"), Map.of("indexVersion", "logical-evidence-v2",
+                "resolvedPlantIds", resolvedPlantId, "plantEntityConfidence", "1.0"));
     }
 }

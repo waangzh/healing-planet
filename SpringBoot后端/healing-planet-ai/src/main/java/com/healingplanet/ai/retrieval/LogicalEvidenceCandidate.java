@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * 同一逻辑证据在多个检索路径中命中的 fragment 聚合结果。
@@ -59,6 +60,16 @@ record LogicalEvidenceCandidate(
         }
         return new LogicalEvidenceCandidate(logicalEvidenceId, selected.document(), fragments,
                 denseRank, sparseRank, denseScore, sparseScore, fusionScore, matchedQueryGroupIds);
+    }
+
+    LogicalEvidenceCandidate mapDocuments(Function<KnowledgeDocument, KnowledgeDocument> mapper) {
+        KnowledgeDocument mappedRepresentative = mapper.apply(representative);
+        List<RetrievalFragmentHit> mappedFragments = fragments.stream()
+                .map(fragment -> new RetrievalFragmentHit(fragment.fragmentId(), fragment.logicalEvidenceId(),
+                        mapper.apply(fragment.document()), fragment.path(), fragment.rank(), fragment.score()))
+                .toList();
+        return new LogicalEvidenceCandidate(logicalEvidenceId, mappedRepresentative, mappedFragments, denseRank,
+                sparseRank, denseScore, sparseScore, fusionScore, matchedQueryGroupIds);
     }
 
     Map<String, Object> evidenceMetadata() {

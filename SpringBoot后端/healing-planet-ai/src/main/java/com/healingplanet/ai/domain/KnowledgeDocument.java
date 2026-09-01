@@ -24,6 +24,9 @@ public record KnowledgeDocument(
         Instant createdAt,
         Map<String, String> attributes
 ) {
+    private static final java.util.Set<String> COMMUNITY_DYNAMIC_RANKING_FIELDS = java.util.Set.of(
+            "trustScore", "essence", "likes", "collects", "comments", "views");
+
     public KnowledgeDocument {
         embeddingText = embeddingText == null ? "" : embeddingText;
         displayContent = displayContent == null ? "" : displayContent;
@@ -65,6 +68,20 @@ public record KnowledgeDocument(
         result.put("views", views);
         result.put("createdAt", createdAt == null ? "" : createdAt.toString());
         result.putAll(attributes);
+        return Map.copyOf(result);
+    }
+
+    /**
+     * Qdrant payload only carries fields that affect retrieval, attribution, display, or static source semantics.
+     * Community engagement is hydrated after recall from the business database, so a view increment never rewrites
+     * the vector store.
+     */
+    public Map<String, Object> vectorPayloadMetadata() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>(metadata());
+        result.remove("payloadHash");
+        if (source == KnowledgeSource.COMMUNITY) {
+            COMMUNITY_DYNAMIC_RANKING_FIELDS.forEach(result::remove);
+        }
         return Map.copyOf(result);
     }
 }
