@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -43,23 +44,39 @@ public class JdbcSourceIngestionLock implements SourceIngestionLock {
     }
 
     @Override
-    public void execute(KnowledgeSource source, Runnable action) {
+    public void execute(KnowledgeSource source, LeaseAction action) {
         Duration leaseDuration = properties.getIngestion().getSourceLockLeaseDuration();
         String owner = UUID.randomUUID().toString();
         acquire(source, owner, leaseDuration);
         AtomicReference<RuntimeException> leaseFailure = new AtomicReference<>();
-        ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
-                () -> renew(source, owner, leaseDuration, leaseFailure), heartbeatPeriodMillis(leaseDuration),
-                heartbeatPeriodMillis(leaseDuration), TimeUnit.MILLISECONDS);
+        AtomicBoolean closing = new AtomicBoolean();
+        Object renewalMonitor = new Object();
+        ScheduledFuture<?> heartbeat = null;
+        RuntimeException actionFailure = null;
         try {
-            action.run();
-            RuntimeException failure = leaseFailure.get();
-            if (failure != null) {
-                throw failure;
-            }
+            heartbeat = heartbeatExecutor.scheduleAtFixedRate(
+                    () -> renew(source, owner, leaseDuration, leaseFailure, closing, renewalMonitor),
+                    heartbeatPeriodMillis(leaseDuration), heartbeatPeriodMillis(leaseDuration), TimeUnit.MILLISECONDS);
+            action.run(() -> assertStillHeld(source, owner, leaseFailure));
+            // The final database-time check makes the caller's success transition depend on the completed lease too.
+            assertStillHeld(source, owner, leaseFailure);
+        } catch (RuntimeException exception) {
+            actionFailure = exception;
         } finally {
-            heartbeat.cancel(false);
-            repository.release(source, owner);
+            closing.set(true);
+            if (heartbeat != null) {
+                heartbeat.cancel(false);
+            }
+            synchronized (renewalMonitor) {
+                repository.release(source, owner);
+            }
+        }
+        if (actionFailure != null) {
+            throw actionFailure;
+        }
+        RuntimeException failure = leaseFailure.get();
+        if (failure != null) {
+            throw failure;
         }
     }
 
@@ -77,21 +94,50 @@ public class JdbcSourceIngestionLock implements SourceIngestionLock {
             }
             sleep(retryDelay);
         } while (System.nanoTime() < deadline);
-        throw new IllegalStateException("等待 " + source + " 索引租约超时");
+        throw new SourceIngestionLeaseException("等待 " + source + " 索引租约超时");
     }
 
     private void renew(KnowledgeSource source, String owner, Duration leaseDuration,
-                       AtomicReference<RuntimeException> leaseFailure) {
-        if (leaseFailure.get() != null) {
+                       AtomicReference<RuntimeException> leaseFailure, AtomicBoolean closing,
+                       Object renewalMonitor) {
+        if (closing.get() || leaseFailure.get() != null) {
             return;
         }
-        try {
-            if (!repository.renew(source, owner, leaseDuration)) {
-                leaseFailure.compareAndSet(null, new IllegalStateException("" + source + " 索引租约已丢失"));
+        synchronized (renewalMonitor) {
+            if (closing.get() || leaseFailure.get() != null) {
+                return;
             }
+            try {
+                if (!repository.renew(source, owner, leaseDuration)) {
+                    leaseFailure.compareAndSet(null, new SourceIngestionLeaseException(source + " 索引租约已丢失"));
+                }
+            } catch (RuntimeException exception) {
+                log.warn("续约 {} 索引租约失败", source, exception);
+                leaseFailure.compareAndSet(null,
+                        new SourceIngestionLeaseException(source + " 索引租约续约失败", exception));
+            }
+        }
+    }
+
+    private void assertStillHeld(KnowledgeSource source, String owner,
+                                 AtomicReference<RuntimeException> leaseFailure) {
+        RuntimeException failure = leaseFailure.get();
+        if (failure != null) {
+            throw failure;
+        }
+        try {
+            if (!repository.isHeld(source, owner)) {
+                SourceIngestionLeaseException lost = new SourceIngestionLeaseException(source + " 索引租约已丢失");
+                leaseFailure.compareAndSet(null, lost);
+                throw leaseFailure.get();
+            }
+        } catch (SourceIngestionLeaseException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
-            log.warn("续约 {} 索引租约失败", source, exception);
-            leaseFailure.compareAndSet(null, new IllegalStateException(source + " 索引租约续约失败", exception));
+            SourceIngestionLeaseException failed = new SourceIngestionLeaseException(
+                    source + " 索引租约状态检查失败", exception);
+            leaseFailure.compareAndSet(null, failed);
+            throw leaseFailure.get();
         }
     }
 

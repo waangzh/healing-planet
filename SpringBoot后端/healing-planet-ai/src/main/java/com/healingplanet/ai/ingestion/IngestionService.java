@@ -26,8 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.UUID;
 
 @Service
@@ -170,114 +170,116 @@ public class IngestionService {
     }
 
     public IndexRunReport indexDisease(String diseaseId) {
-        return run(IndexOperation.DISEASE_UPSERT, context -> sourceIngestionLock.execute(KnowledgeSource.DISEASE, () -> {
-            SourceRunCounters counters = context.begin(KnowledgeSource.DISEASE);
+        return run(IndexOperation.DISEASE_UPSERT, context -> executeSource(context, KnowledgeSource.DISEASE, lease -> {
+            SourceRunCounters counters = context.counters(KnowledgeSource.DISEASE);
             Set<String> oldIds = existingIdsBySourceId(KnowledgeSource.DISEASE, diseaseId);
             DiseaseKnowledgeRepository.DiseaseRow row = diseaseRepository.findById(diseaseId);
             if (row == null) {
-                counters.documentsDeleted += deleteIds(KnowledgeSource.DISEASE, oldIds, diseaseVectorStore);
+                counters.documentsDeleted += deleteIds(KnowledgeSource.DISEASE, oldIds, diseaseVectorStore, lease);
             } else {
                 List<KnowledgeDocument> documents = prepare(diseaseConverter.convertAll(row));
                 Set<String> newIds = documentIds(documents);
                 Set<String> staleIds = new HashSet<>(oldIds);
                 staleIds.removeAll(newIds);
-                counters.documentsDeleted += deleteIds(KnowledgeSource.DISEASE, staleIds, diseaseVectorStore);
-                syncBatch(KnowledgeSource.DISEASE, documents, diseaseVectorStore, counters);
+                counters.documentsDeleted += deleteIds(KnowledgeSource.DISEASE, staleIds, diseaseVectorStore, lease);
+                syncBatch(KnowledgeSource.DISEASE, documents, diseaseVectorStore, counters, lease);
             }
-            context.complete(KnowledgeSource.DISEASE);
         }));
     }
 
     public IndexRunReport indexPost(String postId) {
-        return run(IndexOperation.POST_UPSERT, context -> sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
-            SourceRunCounters counters = context.begin(KnowledgeSource.COMMUNITY);
+        return run(IndexOperation.POST_UPSERT, context -> executeSource(context, KnowledgeSource.COMMUNITY, lease -> {
+            SourceRunCounters counters = context.counters(KnowledgeSource.COMMUNITY);
             Set<String> oldIds = existingIdsBySourceId(KnowledgeSource.COMMUNITY, postId);
             KnowledgeRepository.PostRow row = repository.findPublishedPost(postId);
             if (row == null) {
-                counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, oldIds, communityVectorStore);
+                counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, oldIds, communityVectorStore, lease);
             } else {
                 List<KnowledgeDocument> documents = prepare(converter.fromPost(row));
                 Set<String> newIds = documentIds(documents);
                 Set<String> staleIds = new HashSet<>(oldIds);
                 staleIds.removeAll(newIds);
-                counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, staleIds, communityVectorStore);
-                syncBatch(KnowledgeSource.COMMUNITY, documents, communityVectorStore, counters);
+                counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, staleIds, communityVectorStore, lease);
+                syncBatch(KnowledgeSource.COMMUNITY, documents, communityVectorStore, counters, lease);
             }
-            context.complete(KnowledgeSource.COMMUNITY);
         }));
     }
 
     public IndexRunReport deletePost(String postId) {
-        return run(IndexOperation.POST_DELETE, context -> sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
-            SourceRunCounters counters = context.begin(KnowledgeSource.COMMUNITY);
+        return run(IndexOperation.POST_DELETE, context -> executeSource(context, KnowledgeSource.COMMUNITY, lease -> {
+            SourceRunCounters counters = context.counters(KnowledgeSource.COMMUNITY);
             Set<String> ids = existingIdsBySourceId(KnowledgeSource.COMMUNITY, postId);
-            counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, ids, communityVectorStore);
-            context.complete(KnowledgeSource.COMMUNITY);
+            counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, ids, communityVectorStore, lease);
         }));
     }
 
     private void indexPlants(IndexRunContext context) {
-        sourceIngestionLock.execute(KnowledgeSource.PLANT_ENTITY, () -> {
-            SourceRunCounters entities = context.begin(KnowledgeSource.PLANT_ENTITY);
+        executeSource(context, KnowledgeSource.PLANT_ENTITY, lease -> {
+            SourceRunCounters entities = context.counters(KnowledgeSource.PLANT_ENTITY);
             indexPaged(KnowledgeSource.PLANT_ENTITY, plantEntityVectorStore, repository::findPlantEntitiesAfter,
-                    row -> List.of(entityConverter.convert(row)), KnowledgeRepository.PlantEntityRow::id, entities);
-            context.complete(KnowledgeSource.PLANT_ENTITY);
+                    row -> List.of(entityConverter.convert(row)), KnowledgeRepository.PlantEntityRow::id, entities, lease);
         });
         plantCatalogIndex.refresh();
 
-        sourceIngestionLock.execute(KnowledgeSource.PLANT, () -> {
-            SourceRunCounters plants = context.begin(KnowledgeSource.PLANT);
+        executeSource(context, KnowledgeSource.PLANT, lease -> {
+            SourceRunCounters plants = context.counters(KnowledgeSource.PLANT);
             indexPaged(KnowledgeSource.PLANT, plantVectorStore, repository::findPlantsAfter, converter::fromPlant,
-                    KnowledgeRepository.PlantRow::id, plants);
-            context.complete(KnowledgeSource.PLANT);
+                    KnowledgeRepository.PlantRow::id, plants, lease);
         });
     }
 
     private void indexCommunity(IndexRunContext context) {
-        sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
-            SourceRunCounters community = context.begin(KnowledgeSource.COMMUNITY);
+        executeSource(context, KnowledgeSource.COMMUNITY, lease -> {
+            SourceRunCounters community = context.counters(KnowledgeSource.COMMUNITY);
             indexPaged(KnowledgeSource.COMMUNITY, communityVectorStore, repository::findPublishedPostsAfter,
-                    converter::fromPost, KnowledgeRepository.PostRow::id, community);
-            context.complete(KnowledgeSource.COMMUNITY);
+                    converter::fromPost, KnowledgeRepository.PostRow::id, community, lease);
         });
     }
 
     private void indexDiseases(IndexRunContext context) {
-        sourceIngestionLock.execute(KnowledgeSource.DISEASE, () -> {
-            SourceRunCounters disease = context.begin(KnowledgeSource.DISEASE);
+        executeSource(context, KnowledgeSource.DISEASE, lease -> {
+            SourceRunCounters disease = context.counters(KnowledgeSource.DISEASE);
             indexPaged(KnowledgeSource.DISEASE, diseaseVectorStore, diseaseRepository::findAfter,
-                    diseaseConverter::convertAll, DiseaseKnowledgeRepository.DiseaseRow::id, disease);
-            context.complete(KnowledgeSource.DISEASE);
+                    diseaseConverter::convertAll, DiseaseKnowledgeRepository.DiseaseRow::id, disease, lease);
         });
+    }
+
+    private void executeSource(IndexRunContext context, KnowledgeSource source,
+                               SourceIngestionLock.LeaseAction action) {
+        context.begin(source);
+        sourceIngestionLock.execute(source, action);
+        context.complete(source);
     }
 
     private <T> void indexPaged(KnowledgeSource source, VectorStore vectorStore,
                                            BiFunction<String, Integer, List<T>> pageFetcher,
                                            Function<T, List<KnowledgeDocument>> documentConverter,
-                                           Function<T, String> rowId, SourceRunCounters counters) {
+                                           Function<T, String> rowId, SourceRunCounters counters,
+                                           SourceIngestionLock.LeaseGuard lease) {
         Set<String> staleIds = existingIds(source);
         String lastId = "";
         int batchSize = batchSize();
 
         while (true) {
+            lease.assertStillHeld();
             List<T> rows = pageFetcher.apply(lastId, batchSize);
             if (rows.isEmpty()) {
                 break;
             }
             List<KnowledgeDocument> batch = prepare(rows.stream()
                     .flatMap(row -> documentConverter.apply(row).stream()).toList());
-            syncBatch(source, batch, vectorStore, counters);
+            syncBatch(source, batch, vectorStore, counters, lease);
             staleIds.removeAll(documentIds(batch));
             lastId = rowId.apply(rows.get(rows.size() - 1));
             if (rows.size() < batchSize) {
                 break;
             }
         }
-        counters.documentsDeleted += deleteIds(source, staleIds, vectorStore);
+        counters.documentsDeleted += deleteIds(source, staleIds, vectorStore, lease);
     }
 
     private void syncBatch(KnowledgeSource source, List<KnowledgeDocument> documents, VectorStore vectorStore,
-                           SourceRunCounters counters) {
+                           SourceRunCounters counters, SourceIngestionLock.LeaseGuard lease) {
         if (documents.isEmpty()) {
             return;
         }
@@ -290,7 +292,9 @@ public class IngestionService {
         documents.forEach(document -> counters.recordNonEmbeddingDecision(document, states.get(document.id()), fingerprint));
         if (!documentsToEmbed.isEmpty()) {
             try {
+                lease.assertStillHeld();
                 vectorStore.add(toSpringDocuments(documentsToEmbed));
+                lease.assertStillHeld();
                 embeddingStateRepository.upsertAll(documentsToEmbed.stream()
                         .map(document -> toEmbeddingState(document, fingerprint)).toList());
                 documentsToEmbed.forEach(document ->
@@ -306,7 +310,9 @@ public class IngestionService {
                 .filter(document -> needsPayloadUpdate(document, states.get(document.id()))).toList();
         if (!payloadUpdates.isEmpty()) {
             try {
+                lease.assertStillHeld();
                 payloadUpdater.overwritePayloads(source, payloadUpdates);
+                lease.assertStillHeld();
                 embeddingStateRepository.upsertAll(payloadUpdates.stream()
                         .map(document -> toEmbeddingState(document, fingerprint)).toList());
                 counters.payloadUpdates += payloadUpdates.size();
@@ -321,6 +327,7 @@ public class IngestionService {
                 .filter(document -> needsSparseUpdate(document, sparseDocuments.get(document.id()))).toList();
         if (!sparseUpdates.isEmpty()) {
             try {
+                lease.assertStillHeld();
                 sparseIndex.upsertAll(sparseUpdates);
                 counters.sparseUpdates += sparseUpdates.size();
             } catch (RuntimeException exception) {
@@ -403,14 +410,18 @@ public class IngestionService {
                 ingestion.getChunkSchemaVersion());
     }
 
-    private int deleteIds(KnowledgeSource source, Set<String> ids, VectorStore vectorStore) {
+    private int deleteIds(KnowledgeSource source, Set<String> ids, VectorStore vectorStore,
+                          SourceIngestionLock.LeaseGuard lease) {
         if (ids.isEmpty()) return 0;
         List<String> allIds = new ArrayList<>(ids);
         int batchSize = batchSize();
         for (int start = 0; start < allIds.size(); start += batchSize) {
             List<String> batch = allIds.subList(start, Math.min(start + batchSize, allIds.size()));
+            lease.assertStillHeld();
             vectorStore.delete(batch);
+            lease.assertStillHeld();
             sparseIndex.deleteAll(source, batch);
+            lease.assertStillHeld();
             embeddingStateRepository.deleteByDocumentIds(batch);
         }
         return allIds.size();
@@ -463,7 +474,7 @@ public class IngestionService {
             indexMetrics.recordRun(report);
             return report;
         } catch (RuntimeException exception) {
-            context.fail();
+            context.fail(exception);
             IndexRunReport report = context.report(IndexRunReport.Status.FAILED,
                     "索引操作失败: " + exception.getClass().getSimpleName(), clock.instant());
             indexMetrics.recordRun(report);
@@ -511,14 +522,25 @@ public class IngestionService {
             activeSource = null;
         }
 
-        private void fail() {
+        private void fail(RuntimeException exception) {
             if (activeSource == null) return;
             SourceRunCounters sourceCounters = counters.get(activeSource);
             SourceIndexRunReport report = sourceCounters.toReport();
             completed.put(activeSource, report);
             indexRunStatusStore.markFailed(activeSource, runId, operation, startedAt, clock.instant(), fingerprint,
-                    sourceCounters.failedDocuments, "索引操作失败");
+                    sourceCounters.failedDocuments, failureReason(exception));
             activeSource = null;
+        }
+
+        private SourceRunCounters counters(KnowledgeSource source) {
+            return counters.computeIfAbsent(source, SourceRunCounters::new);
+        }
+
+        private String failureReason(RuntimeException exception) {
+            if (exception instanceof SourceIngestionLeaseException && exception.getMessage() != null) {
+                return exception.getMessage();
+            }
+            return "索引操作失败";
         }
 
         private IndexRunReport report(IndexRunReport.Status status, String failureReason, Instant completedAt) {

@@ -216,7 +216,7 @@ payload、已更新稀疏索引、创建的 fragment / logical evidence、失败
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 
-生产环境不应靠定时全量扫描同步帖子。社区服务已在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件；部署时需先执行 [`V1__post_index_outbox.sql`](../healing-planet-sys/service/src/main/resources/db/migration/V1__post_index_outbox.sql)。独立发布器在 RabbitMQ publisher confirm 后更新 outbox 状态，消费者成功调用下面的内部接口后才标记 `DELIVERED`；失败会回写同一条 outbox 记录并延迟重试。AI 的 `COMMUNITY` source lease 会让 full scan、`POST_UPSERT` 与 `POST_DELETE` 在所有实例间串行，避免旧扫描快照覆盖较新的增量结果或误删新 fragment。事件载荷遵循以下契约：
+生产环境不应靠定时全量扫描同步帖子。社区服务已在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件；部署时需先执行 [`V1__post_index_outbox.sql`](../healing-planet-sys/service/src/main/resources/db/migration/V1__post_index_outbox.sql)。独立发布器在 RabbitMQ publisher confirm 后更新 outbox 状态，消费者成功调用下面的内部接口后才标记 `DELIVERED`；失败会回写同一条 outbox 记录并延迟重试。AI 的 `COMMUNITY` source lease 会让 full scan、`POST_UPSERT` 与 `POST_DELETE` 在所有实例间串行；每个分页和外部索引写入前都会用数据库时间复核 lease，续约或复核失败会停止后续批次并把该 source 标记为失败，不会写成成功。已开始的单个外部写调用无法被通用地抢占；若未来需要跨 Qdrant/Lucene 的严格拒绝旧写入，必须由各 sink 实际校验 fencing token。事件载荷遵循以下契约：
 
 ```json
 {

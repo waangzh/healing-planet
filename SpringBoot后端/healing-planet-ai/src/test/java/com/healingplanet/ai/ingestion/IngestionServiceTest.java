@@ -13,8 +13,12 @@ import org.springframework.ai.vectorstore.VectorStore;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -41,7 +45,8 @@ class IngestionServiceTest {
         when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of());
         SourceIngestionLock sourceLock = mock(SourceIngestionLock.class);
         doAnswer(invocation -> {
-            ((Runnable) invocation.getArgument(1)).run();
+            ((SourceIngestionLock.LeaseAction) invocation.getArgument(1))
+                    .run(SourceIngestionLock.LeaseGuard.noOp());
             return null;
         }).when(sourceLock).execute(any(), any());
 
@@ -61,7 +66,8 @@ class IngestionServiceTest {
         when(sparseIndex.ids(KnowledgeSource.COMMUNITY)).thenReturn(Set.of());
         SourceIngestionLock sourceLock = mock(SourceIngestionLock.class);
         doAnswer(invocation -> {
-            ((Runnable) invocation.getArgument(1)).run();
+            ((SourceIngestionLock.LeaseAction) invocation.getArgument(1))
+                    .run(SourceIngestionLock.LeaseGuard.noOp());
             return null;
         }).when(sourceLock).execute(any(), any());
 
@@ -283,6 +289,57 @@ class IngestionServiceTest {
                 assertThat(source.source()).isEqualTo(KnowledgeSource.COMMUNITY));
     }
 
+    @Test
+    void sourceShouldBeMarkedFailedWhenTheLeaseCannotBeAcquired() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        IndexRunStatusStore statusStore = mock(IndexRunStatusStore.class);
+        SourceIngestionLock sourceLock = (source, action) -> {
+            throw new SourceIngestionLeaseException("等待 " + source + " 索引租约超时");
+        };
+
+        IngestionService service = serviceWithStatusStore(repository, mock(SparseIndexService.class),
+                mock(EmbeddingStateRepository.class), statusStore, sourceLock);
+
+        assertThatThrownBy(() -> service.indexCommunity())
+                .isInstanceOf(SourceIngestionLeaseException.class)
+                .hasMessageContaining("等待 COMMUNITY 索引租约超时");
+
+        verify(statusStore).markRunning(eq(KnowledgeSource.COMMUNITY), anyString(),
+                eq(com.healingplanet.ai.domain.IndexOperation.COMMUNITY), any(), anyString());
+        verify(statusStore).markFailed(eq(KnowledgeSource.COMMUNITY), anyString(),
+                eq(com.healingplanet.ai.domain.IndexOperation.COMMUNITY), any(), any(), anyString(), eq(0),
+                eq("等待 COMMUNITY 索引租约超时"));
+        verify(statusStore, never()).markSucceeded(any(), anyString(), any(), any(), any(), anyString());
+    }
+
+    @Test
+    void sourceShouldNotBeMarkedSucceededWhenTheLeaseIsLostAfterIndexWork() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        when(repository.findPublishedPostsAfter(anyString(), anyInt())).thenReturn(List.of());
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySource(KnowledgeSource.COMMUNITY)).thenReturn(Set.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.ids(KnowledgeSource.COMMUNITY)).thenReturn(Set.of());
+        IndexRunStatusStore statusStore = mock(IndexRunStatusStore.class);
+        SourceIngestionLock sourceLock = (source, action) -> {
+            action.run(SourceIngestionLock.LeaseGuard.noOp());
+            throw new SourceIngestionLeaseException(source + " 索引租约已丢失");
+        };
+
+        IngestionService service = serviceWithStatusStore(repository, sparseIndex, stateRepository, statusStore, sourceLock);
+
+        assertThatThrownBy(() -> service.indexCommunity())
+                .isInstanceOf(SourceIngestionLeaseException.class)
+                .hasMessageContaining("COMMUNITY 索引租约已丢失");
+
+        verify(statusStore).markRunning(eq(KnowledgeSource.COMMUNITY), anyString(),
+                eq(com.healingplanet.ai.domain.IndexOperation.COMMUNITY), any(), anyString());
+        verify(statusStore).markFailed(eq(KnowledgeSource.COMMUNITY), anyString(),
+                eq(com.healingplanet.ai.domain.IndexOperation.COMMUNITY), any(), any(), anyString(), eq(0),
+                eq("COMMUNITY 索引租约已丢失"));
+        verify(statusStore, never()).markSucceeded(any(), anyString(), any(), any(), any(), anyString());
+    }
+
     private IngestionService service(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
                                      SparseIndexService sparseIndex, VectorStore communityStore,
                                      EmbeddingStateRepository stateRepository, VectorPayloadUpdater payloadUpdater) {
@@ -298,6 +355,18 @@ class IngestionServiceTest {
                 mock(PlantCatalogIndex.class), sparseIndex, mock(VectorStore.class), mock(VectorStore.class),
                 communityStore, mock(VectorStore.class), mock(DiseaseKnowledgeRepository.class),
                 mock(DiseaseKnowledgeConverter.class), stateRepository, new RagProperties(), payloadUpdater,
+                sourceIngestionLock);
+    }
+
+    private IngestionService serviceWithStatusStore(KnowledgeRepository repository, SparseIndexService sparseIndex,
+                                                     EmbeddingStateRepository stateRepository,
+                                                     IndexRunStatusStore statusStore,
+                                                     SourceIngestionLock sourceIngestionLock) {
+        return new IngestionService(repository, new KnowledgeDocumentConverter(), new PlantEntityDocumentConverter(),
+                mock(PlantCatalogIndex.class), sparseIndex, mock(VectorStore.class), mock(VectorStore.class),
+                mock(VectorStore.class), mock(VectorStore.class), mock(DiseaseKnowledgeRepository.class),
+                mock(DiseaseKnowledgeConverter.class), stateRepository, new RagProperties(), VectorPayloadUpdater.noOp(),
+                statusStore, IndexMetrics.noOp(), Clock.fixed(Instant.parse("2026-09-02T00:00:00Z"), ZoneOffset.UTC),
                 sourceIngestionLock);
     }
 

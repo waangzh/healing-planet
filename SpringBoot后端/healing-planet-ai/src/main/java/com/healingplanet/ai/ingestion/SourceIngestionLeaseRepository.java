@@ -48,6 +48,20 @@ public class SourceIngestionLeaseRepository {
                 """, leaseMicros(leaseDuration), source.name(), owner) == 1;
     }
 
+    /** Checks ownership using database time without extending the lease. */
+    public boolean isHeld(KnowledgeSource source, String owner) {
+        Integer held = jdbcTemplate.queryForObject("""
+                select exists(
+                    select 1
+                    from rag_ingestion_lease
+                    where source = ?
+                      and lease_owner = ?
+                      and lease_until > current_timestamp(3)
+                )
+                """, Integer.class, source.name(), owner);
+        return held != null && held == 1;
+    }
+
     public void release(KnowledgeSource source, String owner) {
         jdbcTemplate.update("""
                 update rag_ingestion_lease
