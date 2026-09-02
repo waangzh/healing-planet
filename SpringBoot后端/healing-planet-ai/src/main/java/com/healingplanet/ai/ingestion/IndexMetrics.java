@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Low-cardinality ingestion telemetry. Freshness gauges are refreshed by the internal status query. */
+/** Low-cardinality ingestion telemetry. Freshness gauges are refreshed by a read-only scheduled probe. */
 @Component
 public class IndexMetrics {
     static final String RUN_TIMER = "healing.planet.rag.index.run";
@@ -66,7 +66,7 @@ public class IndexMetrics {
             updateGauge(STALE_GAUGE, source.source().name().toLowerCase(), "fingerprint",
                     source.staleFingerprintFragments());
             updateGauge(STALE_GAUGE, source.source().name().toLowerCase(), "source_lag", source.staleSourceCount());
-            updateGauge(SOURCE_LAG_GAUGE, source.source().name().toLowerCase(), "latest",
+            updateGauge(SOURCE_LAG_GAUGE, source.source().name().toLowerCase(), "stale_age",
                     source.sourceLagSeconds() == null ? 0 : source.sourceLagSeconds());
         }
     }

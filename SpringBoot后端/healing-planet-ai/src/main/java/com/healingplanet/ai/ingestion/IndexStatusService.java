@@ -48,7 +48,7 @@ public class IndexStatusService {
             SourceFreshnessRepository.SourceLag lag = sourceFreshnessRepository.findLag(source, fingerprint);
             long indexedFragments = state == null ? 0 : state.indexedFragments();
             long staleFingerprintFragments = state == null ? 0 : state.staleFingerprintFragments();
-            Long lagSeconds = lagSeconds(run, lag, checkedAt);
+            Long lagSeconds = staleAgeSeconds(lag, checkedAt);
             IndexStatus.Freshness freshness = freshness(run, indexedFragments, staleFingerprintFragments, lag);
             String lastError = run == null ? "" : run.lastError();
             sources.add(new IndexStatus.SourceIndexStatus(source, freshness,
@@ -56,7 +56,8 @@ public class IndexStatusService {
                     run == null ? null : run.lastSuccessfulIndexAt(),
                     run == null ? "" : run.lastRunStatus(),
                     run == null ? "" : run.lastIndexFingerprint(), indexedFragments, staleFingerprintFragments,
-                    lag.supported(), lag.staleSourceCount(), lag.latestStaleSourceUpdatedAt(), lagSeconds, lastError));
+                    lag.supported(), lag.staleSourceCount(), lag.oldestStaleAt(),
+                    lag.latestStaleSourceUpdatedAt(), lagSeconds, lastError));
             addAlerts(alerts, source, run, staleFingerprintFragments, lag, lagSeconds);
         }
         IndexStatus status = new IndexStatus(checkedAt, fingerprint, sources, alerts);
@@ -96,13 +97,13 @@ public class IndexStatusService {
         return IndexStatus.Freshness.FRESH;
     }
 
-    private Long lagSeconds(IndexStatusRepository.PersistedStatus run,
-                            SourceFreshnessRepository.SourceLag lag, Instant checkedAt) {
-        if (!lag.supported() || lag.latestStaleSourceUpdatedAt() == null) return null;
-        Instant baseline = run == null || run.lastSuccessfulIndexAt() == null
-                ? lag.latestStaleSourceUpdatedAt() : run.lastSuccessfulIndexAt();
-        Instant end = lag.latestStaleSourceUpdatedAt().isAfter(baseline) ? lag.latestStaleSourceUpdatedAt() : checkedAt;
-        return Math.max(0, Duration.between(baseline, end).toSeconds());
+    /**
+     * This is a stale age, not a source-watermark delta: a one-minute-old unprocessed change must keep growing
+     * while the projection is stalled, even when no newer source change arrives.
+     */
+    private Long staleAgeSeconds(SourceFreshnessRepository.SourceLag lag, Instant checkedAt) {
+        if (!lag.supported() || lag.oldestStaleAt() == null) return null;
+        return Math.max(0, Duration.between(lag.oldestStaleAt(), checkedAt).toSeconds());
     }
 
     private IndexFingerprint fingerprint() {

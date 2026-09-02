@@ -162,10 +162,12 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 聊天模型 | `change-me` / `https://api.siliconflow.cn` / `Qwen/Qwen3.5-397B-A17B` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | Embedding 模型 | `https://api.siliconflow.cn` / `BAAI/bge-m3` |
 | `RAG_INGESTION_BATCH_SIZE` | 每次读取与写入的外层 chunk 批次，范围 50–200 | `100` |
+| `RAG_INGESTION_SOURCE_LOCK_LEASE_DURATION` / `RAG_INGESTION_SOURCE_LOCK_ACQUIRE_TIMEOUT` / `RAG_INGESTION_SOURCE_LOCK_RETRY_DELAY` | MySQL source lease 的有效期、等待上限与重试间隔；full scan 和同源增量写入跨实例串行，长扫描自动续约 | `5m` / `10m` / `200ms` |
 | `RAG_EMBEDDING_MODEL_VERSION` | 模型、维度或归一化策略版本 | `EMBEDDING_MODEL` |
 | `RAG_EMBEDDING_CONTENT_VERSION` / `RAG_CHUNK_SCHEMA_VERSION` | embedding 文本契约 / token 分块与 fragment schema 版本；任一变化会改变 `IndexFingerprint` | `embedding-content-v2` / `chunk-schema-v2` |
 | `RAG_PLANT_GENERAL_CARE_MAX_TOKENS` / `RAG_COMMUNITY_MAX_TOKENS` / `RAG_DISEASE_MAX_TOKENS` | `ChunkPolicy` 的植物综合养护 / 社区 / 病害 fragment token 预算；改动时同步提升 chunk schema 版本 | `800` / `800` / `800` |
-| `RAG_INDEX_SOURCE_LAG_ALERT_THRESHOLD` | `/internal/index/status` 将社区、病害 source lag 写入告警与指标的阈值；不触发自动索引 | `15m` |
+| `RAG_INDEX_SOURCE_LAG_ALERT_THRESHOLD` | stale age 超过该阈值时写入告警；不触发自动索引 | `15m` |
+| `RAG_INDEX_FRESHNESS_REFRESH_INTERVAL` / `RAG_INDEX_FRESHNESS_REFRESH_INITIAL_DELAY` | 自动只读刷新 freshness metrics 的周期与启动延迟 | `1m` / `15s` |
 | `RAG_EMBEDDING_BATCH_MAX_TOKENS` / `RAG_EMBEDDING_BATCH_RESERVE_PERCENTAGE` | Spring AI 内层 token 批处理上限与预留比例 | `8000` / `0.1` |
 | `QDRANT_HOST` / `QDRANT_GRPC_PORT` | Qdrant 连接 | `localhost` / `6334` |
 | `QDRANT_PLANT_COLLECTION` | 植物知识 collection | `plant_knowledge` |
@@ -196,7 +198,7 @@ smart_green_plant:  PLANT_INTERNAL_API_KEY
 
 应用启动不会扫描业务数据。`/internal/index/full` 是补数/修复扫描：以主键 keyset 分页读取，每批最多 100 个 fragment；只有内容、索引版本或 `embeddingModelVersion` 变化的 fragment 才会调用 embedding 并写入 Qdrant。扫描同时清理已从源库删除的文档。
 
-首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)、[`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql)、[`V6__rag_embedding_state_payload_hash.sql`](src/main/resources/db/migration/V6__rag_embedding_state_payload_hash.sql) 与 [`V7__rag_index_observability.sql`](src/main/resources/db/migration/V7__rag_index_observability.sql)，再显式触发扫描：
+首次引入该机制或需要补数时，先由数据库发布流程按版本顺序执行 [`V4__rag_embedding_state.sql`](src/main/resources/db/migration/V4__rag_embedding_state.sql)、[`V5__rag_embedding_state_index_fingerprint.sql`](src/main/resources/db/migration/V5__rag_embedding_state_index_fingerprint.sql)、[`V6__rag_embedding_state_payload_hash.sql`](src/main/resources/db/migration/V6__rag_embedding_state_payload_hash.sql)、[`V7__rag_index_observability.sql`](src/main/resources/db/migration/V7__rag_index_observability.sql) 与 [`V8__rag_ingestion_source_lease.sql`](src/main/resources/db/migration/V8__rag_ingestion_source_lease.sql)，再显式触发扫描：
 
 ```bash
 curl -X POST http://localhost:8010/internal/index/full \
@@ -214,7 +216,7 @@ payload、已更新稀疏索引、创建的 fragment / logical evidence、失败
 
 帖子发布或修改后调用 `POST /internal/index/post/{postId}`；帖子删除后调用 `DELETE /internal/index/post/{postId}`。两者均可安全地被至少一次投递重复调用：内容及模型版本未变化时不会重新向量化。
 
-生产环境不应靠定时全量扫描同步帖子。社区服务已在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件；部署时需先执行 [`V1__post_index_outbox.sql`](../healing-planet-sys/service/src/main/resources/db/migration/V1__post_index_outbox.sql)。独立发布器在 RabbitMQ publisher confirm 后更新 outbox 状态，消费者成功调用下面的内部接口后才标记 `DELIVERED`；失败会回写同一条 outbox 记录并延迟重试。事件载荷遵循以下契约：
+生产环境不应靠定时全量扫描同步帖子。社区服务已在创建、更新、删除帖子所在的数据库事务内写入 outbox 事件；部署时需先执行 [`V1__post_index_outbox.sql`](../healing-planet-sys/service/src/main/resources/db/migration/V1__post_index_outbox.sql)。独立发布器在 RabbitMQ publisher confirm 后更新 outbox 状态，消费者成功调用下面的内部接口后才标记 `DELIVERED`；失败会回写同一条 outbox 记录并延迟重试。AI 的 `COMMUNITY` source lease 会让 full scan、`POST_UPSERT` 与 `POST_DELETE` 在所有实例间串行，避免旧扫描快照覆盖较新的增量结果或误删新 fragment。事件载荷遵循以下契约：
 
 ```json
 {
@@ -302,7 +304,7 @@ curl "http://localhost:8010/actuator/prometheus"
 
 指标不会使用原始问题、植物名称或文档 ID 作为 tag，避免泄露用户输入及造成高基数时间序列。
 索引指标同样只以有限的 `operation`、`source`、`status`、`outcome`、`reason` 和 `kind` 为标签；
-`stale_fragments` 与 `source_lag_seconds` 在调用 `/internal/index/status` 时刷新，可直接由 Prometheus 告警规则消费。
+`stale_fragments` 与 `source_lag_seconds` 由服务内的自动只读 refresh 定期更新，也会在调用 `/internal/index/status` 时即时刷新；两条路径都不会启动扫描、修复或重建。`source_lag_seconds{kind="stale_age"}` 表示最早尚未完成同步单元距现在的秒数，而不是“源水位比最近索引水位前进多少”。
 
 ### 索引管理
 
@@ -317,12 +319,14 @@ curl "http://localhost:8010/actuator/prometheus"
 | `POST` | `/internal/index/disease/{diseaseId}` | 单病害更新 |
 | `GET` | `/internal/index/status` | 持久化运行状态、当前 fingerprint、新鲜度与告警（只读，不触发索引） |
 
-> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。AI 服务只写入 `rag_embedding_state` 与 `rag_index_status`；部署账号应只被授予这两张表的写权限，其他业务表保持只读权限。
+> 所有 `/internal/**` 接口需携带 `X-Internal-Api-Key` 请求头。AI 服务只写入 `rag_embedding_state`、`rag_index_status` 与 `rag_ingestion_lease`；部署账号应只被授予这三张表的写权限，其他业务表保持只读权限。
 
 `/internal/index/status` 依据 `rag_index_status` 和 `rag_embedding_state` 报告每个 source 的最近成功/失败运行、已索引
-fragment 数及 stale fingerprint 数。社区和病害会额外只读其权威 `updated_at` 字段来计算 source lag；当前植物目录表没有
-稳定的更新时间字段，因此该 source 的 lag 明确返回不支持，而不会用扫描时间猜测。该接口不会执行补偿扫描、自动修复或
-全量重索引。
+fragment 数及 stale fingerprint 数。社区新鲜度来自 `post_index_outbox` 中最早未交付的 `POST_UPSERT` / `POST_DELETE` 的
+`occurred_at`，因此浏览、点赞等未进入 outbox 的动态变更不会误报 RAG 过期；病害以权威 `updated_at` 与已持久化的
+`source_updated_at` 比较，绝不以 `indexed_at` 证明内容版本。响应同时提供 `oldestStaleAt` 与 `sourceLagSeconds`（真实 stale
+age）。当前植物目录表没有稳定的 source version，因此该 source 的 lag 明确返回不支持，而不会用扫描时间猜测。该接口和
+自动 refresh 都不会执行补偿扫描、自动修复或全量重索引。
 
 ### 多模态病害辅助分析
 

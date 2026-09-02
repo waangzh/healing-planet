@@ -121,6 +121,10 @@ public class RagProperties {
         private int plantGeneralCareMaxTokens = 800;
         private int communityMaxTokens = 800;
         private int diseaseMaxTokens = 800;
+        /** A source-level lease prevents a full scan and an outbox-driven incremental run from interleaving. */
+        private Duration sourceLockLeaseDuration = Duration.ofMinutes(5);
+        private Duration sourceLockAcquireTimeout = Duration.ofMinutes(10);
+        private Duration sourceLockRetryDelay = Duration.ofMillis(200);
 
         public int getBatchSize() { return batchSize; }
         public void setBatchSize(int batchSize) { this.batchSize = batchSize; }
@@ -146,14 +150,27 @@ public class RagProperties {
         public void setCommunityMaxTokens(int value) { this.communityMaxTokens = value; }
         public int getDiseaseMaxTokens() { return diseaseMaxTokens; }
         public void setDiseaseMaxTokens(int value) { this.diseaseMaxTokens = value; }
+        public Duration getSourceLockLeaseDuration() { return sourceLockLeaseDuration; }
+        public void setSourceLockLeaseDuration(Duration value) { this.sourceLockLeaseDuration = value; }
+        public Duration getSourceLockAcquireTimeout() { return sourceLockAcquireTimeout; }
+        public void setSourceLockAcquireTimeout(Duration value) { this.sourceLockAcquireTimeout = value; }
+        public Duration getSourceLockRetryDelay() { return sourceLockRetryDelay; }
+        public void setSourceLockRetryDelay(Duration value) { this.sourceLockRetryDelay = value; }
     }
 
     public static class IndexObservability {
-        /** A status query keeps reporting lag immediately; this threshold controls the alert and alerting gauge. */
+        /** The stale-age threshold controls the alert and alerting gauge. */
         private Duration sourceLagAlertThreshold = Duration.ofMinutes(15);
+        /** Period for the automatic read-only freshness probe; it never starts ingestion. */
+        private Duration freshnessRefreshInterval = Duration.ofMinutes(1);
+        private Duration freshnessRefreshInitialDelay = Duration.ofSeconds(15);
 
         public Duration getSourceLagAlertThreshold() { return sourceLagAlertThreshold; }
         public void setSourceLagAlertThreshold(Duration value) { this.sourceLagAlertThreshold = value; }
+        public Duration getFreshnessRefreshInterval() { return freshnessRefreshInterval; }
+        public void setFreshnessRefreshInterval(Duration value) { this.freshnessRefreshInterval = value; }
+        public Duration getFreshnessRefreshInitialDelay() { return freshnessRefreshInitialDelay; }
+        public void setFreshnessRefreshInitialDelay(Duration value) { this.freshnessRefreshInitialDelay = value; }
     }
 
     public static class Generation {

@@ -102,9 +102,16 @@ app:
       plant-general-care-max-tokens: ${RAG_PLANT_GENERAL_CARE_MAX_TOKENS:800}
       community-max-tokens: ${RAG_COMMUNITY_MAX_TOKENS:800}
       disease-max-tokens: ${RAG_DISEASE_MAX_TOKENS:800}
+      # 同一 source 的 full scan 与增量写入在所有 AI 实例间通过 MySQL lease 串行化；长扫描会自动续约。
+      source-lock-lease-duration: ${RAG_INGESTION_SOURCE_LOCK_LEASE_DURATION:5m}
+      source-lock-acquire-timeout: ${RAG_INGESTION_SOURCE_LOCK_ACQUIRE_TIMEOUT:10m}
+      source-lock-retry-delay: ${RAG_INGESTION_SOURCE_LOCK_RETRY_DELAY:200ms}
     # 状态查询只读；不会触发扫描、修复或全量重建。超过此时长的社区/病害源滞后会进入 alerts 与指标。
     index-observability:
       source-lag-alert-threshold: ${RAG_INDEX_SOURCE_LAG_ALERT_THRESHOLD:15m}
+      # 指标通过同一只读 freshness 查询自动刷新；不会启动 ingestion 或补偿扫描。
+      freshness-refresh-interval: ${RAG_INDEX_FRESHNESS_REFRESH_INTERVAL:1m}
+      freshness-refresh-initial-delay: ${RAG_INDEX_FRESHNESS_REFRESH_INITIAL_DELAY:15s}
     internal-api-key: ${RAG_INTERNAL_API_KEY:}
     qdrant:
       host: ${QDRANT_HOST:localhost}

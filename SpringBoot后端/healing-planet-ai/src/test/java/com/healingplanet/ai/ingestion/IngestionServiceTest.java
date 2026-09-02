@@ -25,8 +25,51 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 
 class IngestionServiceTest {
+
+    @Test
+    void communityIncrementalIndexShouldRunInsideTheCommunitySourceLease() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        when(repository.findPublishedPost("post-1")).thenReturn(postRow());
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(stateRepository.findByDocumentIds(any())).thenReturn(Map.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.idsBySourceId(KnowledgeSource.COMMUNITY, "post-1")).thenReturn(Set.of());
+        when(sparseIndex.documentsByIds(any(), any())).thenReturn(Map.of());
+        SourceIngestionLock sourceLock = mock(SourceIngestionLock.class);
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(1)).run();
+            return null;
+        }).when(sourceLock).execute(any(), any());
+
+        service(repository, new KnowledgeDocumentConverter(), sparseIndex, mock(VectorStore.class), stateRepository,
+                VectorPayloadUpdater.noOp(), sourceLock).indexPost("post-1");
+
+        verify(sourceLock).execute(eq(KnowledgeSource.COMMUNITY), any());
+    }
+
+    @Test
+    void communityFullScanShouldUseTheSameCommunitySourceLeaseAsIncrementalIndexing() {
+        KnowledgeRepository repository = mock(KnowledgeRepository.class);
+        when(repository.findPublishedPostsAfter(anyString(), anyInt())).thenReturn(List.of());
+        EmbeddingStateRepository stateRepository = mock(EmbeddingStateRepository.class);
+        when(stateRepository.documentIdsBySource(KnowledgeSource.COMMUNITY)).thenReturn(Set.of());
+        SparseIndexService sparseIndex = mock(SparseIndexService.class);
+        when(sparseIndex.ids(KnowledgeSource.COMMUNITY)).thenReturn(Set.of());
+        SourceIngestionLock sourceLock = mock(SourceIngestionLock.class);
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(1)).run();
+            return null;
+        }).when(sourceLock).execute(any(), any());
+
+        service(repository, new KnowledgeDocumentConverter(), sparseIndex, mock(VectorStore.class), stateRepository,
+                VectorPayloadUpdater.noOp(), sourceLock).indexCommunity();
+
+        verify(sourceLock).execute(eq(KnowledgeSource.COMMUNITY), any());
+    }
 
     @Test
     void plantIndexShouldRebuildEntityCollectionAndRefreshCatalog() {
@@ -243,10 +286,19 @@ class IngestionServiceTest {
     private IngestionService service(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
                                      SparseIndexService sparseIndex, VectorStore communityStore,
                                      EmbeddingStateRepository stateRepository, VectorPayloadUpdater payloadUpdater) {
+        return service(repository, converter, sparseIndex, communityStore, stateRepository, payloadUpdater,
+                SourceIngestionLock.noOp());
+    }
+
+    private IngestionService service(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
+                                     SparseIndexService sparseIndex, VectorStore communityStore,
+                                     EmbeddingStateRepository stateRepository, VectorPayloadUpdater payloadUpdater,
+                                     SourceIngestionLock sourceIngestionLock) {
         return new IngestionService(repository, converter, new PlantEntityDocumentConverter(),
                 mock(PlantCatalogIndex.class), sparseIndex, mock(VectorStore.class), mock(VectorStore.class),
                 communityStore, mock(VectorStore.class), mock(DiseaseKnowledgeRepository.class),
-                mock(DiseaseKnowledgeConverter.class), stateRepository, new RagProperties(), payloadUpdater);
+                mock(DiseaseKnowledgeConverter.class), stateRepository, new RagProperties(), payloadUpdater,
+                sourceIngestionLock);
     }
 
     private KnowledgeRepository.PostRow postRow() {

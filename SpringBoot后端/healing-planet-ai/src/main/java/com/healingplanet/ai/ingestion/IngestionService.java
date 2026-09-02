@@ -50,6 +50,7 @@ public class IngestionService {
     private final IndexRunStatusStore indexRunStatusStore;
     private final IndexMetrics indexMetrics;
     private final Clock clock;
+    private final SourceIngestionLock sourceIngestionLock;
 
     /** Compatibility constructor for focused tests and callers that do not provide a Qdrant payload adapter. */
     public IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
@@ -67,7 +68,7 @@ public class IngestionService {
         this(repository, converter, entityConverter, plantCatalogIndex, sparseIndex, plantVectorStore,
                 plantEntityVectorStore, communityVectorStore, diseaseVectorStore, diseaseRepository, diseaseConverter,
                 embeddingStateRepository, properties, VectorPayloadUpdater.noOp(), IndexRunStatusStore.noOp(),
-                IndexMetrics.noOp(), Clock.systemUTC());
+                IndexMetrics.noOp(), Clock.systemUTC(), SourceIngestionLock.noOp());
     }
 
     public IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
@@ -86,7 +87,28 @@ public class IngestionService {
         this(repository, converter, entityConverter, plantCatalogIndex, sparseIndex, plantVectorStore,
                 plantEntityVectorStore, communityVectorStore, diseaseVectorStore, diseaseRepository, diseaseConverter,
                 embeddingStateRepository, properties, payloadUpdater, IndexRunStatusStore.noOp(), IndexMetrics.noOp(),
-                Clock.systemUTC());
+                Clock.systemUTC(), SourceIngestionLock.noOp());
+    }
+
+    /** Test-focused constructor for verifying source serialization without wiring persistent run telemetry. */
+    IngestionService(KnowledgeRepository repository, KnowledgeDocumentConverter converter,
+                     PlantEntityDocumentConverter entityConverter,
+                     PlantCatalogIndex plantCatalogIndex,
+                     SparseIndexService sparseIndex,
+                     @Qualifier("plantVectorStore") VectorStore plantVectorStore,
+                     @Qualifier("plantEntityVectorStore") VectorStore plantEntityVectorStore,
+                     @Qualifier("communityVectorStore") VectorStore communityVectorStore,
+                     @Qualifier("diseaseVectorStore") VectorStore diseaseVectorStore,
+                     DiseaseKnowledgeRepository diseaseRepository,
+                     DiseaseKnowledgeConverter diseaseConverter,
+                     EmbeddingStateRepository embeddingStateRepository,
+                     RagProperties properties,
+                     VectorPayloadUpdater payloadUpdater,
+                     SourceIngestionLock sourceIngestionLock) {
+        this(repository, converter, entityConverter, plantCatalogIndex, sparseIndex, plantVectorStore,
+                plantEntityVectorStore, communityVectorStore, diseaseVectorStore, diseaseRepository, diseaseConverter,
+                embeddingStateRepository, properties, payloadUpdater, IndexRunStatusStore.noOp(), IndexMetrics.noOp(),
+                Clock.systemUTC(), sourceIngestionLock);
     }
 
     @Autowired
@@ -105,7 +127,8 @@ public class IngestionService {
                             VectorPayloadUpdater payloadUpdater,
                             IndexRunStatusStore indexRunStatusStore,
                             IndexMetrics indexMetrics,
-                            @Qualifier("ragClock") Clock clock) {
+                            @Qualifier("ragClock") Clock clock,
+                            SourceIngestionLock sourceIngestionLock) {
         this.repository = repository;
         this.converter = converter;
         this.entityConverter = entityConverter;
@@ -123,6 +146,7 @@ public class IngestionService {
         this.indexRunStatusStore = indexRunStatusStore;
         this.indexMetrics = indexMetrics;
         this.clock = clock;
+        this.sourceIngestionLock = sourceIngestionLock;
     }
 
     public IndexRunReport fullIndex() {
@@ -146,7 +170,7 @@ public class IngestionService {
     }
 
     public IndexRunReport indexDisease(String diseaseId) {
-        return run(IndexOperation.DISEASE_UPSERT, context -> {
+        return run(IndexOperation.DISEASE_UPSERT, context -> sourceIngestionLock.execute(KnowledgeSource.DISEASE, () -> {
             SourceRunCounters counters = context.begin(KnowledgeSource.DISEASE);
             Set<String> oldIds = existingIdsBySourceId(KnowledgeSource.DISEASE, diseaseId);
             DiseaseKnowledgeRepository.DiseaseRow row = diseaseRepository.findById(diseaseId);
@@ -161,11 +185,11 @@ public class IngestionService {
                 syncBatch(KnowledgeSource.DISEASE, documents, diseaseVectorStore, counters);
             }
             context.complete(KnowledgeSource.DISEASE);
-        });
+        }));
     }
 
     public IndexRunReport indexPost(String postId) {
-        return run(IndexOperation.POST_UPSERT, context -> {
+        return run(IndexOperation.POST_UPSERT, context -> sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
             SourceRunCounters counters = context.begin(KnowledgeSource.COMMUNITY);
             Set<String> oldIds = existingIdsBySourceId(KnowledgeSource.COMMUNITY, postId);
             KnowledgeRepository.PostRow row = repository.findPublishedPost(postId);
@@ -180,43 +204,51 @@ public class IngestionService {
                 syncBatch(KnowledgeSource.COMMUNITY, documents, communityVectorStore, counters);
             }
             context.complete(KnowledgeSource.COMMUNITY);
-        });
+        }));
     }
 
     public IndexRunReport deletePost(String postId) {
-        return run(IndexOperation.POST_DELETE, context -> {
+        return run(IndexOperation.POST_DELETE, context -> sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
             SourceRunCounters counters = context.begin(KnowledgeSource.COMMUNITY);
             Set<String> ids = existingIdsBySourceId(KnowledgeSource.COMMUNITY, postId);
             counters.documentsDeleted += deleteIds(KnowledgeSource.COMMUNITY, ids, communityVectorStore);
             context.complete(KnowledgeSource.COMMUNITY);
-        });
+        }));
     }
 
     private void indexPlants(IndexRunContext context) {
-        SourceRunCounters entities = context.begin(KnowledgeSource.PLANT_ENTITY);
-        indexPaged(KnowledgeSource.PLANT_ENTITY, plantEntityVectorStore, repository::findPlantEntitiesAfter,
-                row -> List.of(entityConverter.convert(row)), KnowledgeRepository.PlantEntityRow::id, entities);
-        context.complete(KnowledgeSource.PLANT_ENTITY);
+        sourceIngestionLock.execute(KnowledgeSource.PLANT_ENTITY, () -> {
+            SourceRunCounters entities = context.begin(KnowledgeSource.PLANT_ENTITY);
+            indexPaged(KnowledgeSource.PLANT_ENTITY, plantEntityVectorStore, repository::findPlantEntitiesAfter,
+                    row -> List.of(entityConverter.convert(row)), KnowledgeRepository.PlantEntityRow::id, entities);
+            context.complete(KnowledgeSource.PLANT_ENTITY);
+        });
         plantCatalogIndex.refresh();
 
-        SourceRunCounters plants = context.begin(KnowledgeSource.PLANT);
-        indexPaged(KnowledgeSource.PLANT, plantVectorStore, repository::findPlantsAfter, converter::fromPlant,
-                KnowledgeRepository.PlantRow::id, plants);
-        context.complete(KnowledgeSource.PLANT);
+        sourceIngestionLock.execute(KnowledgeSource.PLANT, () -> {
+            SourceRunCounters plants = context.begin(KnowledgeSource.PLANT);
+            indexPaged(KnowledgeSource.PLANT, plantVectorStore, repository::findPlantsAfter, converter::fromPlant,
+                    KnowledgeRepository.PlantRow::id, plants);
+            context.complete(KnowledgeSource.PLANT);
+        });
     }
 
     private void indexCommunity(IndexRunContext context) {
-        SourceRunCounters community = context.begin(KnowledgeSource.COMMUNITY);
-        indexPaged(KnowledgeSource.COMMUNITY, communityVectorStore, repository::findPublishedPostsAfter,
-                converter::fromPost, KnowledgeRepository.PostRow::id, community);
-        context.complete(KnowledgeSource.COMMUNITY);
+        sourceIngestionLock.execute(KnowledgeSource.COMMUNITY, () -> {
+            SourceRunCounters community = context.begin(KnowledgeSource.COMMUNITY);
+            indexPaged(KnowledgeSource.COMMUNITY, communityVectorStore, repository::findPublishedPostsAfter,
+                    converter::fromPost, KnowledgeRepository.PostRow::id, community);
+            context.complete(KnowledgeSource.COMMUNITY);
+        });
     }
 
     private void indexDiseases(IndexRunContext context) {
-        SourceRunCounters disease = context.begin(KnowledgeSource.DISEASE);
-        indexPaged(KnowledgeSource.DISEASE, diseaseVectorStore, diseaseRepository::findAfter,
-                diseaseConverter::convertAll, DiseaseKnowledgeRepository.DiseaseRow::id, disease);
-        context.complete(KnowledgeSource.DISEASE);
+        sourceIngestionLock.execute(KnowledgeSource.DISEASE, () -> {
+            SourceRunCounters disease = context.begin(KnowledgeSource.DISEASE);
+            indexPaged(KnowledgeSource.DISEASE, diseaseVectorStore, diseaseRepository::findAfter,
+                    diseaseConverter::convertAll, DiseaseKnowledgeRepository.DiseaseRow::id, disease);
+            context.complete(KnowledgeSource.DISEASE);
+        });
     }
 
     private <T> void indexPaged(KnowledgeSource source, VectorStore vectorStore,

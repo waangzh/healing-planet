@@ -26,6 +26,7 @@ public record IndexStatus(
             long staleFingerprintFragments,
             boolean sourceLagSupported,
             long staleSourceCount,
+            Instant oldestStaleAt,
             Instant latestStaleSourceUpdatedAt,
             Long sourceLagSeconds,
             String lastError
